@@ -1,178 +1,197 @@
-# Edit this configuration file to define what should be installed on
-# your system.  Help is available in the configuration.nix(5) man page
-# and in the NixOS manual (accessible by running ‘nixos-help’).
-
-{ config, pkgs, ... }:
+{ config, lib, pkgs, ... }:
 
 {
-  imports =
-    [ # Include the results of the hardware scan.
-      ./hardware-configuration.nix
-    ];
+  imports = [
+    ./hardware-configuration.nix
+  ];
+
+  nix.settings.experimental-features = [
+    "nix-command"
+    "flakes"
+  ];
 
   nixpkgs.config.allowUnfree = true;
 
-  # Bootloader.
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
-  networking.hostName = "nixos"; # Define your hostname.
-  # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
-
-  # Configure network proxy if necessary
-  # networking.proxy.default = "http://user:password@proxy:port/";
-  # networking.proxy.noProxy = "127.0.0.1,localhost,internal.domain";
-
-  # Enable networking
+  networking.hostName = "thinkpad";
   networking.networkmanager.enable = true;
+  networking.firewall.enable = true;
 
-  # Set your time zone.
   time.timeZone = "Europe/Amsterdam";
 
-  # Select internationalisation properties.
-  i18n.defaultLocale = "en_GB.UTF-8";
-
+  i18n.defaultLocale = "en_IE.UTF-8";
   i18n.extraLocaleSettings = {
-    LC_ADDRESS = "nl_NL.UTF-8";
-    LC_IDENTIFICATION = "nl_NL.UTF-8";
-    LC_MEASUREMENT = "nl_NL.UTF-8";
-    LC_MONETARY = "nl_NL.UTF-8";
-    LC_NAME = "nl_NL.UTF-8";
-    LC_NUMERIC = "nl_NL.UTF-8";
-    LC_PAPER = "nl_NL.UTF-8";
-    LC_TELEPHONE = "nl_NL.UTF-8";
-    LC_TIME = "nl_NL.UTF-8";
+    LC_ADDRESS = "en_IE.UTF-8";
+    LC_IDENTIFICATION = "en_IE.UTF-8";
+    LC_MEASUREMENT = "en_IE.UTF-8";
+    LC_MONETARY = "en_IE.UTF-8";
+    LC_NAME = "en_IE.UTF-8";
+    LC_NUMERIC = "en_IE.UTF-8";
+    LC_PAPER = "en_IE.UTF-8";
+    LC_TELEPHONE = "en_IE.UTF-8";
+    LC_TIME = "en_IE.UTF-8";
   };
 
-  # Enable the X11 windowing system.
-  services.xserver.enable = true;
+  console.keyMap = "us";
 
-  # Enable the GNOME Desktop Environment.
-  services.displayManager.gdm.enable = true;
-  services.desktopManager.gnome.enable = true;
-
-  # Configure keymap in X11
-  services.xserver.xkb = {
-    layout = "gb";
-    variant = "";
+  services.xserver = {
+    enable = false;
+    xkb = {
+      layout = "us,gb";
+      variant = "intl,";
+    };
   };
 
-  # Configure console keymap
-  console.keyMap = "uk";
+  services.displayManager.gdm.enable = false;
+  services.desktopManager.gnome.enable = false;
 
-  # Enable CUPS to print documents.
-  services.printing.enable = true;
+  services.greetd = {
+    enable = true;
+    settings = {
+      default_session = {
+        command = "${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd Hyprland";
+        user = "greeter";
+      };
+    };
+  };
 
-  # Enable sound with pipewire.
-  services.pulseaudio.enable = false;
+  programs.hyprland = {
+    enable = true;
+    xwayland.enable = true;
+  };
+
+  xdg.portal = {
+    enable = true;
+    extraPortals = with pkgs; [
+      xdg-desktop-portal-hyprland
+      xdg-desktop-portal-gtk
+    ];
+    config.common.default = [
+      "hyprland"
+      "gtk"
+    ];
+  };
+
+  programs.dconf.enable = true;
+  services.gnome.gnome-keyring.enable = true;
+  security.polkit.enable = true;
   security.rtkit.enable = true;
+
+  services.printing.enable = true;
+  services.openssh.enable = false;
+  services.flatpak.enable = true;
+
+  hardware.bluetooth = {
+    enable = true;
+    powerOnBoot = true;
+  };
+  services.blueman.enable = true;
+
+  services.pulseaudio.enable = false;
   services.pipewire = {
     enable = true;
     alsa.enable = true;
     alsa.support32Bit = true;
     pulse.enable = true;
-    # If you want to use JACK applications, uncomment this
-    #jack.enable = true;
-
-    # use the example session manager (no others are packaged yet so this is enabled by default,
-    # no need to redefine it in your config for now)
-    #media-session.enable = true;
   };
 
-  # Enable touchpad support (enabled default in most desktopManager).
-  # services.xserver.libinput.enable = true;
+  hardware.graphics = {
+    enable = true;
+    enable32Bit = true;
+  };
+  hardware.enableRedistributableFirmware = true;
 
-  # Define a user account. Don't forget to set a password with ‘passwd’.
-  users.users."laufan" = {
-    isNormalUser = true;
-    description = "Paul Fleming";
-    extraGroups = [ "networkmanager" "wheel" ];
+  services.power-profiles-daemon.enable = true;
+  services.logind.settings.Login = {
+    HandlePowerKey = "suspend";
+    HandleLidSwitch = "suspend";
+    HandleLidSwitchDocked = "ignore";
+  };
+
+  security.pam.services.hyprlock = { };
+  security.pam.services.greetd.enableGnomeKeyring = true;
+
+  fonts = {
     packages = with pkgs; [
-    #  thunderbird
+      nerd-fonts.jetbrains-mono
+      font-awesome
+      noto-fonts
+      noto-fonts-emoji
     ];
-  };
-
-  # Install firefox.
-  programs.firefox.enable = true;
-  programs.hyprland ={
-  	enable=true;
-  	xwayland.enable=true;
-  	};
-  security.polkit.enable = true;
-  services.flatpak.enable = true;
-  services.blueman.enable = true;
-  hardware.bluetooth.enable = true;
-
-  systemd.services.bluetooth-connect-buds = {
-    description = "Connect Bluetooth buds on startup";
-    after = [ "bluetooth.service" ];
-    wants = [ "bluetooth.service" ];
-    wantedBy = [ "multi-user.target" ];
-
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = pkgs.writeShellScript "connect-bluetooth-buds" ''
-        ${pkgs.bluez}/bin/bluetoothctl power on || true
-        sleep 5
-        ${pkgs.bluez}/bin/bluetoothctl connect 04:00:6E:CD:54:F3
-      '';
+    fontconfig.defaultFonts = {
+      monospace = [ "JetBrainsMono Nerd Font" ];
+      sansSerif = [ "JetBrainsMono Nerd Font" ];
+      serif = [ "JetBrainsMono Nerd Font" ];
     };
   };
 
-  # List packages installed in system profile. To search, run:
-  # $ nix search wget
+  users.users.laufan = {
+    isNormalUser = true;
+    description = "Paul Fleming";
+    extraGroups = [
+      "audio"
+      "input"
+      "networkmanager"
+      "video"
+      "wheel"
+    ];
+  };
+
+  environment.sessionVariables = {
+    NIXOS_OZONE_WL = "1";
+    GTK_THEME = "Adwaita:dark";
+    EDITOR = "code --wait";
+    VISUAL = "code --wait";
+    GIT_EDITOR = "code --wait";
+  };
+
+  programs.firefox.enable = false;
+  programs.command-not-found.enable = true;
+
   environment.systemPackages = with pkgs; [
-  (writeShellScriptBin "google-chrome-fullscreen" ''
-    exec ${google-chrome}/bin/google-chrome-stable --start-fullscreen "$@"
-  '')
-  vim # Do not forget to add an editor to edit configuration.nix! 
-  wget
-  git
-  gh
-  curl
-  kitty
-  waybar
-  wofi
-  mako
-  lua5_4
-  hyprpaper
-  hyprlock
-  wl-clipboard
-  grim
-  slurp
-  brightnessctl
-  playerctl
-  pavucontrol
-  networkmanagerapplet
-  blueman
-  google-chrome
+    (writeShellScriptBin "google-chrome-fullscreen" ''
+      exec ${google-chrome}/bin/google-chrome-stable --start-fullscreen "$@"
+    '')
+
+    adwaita-icon-theme
+    adwaita-qt
+    bibata-cursors
+    blueman
+    brightnessctl
+    cliphist
+    curl
+    fd
+    gh
+    git
+    google-chrome
+    grim
+    jq
+    libnotify
+    neovim
+    networkmanagerapplet
+    nodejs
+    nwg-displays
+    pavucontrol
+    pi-coding-agent
+    playerctl
+    ripgrep
+    rofi-wayland
+    slurp
+    spotify
+    swaynotificationcenter
+    swappy
+    thunar
+    tree
+    tuigreet
+    unzip
+    vscode
+    wget
+    wl-clipboard
+    xdg-desktop-portal-gtk
+    xdg-desktop-portal-hyprland
   ];
 
-  # Some programs need SUID wrappers, can be configured further or are
-  # started in user sessions.
-  # programs.mtr.enable = true;
-  # programs.gnupg.agent = {
-  #   enable = true;
-  #   enableSSHSupport = true;
-  # };
-
-  # List services that you want to enable:
-
-  # Enable the OpenSSH daemon.
-  # services.openssh.enable = true;
-
-  # Open ports in the firewall.
-  # networking.firewall.allowedTCPPorts = [ ... ];
-  # networking.firewall.allowedUDPPorts = [ ... ];
-  # Or disable the firewall altogether.
-  # networking.firewall.enable = false;
-
-  # This value determines the NixOS release from which the default
-  # settings for stateful data, like file locations and database versions
-  # on your system were taken. It‘s perfectly fine and recommended to leave
-  # this value at the release version of the first install of this system.
-  # Before changing this value read the documentation for this option
-  # (e.g. man configuration.nix or on https://nixos.org/nixos/options.html).
-  system.stateVersion = "26.05"; # Did you read the comment?
-
+  system.stateVersion = "26.05";
 }

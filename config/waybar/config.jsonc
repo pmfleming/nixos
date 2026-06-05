@@ -1,0 +1,123 @@
+{
+  "layer": "top",
+  "position": "top",
+  "height": 28,
+  "spacing": 4,
+  "modules-left": [
+    "hyprland/workspaces",
+    "custom/updates"
+  ],
+  "modules-center": [
+    "mpris"
+  ],
+  "modules-right": [
+    "tray",
+    "network",
+    "bluetooth",
+    "pulseaudio",
+    "backlight",
+    "battery",
+    "clock"
+  ],
+  "hyprland/workspaces": {
+    "format": "{icon}",
+    "persistent-workspaces": {
+      "*": 5
+    },
+    "format-icons": {
+      "1": "1",
+      "2": "2",
+      "3": "3",
+      "4": "4",
+      "5": "5"
+    }
+  },
+  "custom/updates": {
+    "interval": 60,
+    "exec": "test -e ${XDG_RUNTIME_DIR:-/tmp}/nixos-updates-available && echo UP || true",
+    "format": "{}",
+    "tooltip": true,
+    "tooltip-format": "NixOS flake input updates are available",
+    "on-click": "ghostty -e bash -lc 'cd /etc/nixos; nix flake metadata; read -r -p \"Press enter to close\"'"
+  },
+  "network": {
+    "format-wifi": "",
+    "format-ethernet": "󰈀",
+    "format-disconnected": "󰤮",
+    "tooltip-format-wifi": "{essid} {signalStrength}%",
+    "tooltip-format-ethernet": "{ifname}",
+    "on-click": "nm-connection-editor"
+  },
+  "bluetooth": {
+    "format": "",
+    "format-disabled": "",
+    "format-off": "",
+    "format-connected": "",
+    "tooltip-format": "{status}",
+    "on-click": "blueman-manager"
+  },
+  "pulseaudio": {
+    "format": "{icon}",
+    "format-muted": "󰝟",
+    "format-icons": {
+      "default": [
+        "",
+        "",
+        ""
+      ]
+    },
+    "scroll-step": 5,
+    "on-click": "pavucontrol"
+  },
+  "backlight": {
+    "device": "amdgpu_bl1",
+    "format": "󰃠",
+    "on-scroll-up": "brightnessctl set 5%+",
+    "on-scroll-down": "brightnessctl set 5%-"
+  },
+  "battery": {
+    "format": "{icon} {capacity}%",
+    "format-charging": "󰂄 {capacity}%",
+    "format-icons": [
+      "󰁺",
+      "󰁻",
+      "󰁼",
+      "󰁽",
+      "󰁾",
+      "󰁿",
+      "󰂀",
+      "󰂁",
+      "󰂂",
+      "󰁹"
+    ],
+    "states": {
+      "warning": 20,
+      "critical": 10
+    }
+  },
+  "mpris": {
+    "format": "{player_icon} {title}  {status_icon}",
+    "format-paused": "{player_icon} {title}  {status_icon}",
+    "max-length": 30,
+    "player-icons": {
+      "default": "",
+      "spotify": ""
+    },
+    "status-icons": {
+      "paused": "",
+      "playing": "",
+      "stopped": ""
+    },
+    "on-click": "playerctl play-pause",
+    "on-click-right": "playerctl next",
+    "on-click-middle": "playerctl previous"
+  },
+  "tray": {
+    "icon-size": 15,
+    "spacing": 6
+  },
+  "clock": {
+    "format": "{:%a %d %b  %H:%M}",
+    "tooltip-format": "{:%Y-%m-%d}"
+  }
+}
