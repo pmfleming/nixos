@@ -10,6 +10,8 @@
       ./hardware-configuration.nix
     ];
 
+  nixpkgs.config.allowUnfree = true;
+
   # Bootloader.
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
@@ -46,8 +48,8 @@
   services.xserver.enable = true;
 
   # Enable the GNOME Desktop Environment.
-  services.xserver.displayManager.gdm.enable = true;
-  services.xserver.desktopManager.gnome.enable = true;
+  services.displayManager.gdm.enable = true;
+  services.desktopManager.gnome.enable = true;
 
   # Configure keymap in X11
   services.xserver.xkb = {
@@ -104,6 +106,9 @@
   # List packages installed in system profile. To search, run:
   # $ nix search wget
   environment.systemPackages = with pkgs; [
+  (writeShellScriptBin "google-chrome-fullscreen" ''
+    exec ${google-chrome}/bin/google-chrome-stable --start-fullscreen "$@"
+  '')
   vim # Do not forget to add an editor to edit configuration.nix! 
   wget
   git
@@ -112,6 +117,7 @@
   waybar
   wofi
   mako
+  lua5_4
   hyprpaper
   hyprlock
   wl-clipboard
@@ -122,6 +128,7 @@
   pavucontrol
   networkmanagerapplet
   blueman
+  google-chrome
   ];
 
   # Some programs need SUID wrappers, can be configured further or are
