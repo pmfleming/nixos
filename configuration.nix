@@ -103,6 +103,22 @@
   services.blueman.enable = true;
   hardware.bluetooth.enable = true;
 
+  systemd.services.bluetooth-connect-buds = {
+    description = "Connect Bluetooth buds on startup";
+    after = [ "bluetooth.service" ];
+    wants = [ "bluetooth.service" ];
+    wantedBy = [ "multi-user.target" ];
+
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = pkgs.writeShellScript "connect-bluetooth-buds" ''
+        ${pkgs.bluez}/bin/bluetoothctl power on || true
+        sleep 5
+        ${pkgs.bluez}/bin/bluetoothctl connect 04:00:6E:CD:54:F3
+      '';
+    };
+  };
+
   # List packages installed in system profile. To search, run:
   # $ nix search wget
   environment.systemPackages = with pkgs; [
