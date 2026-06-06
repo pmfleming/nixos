@@ -1,4 +1,4 @@
-{ config, inputs, pkgs, ... }:
+{ config, inputs, lib, pkgs, ... }:
 
 let
   system = pkgs.stdenv.hostPlatform.system;
@@ -151,6 +151,19 @@ in
       "swaync/style.css".source = ./config/swaync/style.css;
     };
   };
+
+  home.activation.retireLegacyHyprlandLua = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    legacy="$HOME/.config/hypr/hyprland.lua"
+    backup="$legacy.hm-backup"
+
+    if [ -e "$legacy" ] && [ ! -L "$legacy" ]; then
+      if [ ! -e "$backup" ]; then
+        mv "$legacy" "$backup"
+      else
+        rm "$legacy"
+      fi
+    fi
+  '';
 
   services.gnome-keyring.enable = true;
   services.poweralertd.enable = false;
