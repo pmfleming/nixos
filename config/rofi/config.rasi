@@ -55,10 +55,31 @@ listview {
 element {
   padding: 7px;
   border-radius: 4px;
+  background-color: transparent;
   text-color: @foreground;
 }
 
-element selected {
+element normal.normal,
+element alternate.normal {
+  background-color: transparent;
+  text-color: @foreground;
+}
+
+element normal.active,
+element alternate.active {
+  background-color: @background-alt;
+  text-color: @foreground;
+}
+
+element normal.urgent,
+element alternate.urgent {
+  background-color: @background-alt;
+  text-color: @urgent;
+}
+
+element selected.normal,
+element selected.active,
+element selected.urgent {
   background-color: @accent;
   text-color: #000000;
 }

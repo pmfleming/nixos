@@ -100,6 +100,10 @@ in
     GTK_THEME = "Adwaita:dark";
   };
 
+  home.sessionPath = [
+    "$HOME/.local/bin"
+  ];
+
   gtk = {
     enable = true;
     theme.name = "Adwaita-dark";
@@ -119,6 +123,13 @@ in
     enable = true;
     platformTheme.name = "gtk";
     style.name = "adwaita-dark";
+  };
+
+  dconf.settings = {
+    "org/gnome/desktop/interface" = {
+      color-scheme = "prefer-dark";
+      gtk-theme = "Adwaita-dark";
+    };
   };
 
   home.pointerCursor = {
@@ -150,6 +161,18 @@ in
       "ghostty/config".source = ./config/ghostty/config;
       "swaync/config.json".source = ./config/swaync/config.json;
       "swaync/style.css".source = ./config/swaync/style.css;
+    };
+
+    desktopEntries.pi = {
+      name = "Pi";
+      genericName = "AI Coding Assistant";
+      comment = "Open Pi coding assistant";
+      exec = "ghostty -e pi";
+      terminal = false;
+      categories = [
+        "Development"
+        "Utility"
+      ];
     };
   };
 

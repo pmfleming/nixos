@@ -83,6 +83,11 @@
   services.openssh.enable = false;
   services.flatpak.enable = true;
 
+  # FIDO2/WebAuthn security key support for browser passkeys.
+  services.udev.packages = with pkgs; [
+    libfido2
+  ];
+
   hardware.bluetooth = {
     enable = true;
     powerOnBoot = true;
@@ -163,6 +168,7 @@
     cliphist
     curl
     fd
+    libfido2
     gh
     git
     google-chrome
