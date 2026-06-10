@@ -221,7 +221,6 @@ in
     userEmail = "pmfleming@users.noreply.github.com";
     settings = {
       core.editor = "code --wait";
-      credential."https://github.com".helper = "!gh auth git-credential";
       safe.directory = "/etc/nixos";
     };
   };
