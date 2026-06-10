@@ -29,6 +29,7 @@
   ];
   boot.kernelParams = [
     "elevator=noop"
+    "video=hyperv_fb:1920x1080"
   ];
   boot.extraModulePackages = [ ];
 

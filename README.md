@@ -88,6 +88,11 @@ the initial password `nixos`, then change it:
 passwd
 ```
 
+The basic Hyper-V console does not dynamically resize Linux guests when the
+VMConnect window enters fullscreen. The `hyperv` profile sets the guest
+framebuffer to 1920x1080 with `video=hyperv_fb:1920x1080`; change that kernel
+parameter in `hardware-hyperv.nix` if you want a different fixed resolution.
+
 ## Validate Changes
 
 Check the flake before applying it:
