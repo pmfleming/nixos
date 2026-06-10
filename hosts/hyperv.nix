@@ -1,6 +1,10 @@
 { lib, ... }:
 
 {
+  imports = [
+    ../modules/nixos/remote-desktop-xrdp.nix
+  ];
+
   hardware.bluetooth.enable = lib.mkForce false;
   services.blueman.enable = lib.mkForce false;
   services.openssh.enable = lib.mkForce true;

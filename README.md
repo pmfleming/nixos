@@ -102,6 +102,16 @@ VMConnect window enters fullscreen. The `hyperv` profile sets the guest
 framebuffer to 1920x1080 with `video=hyperv_fb:1920x1080`; change that kernel
 parameter in `hardware-hyperv.nix` if you want a different fixed resolution.
 
+The `hyperv` host also enables XRDP with an Xfce session for graphical remote
+desktop access. Connect from Windows with:
+
+```powershell
+mstsc /v:<vm-ip>
+```
+
+Log in as `laufan` with the VM password. Use SSH for editing and XRDP when you
+need a graphical session.
+
 ## Validate Changes
 
 Check the flake before applying it:
