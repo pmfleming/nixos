@@ -2,7 +2,7 @@
 #
 # This profile assumes the installer creates:
 # - an ext4 root filesystem labeled "nixos"
-# - a FAT32 EFI system partition labeled "NIXBOOT"
+# - a FAT32 EFI system partition labeled "ESP"
 #
 # If the VM uses different labels or UUIDs, replace this file with:
 #   nixos-generate-config --show-hardware-config
@@ -38,7 +38,7 @@
   };
 
   fileSystems."/boot" = {
-    device = "/dev/disk/by-label/NIXBOOT";
+    device = "/dev/disk/by-label/ESP";
     fsType = "vfat";
     options = [
       "fmask=0077"

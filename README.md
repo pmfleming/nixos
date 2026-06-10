@@ -21,13 +21,13 @@ sudo nixos-rebuild switch --flake /etc/nixos#hyperv
 The `hyperv` host uses `hardware-hyperv.nix`, which expects:
 
 - an ext4 root filesystem labeled `nixos`
-- a FAT32 EFI system partition labeled `NIXBOOT`
+- a FAT32 EFI system partition labeled `ESP`
 
 During a manual install, create labels that match:
 
 ```sh
 mkfs.ext4 -L nixos /dev/disk/by-id/<root-disk>
-mkfs.fat -F 32 -n NIXBOOT /dev/disk/by-id/<efi-partition>
+mkfs.fat -F 32 -n ESP /dev/disk/by-id/<efi-partition>
 ```
 
 If the VM is installed with different labels or UUIDs, replace `hardware-hyperv.nix` in a local clone:
