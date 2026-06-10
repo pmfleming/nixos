@@ -217,11 +217,13 @@ in
 
   programs.git = {
     enable = true;
-    userName = "Paul Fleming";
-    userEmail = "pmfleming@users.noreply.github.com";
     settings = {
       core.editor = "code --wait";
       safe.directory = "/etc/nixos";
+      user = {
+        name = "Paul Fleming";
+        email = "pmfleming@users.noreply.github.com";
+      };
     };
   };
 
