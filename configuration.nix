@@ -1,10 +1,6 @@
 { config, lib, pkgs, ... }:
 
 {
-  imports = [
-    ./hardware-configuration.nix
-  ];
-
   nix = {
     settings = {
       experimental-features = [
@@ -25,7 +21,6 @@
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
 
-  networking.hostName = "thinkpad";
   networking.networkmanager.enable = true;
   networking.firewall.enable = true;
 

@@ -23,21 +23,40 @@
   outputs = inputs@{ nixpkgs, home-manager, ... }:
     let
       system = "x86_64-linux";
+      mkHost = { name, hardware, extraModules ? [ ] }:
+        nixpkgs.lib.nixosSystem {
+          inherit system;
+          specialArgs = { inherit inputs; };
+          modules = [
+            ./configuration.nix
+            hardware
+            home-manager.nixosModules.home-manager
+            {
+              networking.hostName = name;
+              home-manager.useGlobalPkgs = true;
+              home-manager.useUserPackages = true;
+              home-manager.backupFileExtension = "hm-backup";
+              home-manager.extraSpecialArgs = { inherit inputs; };
+              home-manager.users.laufan = import ./home.nix;
+            }
+          ] ++ extraModules;
+        };
     in
     {
-      nixosConfigurations.thinkpad = nixpkgs.lib.nixosSystem {
-        inherit system;
-        specialArgs = { inherit inputs; };
-        modules = [
-          ./configuration.nix
-          home-manager.nixosModules.home-manager
-          {
-            home-manager.useGlobalPkgs = true;
-            home-manager.useUserPackages = true;
-            home-manager.backupFileExtension = "hm-backup";
-            home-manager.extraSpecialArgs = { inherit inputs; };
-            home-manager.users.laufan = import ./home.nix;
-          }
+      nixosConfigurations.thinkpad = mkHost {
+        name = "thinkpad";
+        hardware = ./hardware-configuration.nix;
+      };
+
+      nixosConfigurations.hyperv = mkHost {
+        name = "nixos-hyperv";
+        hardware = ./hardware-hyperv.nix;
+        extraModules = [
+          ({ lib, ... }: {
+            hardware.bluetooth.enable = lib.mkForce false;
+            services.blueman.enable = lib.mkForce false;
+            services.power-profiles-daemon.enable = lib.mkForce false;
+          })
         ];
       };
     };
