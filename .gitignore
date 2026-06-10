@@ -3,5 +3,6 @@ result-*
 *.qcow2
 *.iso
 *.img
+*.vhdx
 .direnv/
 .envrc

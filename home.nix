@@ -217,7 +217,18 @@ in
 
   programs.git = {
     enable = true;
-    settings.core.editor = "code --wait";
+    settings = {
+      core.editor = "code --wait";
+      safe.directory = "/etc/nixos";
+      user = {
+        name = "Paul Fleming";
+        email = "pmfleming@users.noreply.github.com";
+      };
+    };
+  };
+
+  programs.gh = {
+    enable = true;
   };
 
   programs.home-manager.enable = true;
