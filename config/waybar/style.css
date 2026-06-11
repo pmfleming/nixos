@@ -2,7 +2,7 @@
   border: none;
   border-radius: 0;
   font-family: "JetBrainsMono Nerd Font", monospace;
-  font-size: 13px;
+  font-size: 12px;
   min-height: 0;
 }
 
@@ -17,10 +17,10 @@ window#waybar {
 }
 
 #workspaces button {
-  min-width: 18px;
-  min-height: 18px;
+  min-width: 27px;
+  min-height: 27px;
   padding: 0;
-  margin: 7px 3px;
+  margin: 12px 4px;
   border-radius: 2px;
   color: transparent;
   background: #3fb950;
@@ -52,12 +52,12 @@ window#waybar {
 
 #custom-updates,
 #mpris,
-#tray,
 #network,
 #bluetooth,
 #pulseaudio,
 #backlight,
 #battery,
+#power-profiles-daemon,
 #clock {
   padding: 0 10px;
   margin: 0 1px;
@@ -86,6 +86,24 @@ window#waybar {
   color: #f05a5a;
 }
 
-#battery.charging {
+#battery.charging,
+#battery.plugged,
+#battery.full {
+  color: #3fb950;
+}
+
+#power-profiles-daemon {
+  color: #d7dee8;
+}
+
+#power-profiles-daemon.performance {
+  color: #f05a5a;
+}
+
+#power-profiles-daemon.balanced {
+  color: #2f8cff;
+}
+
+#power-profiles-daemon.power-saver {
   color: #3fb950;
 }

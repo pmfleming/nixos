@@ -1,4 +1,4 @@
-{ config, inputs, lib, pkgs, ... }:
+{ config, inputs, lib, pkgs, unstablePkgs, ... }:
 
 let
   system = pkgs.stdenv.hostPlatform.system;
@@ -26,15 +26,13 @@ let
       while true; do
         if external_connected; then
           state="external"
-          if [ "$state" != "$last_state" ]; then
-            hyprctl keyword monitor ",preferred,auto,1" >/dev/null || true
-            hyprctl keyword monitor "eDP-1,disable" >/dev/null || true
-            last_state="$state"
-          fi
+          hyprctl keyword monitor ",preferred,auto,1.25" >/dev/null || true
+          hyprctl keyword monitor "eDP-1,disable" >/dev/null || true
+          last_state="$state"
         else
           state="internal"
           if [ "$state" != "$last_state" ]; then
-            hyprctl keyword monitor "eDP-1,preferred,auto,1" >/dev/null || true
+            hyprctl keyword monitor "eDP-1,preferred,auto,1.25" >/dev/null || true
             last_state="$state"
           fi
         fi
@@ -82,7 +80,7 @@ in
     hyprMonitorAuto
     nixosUpdateCheck
     zenBrowser
-    codex
+    unstablePkgs.codex
     ghostty
     hyprlandGuiutils
     waybar
@@ -115,7 +113,7 @@ in
     };
     font = {
       name = "JetBrainsMono Nerd Font";
-      size = 10;
+      size = 12;
     };
   };
 

@@ -1,11 +1,13 @@
 theme = dark:Adwaita Dark,light:Adwaita
 font-family = JetBrainsMono Nerd Font
 font-size = 12
-background = 050505
-foreground = f5f5f5
+background = 101418
+foreground = d7dee8
 cursor-color = 2f8cff
-selection-background = 12324a
+selection-background = 26455f
 selection-foreground = f5f5f5
-background-opacity = 0.94
+background-opacity = 0.97
+window-padding-x = 12
+window-padding-y = 10
 window-decoration = false
 gtk-single-instance = true

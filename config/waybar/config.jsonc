@@ -1,7 +1,7 @@
 {
   "layer": "top",
   "position": "top",
-  "height": 34,
+  "height": 51,
   "spacing": 4,
   "modules-left": [
     "hyprland/workspaces",
@@ -11,18 +11,24 @@
     "mpris"
   ],
   "modules-right": [
-    "tray",
     "network",
     "bluetooth",
     "pulseaudio",
     "backlight",
     "battery",
+    "power-profiles-daemon",
     "clock"
   ],
   "hyprland/workspaces": {
     "format": "{icon}",
     "persistent-workspaces": {
-      "*": 5
+      "*": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
     },
     "format-icons": {
       "1": "1",
@@ -72,12 +78,22 @@
   "backlight": {
     "device": "amdgpu_bl1",
     "format": "󰃠",
+    "tooltip-format": "Brightness: {percent}%\nLeft click: brighter\nRight click: dimmer",
+    "on-click": "brightnessctl set 5%+",
+    "on-click-right": "brightnessctl set 5%-",
     "on-scroll-up": "brightnessctl set 5%+",
     "on-scroll-down": "brightnessctl set 5%-"
   },
   "battery": {
+    "interval": 30,
     "format": "{icon} {capacity}%",
     "format-charging": "󰂄 {capacity}%",
+    "format-plugged": "󰚥 {capacity}%",
+    "format-full": "󰁹 {capacity}%",
+    "format-warning": "󰁼 {capacity}%",
+    "format-critical": "󰁺 {capacity}%",
+    "format-time": "{H}h {M}m",
+    "tooltip-format": "{capacity}% • {time}\n{power} W\nHealth {health}% • {cycles} cycles",
     "format-icons": [
       "󰁺",
       "󰁻",
@@ -91,8 +107,23 @@
       "󰁹"
     ],
     "states": {
-      "warning": 20,
-      "critical": 10
+      "warning": 25,
+      "critical": 12
+    },
+    "events": {
+      "on-discharging-warning": "notify-send -u normal -i battery-caution 'Battery low' 'Plug in soon.'",
+      "on-discharging-critical": "notify-send -u critical -i battery-empty 'Battery critical' 'Plug in now.'",
+      "on-charging-100": "notify-send -u low -i battery-full-charged 'Battery full' 'Unplug to reduce wear.'"
+    }
+  },
+  "power-profiles-daemon": {
+    "format": "{icon}",
+    "tooltip-format": "Power profile: {profile}\nDriver: {driver}",
+    "format-icons": {
+      "default": "",
+      "performance": "",
+      "balanced": "",
+      "power-saver": ""
     }
   },
   "mpris": {
@@ -111,10 +142,6 @@
     "on-click": "playerctl play-pause",
     "on-click-right": "playerctl next",
     "on-click-middle": "playerctl previous"
-  },
-  "tray": {
-    "icon-size": 15,
-    "spacing": 6
   },
   "clock": {
     "format": "{:%a %d %b  %H:%M}",

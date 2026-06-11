@@ -1,4 +1,4 @@
-{ config, lib, pkgs, ... }:
+{ config, lib, pkgs, unstablePkgs, ... }:
 
 {
   imports = [
@@ -173,15 +173,18 @@
     gh
     git
     google-chrome
+    drm_info
+    edid-decode
     grim
     jq
+    libdrm
     libnotify
     neovim
     networkmanagerapplet
     nodejs
     nwg-displays
     pavucontrol
-    pi-coding-agent
+    unstablePkgs.pi-coding-agent
     playerctl
     ripgrep
     rofi
