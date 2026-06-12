@@ -22,20 +22,25 @@ window#waybar {
   padding: 0;
   margin: 12px 4px;
   border-radius: 2px;
-  color: transparent;
-  background: #3fb950;
+  color: #ffffff;
+  font-weight: 700;
+  background: #69727d;
+}
+
+#workspaces button:nth-child(1) {
+  background: #000000;
 }
 
 #workspaces button:nth-child(2) {
-  background: #2f8cff;
-}
-
-#workspaces button:nth-child(3) {
   background: #f59e0b;
 }
 
+#workspaces button:nth-child(3) {
+  background: #2f8cff;
+}
+
 #workspaces button:nth-child(4) {
-  background: #f05a5a;
+  background: #3fb950;
 }
 
 #workspaces button:nth-child(5) {
