@@ -215,6 +215,8 @@ in
 
   programs.git = {
     enable = true;
+    userName = "Paul Fleming";
+    userEmail = "67100074+pmfleming@users.noreply.github.com";
     settings.core.editor = "code --wait";
   };
 
