@@ -179,6 +179,10 @@ in
       "hypr/hyprpaper.conf".source = ./config/hypr/hyprpaper.conf;
       "waybar/config".source = ./config/waybar/config.jsonc;
       "waybar/style.css".source = ./config/waybar/style.css;
+      "waybar/zen-workspace.svg".source = ./config/waybar/zen-workspace.svg;
+      "waybar/vscode-workspace.svg".source = ./config/waybar/vscode-workspace.svg;
+      "waybar/spotify-workspace.svg".source = ./config/waybar/spotify-workspace.svg;
+      "waybar/scratchpad-workspace.svg".source = ./config/waybar/scratchpad-workspace.svg;
       "rofi/config.rasi".source = ./config/rofi/config.rasi;
       "ghostty/config".source = ./config/ghostty/config;
       "swaync/config.json".source = ./config/swaync/config.json;
@@ -213,27 +217,6 @@ in
 
   services.gnome-keyring.enable = true;
   services.poweralertd.enable = false;
-
-  systemd.user.services.nixos-update-check = {
-    Unit = {
-      Description = "Check NixOS flake inputs for updates";
-      After = [ "graphical-session.target" ];
-    };
-    Service = {
-      Type = "oneshot";
-      ExecStart = "${nixosUpdateCheck}/bin/nixos-update-check";
-    };
-  };
-
-  systemd.user.timers.nixos-update-check = {
-    Unit.Description = "Run NixOS update check";
-    Timer = {
-      OnBootSec = "5m";
-      OnUnitActiveSec = "6h";
-      Persistent = true;
-    };
-    Install.WantedBy = [ "timers.target" ];
-  };
 
   programs.bash.enable = true;
 

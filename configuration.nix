@@ -1,5 +1,64 @@
 { config, lib, pkgs, unstablePkgs, ... }:
 
+let
+  delayedNixosUpdate = pkgs.writeShellApplication {
+    name = "delayed-nixos-update";
+    runtimeInputs = with pkgs; [
+      coreutils
+      diffutils
+      nix
+      nixos-rebuild
+    ];
+    text = ''
+      set -eu
+
+      flake_dir=/etc/nixos
+      flake_attr=thinkpad
+      delay_seconds=$((3 * 24 * 60 * 60))
+      state_dir=/var/lib/nixos-delayed-updates
+      candidate_lock="$state_dir/candidate-flake.lock"
+      first_seen_file="$state_dir/first-seen"
+      ready_file=/run/nixos-updates-available
+
+      mkdir -p "$state_dir"
+      rm -f "$ready_file"
+
+      tmp_dir="$(mktemp -d)"
+      trap 'rm -rf "$tmp_dir"' EXIT
+
+      if ! nix flake update --flake "$flake_dir" --output-lock-file "$tmp_dir/flake.lock" >/dev/null 2>&1; then
+        exit 0
+      fi
+
+      if cmp -s "$flake_dir/flake.lock" "$tmp_dir/flake.lock"; then
+        rm -f "$candidate_lock" "$first_seen_file" "$ready_file"
+        exit 0
+      fi
+
+      now="$(date +%s)"
+
+      if [ ! -f "$candidate_lock" ] || ! cmp -s "$candidate_lock" "$tmp_dir/flake.lock"; then
+        cp "$tmp_dir/flake.lock" "$candidate_lock"
+        printf '%s\n' "$now" > "$first_seen_file"
+        exit 0
+      fi
+
+      first_seen="$(cat "$first_seen_file" 2>/dev/null || printf '%s' "$now")"
+      age=$((now - first_seen))
+
+      if [ "$age" -lt "$delay_seconds" ]; then
+        exit 0
+      fi
+
+      touch "$ready_file"
+      cp "$candidate_lock" "$flake_dir/flake.lock"
+
+      if nixos-rebuild switch --flake "$flake_dir#$flake_attr"; then
+        rm -f "$candidate_lock" "$first_seen_file" "$ready_file"
+      fi
+    '';
+  };
+in
 {
   imports = [
     ./hardware-configuration.nix
@@ -156,6 +215,24 @@
   programs.firefox.enable = false;
   programs.command-not-found.enable = false;
   programs.nix-index.enable = true;
+
+  systemd.services.delayed-nixos-update = {
+    description = "Update NixOS flake inputs after they have been available for 3 days";
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update";
+    };
+  };
+
+  systemd.timers.delayed-nixos-update = {
+    description = "Run delayed NixOS flake updater";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnBootSec = "5m";
+      OnUnitActiveSec = "6h";
+      Persistent = true;
+    };
+  };
 
   environment.systemPackages = with pkgs; [
     (writeShellScriptBin "google-chrome-fullscreen" ''

@@ -4,14 +4,14 @@
   "height": 51,
   "spacing": 4,
   "modules-left": [
-    "hyprland/workspaces",
-    "custom/updates"
+    "hyprland/workspaces"
   ],
   "modules-center": [
     "mpris"
   ],
   "modules-right": [
     "network",
+    "custom/updates",
     "bluetooth",
     "pulseaudio",
     "backlight",
@@ -40,11 +40,11 @@
   },
   "custom/updates": {
     "interval": 60,
-    "exec": "test -e ${XDG_RUNTIME_DIR:-/tmp}/nixos-updates-available && echo UP || true",
+    "exec": "test -e /run/nixos-updates-available && echo 󰚰 || true",
     "format": "{}",
     "tooltip": true,
-    "tooltip-format": "NixOS flake input updates are available",
-    "on-click": "ghostty -e bash -lc 'cd /etc/nixos; nix flake metadata; read -r -p \"Press enter to close\"'"
+    "tooltip-format": "NixOS flake input updates have been available for 3+ days; automatic update may need attention",
+    "on-click": "ghostty -e bash -lc 'journalctl -u delayed-nixos-update.service -n 80 --no-pager; read -r -p \"Press enter to close\"'"
   },
   "network": {
     "format-wifi": "",
