@@ -167,7 +167,9 @@ in
     mimeApps = {
       enable = true;
       defaultApplications = {
+        "inode/directory" = "yazi.desktop";
         "text/html" = "zen.desktop";
+        "x-scheme-handler/file" = "yazi.desktop";
         "x-scheme-handler/http" = "zen.desktop";
         "x-scheme-handler/https" = "zen.desktop";
       };
@@ -185,8 +187,36 @@ in
       "waybar/scratchpad-workspace.svg".source = ./config/waybar/scratchpad-workspace.svg;
       "rofi/config.rasi".source = ./config/rofi/config.rasi;
       "ghostty/config".source = ./config/ghostty/config;
+      "xfce4/helpers.rc".text = ''
+        TerminalEmulator=ghostty
+      '';
+      "xfce4/helpers/ghostty.desktop".text = ''
+        [Desktop Entry]
+        NoDisplay=true
+        Version=1.0
+        Type=X-XFCE-Helper
+        X-XFCE-Category=TerminalEmulator
+        Name=Ghostty
+        X-XFCE-Commands=ghostty
+        X-XFCE-CommandsWithParameter=ghostty --working-directory=%s
+      '';
       "swaync/config.json".source = ./config/swaync/config.json;
       "swaync/style.css".source = ./config/swaync/style.css;
+    };
+
+    desktopEntries.yazi = {
+      name = "Yazi";
+      genericName = "Terminal File Manager";
+      comment = "Browse files in Yazi";
+      exec = "ghostty -e yazi %f";
+      terminal = false;
+      mimeType = [
+        "inode/directory"
+      ];
+      categories = [
+        "System"
+        "FileManager"
+      ];
     };
 
     desktopEntries.pi = {
@@ -219,6 +249,164 @@ in
   services.poweralertd.enable = false;
 
   programs.bash.enable = true;
+
+  programs.yazi = {
+    enable = true;
+    enableBashIntegration = true;
+
+    settings = {
+      mgr = {
+        ratio = [ 1 3 4 ];
+        show_hidden = true;
+        sort_dir_first = true;
+      };
+      opener = {
+        edit = [
+          {
+            run = ''${EDITOR:-nvim} "$@"'';
+            block = true;
+          }
+        ];
+        open = [
+          {
+            run = ''xdg-open "$1"'';
+            orphan = true;
+          }
+        ];
+      };
+    };
+
+    theme = {
+      mgr = {
+        cwd = { fg = "#2f8cff"; };
+        # Yazi is a terminal TUI, so it cannot draw real rounded outline boxes
+        # around rows. Keep the selected row unfilled, white, and blue-underlined
+        # to avoid the default pale-blue pill.
+        hovered = {
+          fg = "#f5f5f5";
+          bg = "reset";
+          bold = true;
+          underline = true;
+        };
+        preview_hovered = {
+          fg = "#f5f5f5";
+          bg = "reset";
+          bold = true;
+          underline = true;
+        };
+        find_keyword = {
+          fg = "#2f8cff";
+          bold = true;
+        };
+        find_position = { fg = "#aeb8c4"; };
+        marker_copied = { fg = "#3fb950"; };
+        marker_cut = { fg = "#f05a5a"; };
+        marker_marked = { fg = "#f59e0b"; };
+        marker_selected = { fg = "#2f8cff"; };
+        tab_active = {
+          fg = "#000000";
+          bg = "#2f8cff";
+        };
+        tab_inactive = {
+          fg = "#aeb8c4";
+          bg = "#101418";
+        };
+        border_symbol = "│";
+        border_style = { fg = "#141b22"; };
+      };
+
+      status = {
+        separator_open = " ";
+        separator_close = " ";
+        separator_style = {
+          fg = "#101418";
+          bg = "#101418";
+        };
+        mode_normal = {
+          fg = "#ffffff";
+          bg = "#14508f";
+          bold = true;
+        };
+        mode_select = {
+          fg = "#ffffff";
+          bg = "#14508f";
+          bold = true;
+        };
+        mode_unset = {
+          fg = "#ffffff";
+          bg = "#8f2d2d";
+          bold = true;
+        };
+        progress_label = {
+          fg = "#ffffff";
+          bg = "#14508f";
+          bold = true;
+        };
+        progress_normal = {
+          fg = "#14508f";
+          bg = "#101418";
+        };
+        progress_error = {
+          fg = "#8f2d2d";
+          bg = "#101418";
+        };
+        permissions_t = { fg = "#f5f5f5"; bold = true; };
+        permissions_r = { fg = "#f5f5f5"; bold = true; };
+        permissions_w = { fg = "#f5f5f5"; bold = true; };
+        permissions_x = { fg = "#f5f5f5"; bold = true; };
+        permissions_s = { fg = "#69727d"; };
+      };
+
+      input = {
+        border = { fg = "#2f8cff"; };
+        title = { fg = "#d7dee8"; };
+        value = { fg = "#f5f5f5"; };
+        selected = { bg = "#26455f"; };
+      };
+
+      select = {
+        border = { fg = "#2f8cff"; };
+        active = { fg = "#2f8cff"; };
+        inactive = { fg = "#aeb8c4"; };
+      };
+
+      tasks = {
+        border = { fg = "#2f8cff"; };
+        title = { fg = "#d7dee8"; };
+        hovered = { bg = "#26455f"; };
+      };
+
+      which = {
+        cols = 3;
+        mask = { bg = "#101418"; };
+        cand = { fg = "#2f8cff"; };
+        desc = { fg = "#aeb8c4"; };
+        separator = "  ";
+        separator_style = { fg = "#69727d"; };
+      };
+
+      help = {
+        on = { fg = "#2f8cff"; };
+        run = { fg = "#aeb8c4"; };
+        desc = { fg = "#d7dee8"; };
+        hovered = { bg = "#26455f"; };
+        footer = { fg = "#101418"; bg = "#d7dee8"; };
+      };
+
+      filetype = {
+        rules = [
+          { mime = "image/*"; fg = "#f5f5f5"; }
+          { mime = "video/*"; fg = "#f5f5f5"; }
+          { mime = "audio/*"; fg = "#f5f5f5"; }
+          { mime = "application/zip"; fg = "#f5f5f5"; }
+          { mime = "application/gzip"; fg = "#f5f5f5"; }
+          { mime = "application/x-tar"; fg = "#f5f5f5"; }
+          { url = "*/"; fg = "#f5f5f5"; bold = true; }
+          { url = "*"; fg = "#f5f5f5"; }
+        ];
+      };
+    };
+  };
 
   programs.direnv = {
     enable = true;

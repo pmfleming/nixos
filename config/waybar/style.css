@@ -84,6 +84,7 @@ window#waybar {
 #backlight,
 #battery,
 #power-profiles-daemon,
+#custom-notifications,
 #clock {
   padding: 0 10px;
   margin: 0 1px;
@@ -118,7 +119,8 @@ window#waybar {
   color: #3fb950;
 }
 
-#power-profiles-daemon {
+#power-profiles-daemon,
+#custom-notifications {
   color: #d7dee8;
 }
 

@@ -269,7 +269,6 @@ in
     spotify
     swaynotificationcenter
     swappy
-    thunar
     tree
     unzip
     vscode

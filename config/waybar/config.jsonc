@@ -17,6 +17,7 @@
     "backlight",
     "battery",
     "power-profiles-daemon",
+    "custom/notifications",
     "clock"
   ],
   "hyprland/workspaces": {
@@ -125,6 +126,15 @@
       "balanced": "",
       "power-saver": ""
     }
+  },
+  "custom/notifications": {
+    "interval": 5,
+    "exec": "swaync-client --count --skip-wait 2>/dev/null || echo 0",
+    "format": " {}",
+    "tooltip": true,
+    "tooltip-format": "Notifications: {}\nLeft click: open history\nRight click: toggle do not disturb",
+    "on-click": "swaync-client --toggle-panel --skip-wait",
+    "on-click-right": "swaync-client --toggle-dnd --skip-wait"
   },
   "mpris": {
     "format": "{player_icon} {title}  {status_icon}",
