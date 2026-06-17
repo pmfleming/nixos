@@ -5,15 +5,92 @@ let
   hyprlandGuiutils = inputs.hyprland-guiutils.packages.${system}.default;
   zenBrowser = inputs.zen-browser.packages.${system}.default;
 
+  palette = {
+    bg = "#101418";
+    muted = "#69727d";
+    text = "#d7dee8";
+    subtext = "#aeb8c4";
+    accent = "#2f8cff";
+    accentBare = "2f8cff";
+
+    # Extra terminal/TUI tones that are only consumed from Nix-native config.
+    black = "#000000";
+    white = "#ffffff";
+    foreground = "#f5f5f5";
+    borderDim = "#141b22";
+    selectedBg = "#26455f";
+    accentDark = "#14508f";
+    dangerDark = "#8f2d2d";
+    success = "#3fb950";
+    danger = "#f05a5a";
+    warning = "#f59e0b";
+  };
+  radius = "3px";
+
+  themeText = text: builtins.replaceStrings
+    [ "#101418" "#69727d" "#d7dee8" "#aeb8c4" "#2f8cff" "2f8cff" "@RADIUS@" ]
+    [ palette.bg palette.muted palette.text palette.subtext palette.accent palette.accentBare radius ]
+    text;
+
+  togglesplitPlugin = pkgs.stdenv.mkDerivation {
+    pname = "hyprland-togglesplit";
+    version = "local";
+    src = ./packages/togglesplit;
+    nativeBuildInputs = with pkgs; [ pkg-config ];
+    buildInputs = with pkgs; [
+      aquamarine
+      hyprcursor
+      hyprgraphics
+      hyprland
+      hyprlang
+      hyprutils
+      libdrm
+      libglvnd
+      libinput
+      libxkbcommon
+      mesa
+      pango
+      pixman
+      systemd
+      wayland
+      xcbutilerrors
+      xcbutilwm
+    ];
+    installPhase = ''
+      runHook preInstall
+      install -Dm755 togglesplit.so $out/lib/togglesplit.so
+      runHook postInstall
+    '';
+  };
+
+  hyprlandConfig = themeText (builtins.replaceStrings
+    [ "@TOGGLESPLIT_PLUGIN@" "@HYPRPOLKITAGENT@" ]
+    [ "${togglesplitPlugin}/lib/togglesplit.so" "${pkgs.hyprpolkitagent}" ]
+    (builtins.readFile ./config/hypr/hyprland.conf));
+
   hyprMonitorAuto = pkgs.writeShellApplication {
     name = "hypr-monitor-auto";
     runtimeInputs = with pkgs; [
       coreutils
       gnugrep
       hyprland
+      procps
+      socat
     ];
     text = ''
       last_state=""
+
+      restart_waybar() {
+        # Waybar can stay attached to the disabled output after a monitor swap.
+        # Restart it through Hyprland so it binds to the currently visible output.
+        sleep 0.5
+        pkill -u "$(id -u)" -f '(^|/)waybar( |$)' >/dev/null 2>&1 || true
+        for _ in 1 2 3 4 5; do
+          pgrep -u "$(id -u)" -f '(^|/)waybar( |$)' >/dev/null || break
+          sleep 0.2
+        done
+        hyprctl dispatch exec "${pkgs.waybar}/bin/waybar >/dev/null 2>&1" >/dev/null || true
+      }
 
       external_connected() {
         for status in /sys/class/drm/card*-DP-*/status /sys/class/drm/card*-HDMI-A-*/status; do
@@ -23,51 +100,86 @@ let
         return 1
       }
 
-      while true; do
+      custom_monitors_file="''${XDG_CONFIG_HOME:-$HOME/.config}/hypr/monitors.conf"
+
+      custom_monitor_config_matches_state() {
+        [ -f "$custom_monitors_file" ] || return 1
+        grep -Eq '^[[:space:]]*monitor[[:space:]]*=' "$custom_monitors_file" || return 1
+
+        if external_connected; then
+          # Respect saved nwg-displays external layouts; ignore stale internal-only configs.
+          # Match external connector names only at the start of the monitor field;
+          # otherwise eDP-1 is accidentally treated as a DP-* external output.
+          grep -Eq '^[[:space:]]*monitor[[:space:]]*=[[:space:]]*((DP-|HDMI-A-)|desc:)' "$custom_monitors_file"
+        else
+          grep -Eq '^[[:space:]]*monitor[[:space:]]*=[[:space:]]*eDP-' "$custom_monitors_file"
+        fi
+      }
+
+      apply_state() {
+        if custom_monitor_config_matches_state; then
+          state="custom"
+          if [ "$state" != "$last_state" ]; then
+            restart_waybar
+            last_state="$state"
+          fi
+          return 0
+        fi
+
         if external_connected; then
           state="external"
-          hyprctl keyword monitor ",preferred,auto,1.25" >/dev/null || true
-          hyprctl keyword monitor "eDP-1,disable" >/dev/null || true
-          last_state="$state"
+          if [ "$state" != "$last_state" ]; then
+            hyprctl keyword monitor ",preferred,auto,1.25" >/dev/null || true
+            hyprctl keyword monitor "eDP-1,disable" >/dev/null || true
+            restart_waybar
+            last_state="$state"
+          fi
         else
           state="internal"
           if [ "$state" != "$last_state" ]; then
             hyprctl keyword monitor "eDP-1,preferred,auto,1.25" >/dev/null || true
+            restart_waybar
             last_state="$state"
           fi
         fi
+      }
 
-        sleep 5
-      done
-    '';
-  };
+      runtime_dir="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 
-  nixosUpdateCheck = pkgs.writeShellApplication {
-    name = "nixos-update-check";
-    runtimeInputs = with pkgs; [
-      coreutils
-      diffutils
-      libnotify
-      nix
-    ];
-    text = ''
-      state_dir="''${XDG_RUNTIME_DIR:-/tmp}"
-      state_file="$state_dir/nixos-updates-available"
-      tmp_dir="$(mktemp -d)"
-      trap 'rm -rf "$tmp_dir"' EXIT
-
-      rm -f "$state_file"
-
-      if [ ! -f /etc/nixos/flake.lock ]; then
-        exit 0
-      fi
-
-      if nix flake update --flake /etc/nixos --output-lock-file "$tmp_dir/flake.lock" >/dev/null 2>&1; then
-        if ! cmp -s /etc/nixos/flake.lock "$tmp_dir/flake.lock"; then
-          touch "$state_file"
-          notify-send "NixOS updates available" "Flake inputs have newer versions. Apply them intentionally from /etc/nixos."
+      find_socket() {
+        if [ -n "''${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+          socket="$runtime_dir/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+          [ -S "$socket" ] && printf '%s\n' "$socket" && return 0
         fi
-      fi
+
+        for socket in "$runtime_dir"/hypr/*/.socket2.sock; do
+          [ -S "$socket" ] && printf '%s\n' "$socket" && return 0
+        done
+
+        return 1
+      }
+
+      export_instance_from_socket() {
+        instance="''${1%/.socket2.sock}"
+        export HYPRLAND_INSTANCE_SIGNATURE="''${instance##*/}"
+      }
+
+      while true; do
+        while ! socket="$(find_socket)"; do
+          sleep 1
+        done
+
+        export_instance_from_socket "$socket"
+        apply_state
+
+        socat -U - UNIX-CONNECT:"$socket" | while IFS= read -r event; do
+          case "$event" in
+            monitoradded*|monitorremoved*|configreloaded*) apply_state ;;
+          esac
+        done
+
+        sleep 1
+      done
     '';
   };
 
@@ -101,7 +213,6 @@ in
 
   home.packages = with pkgs; [
     hyprMonitorAuto
-    nixosUpdateCheck
     togglesplitToggle
     zenBrowser
     unstablePkgs.codex
@@ -110,15 +221,18 @@ in
     waybar
     hyprlock
     hyprpaper
+    swayosd
+    wlogout
     btop
     htop
   ];
 
   home.sessionVariables = {
     BROWSER = "zen";
+    # Terminal editing defaults to nvim; Git is intentionally configured below
+    # to use VS Code for commit messages and interactive operations.
     EDITOR = "nvim";
     VISUAL = "code --wait";
-    GIT_EDITOR = "code --wait";
     GTK_THEME = "Adwaita:dark";
   };
 
@@ -176,17 +290,23 @@ in
     };
 
     configFile = {
-      "hypr/hyprland.conf".source = ./config/hypr/hyprland.conf;
-      "hypr/hyprlock.conf".source = ./config/hypr/hyprlock.conf;
-      "hypr/hyprpaper.conf".source = ./config/hypr/hyprpaper.conf;
-      "waybar/config".source = ./config/waybar/config.jsonc;
-      "waybar/style.css".source = ./config/waybar/style.css;
+      "hypr/hyprland.conf".text = hyprlandConfig;
+      "hypr/hyprlock.conf".text = themeText (builtins.replaceStrings
+        [ "@WALLPAPER@" ]
+        [ "${./assets/wallpaper.png}" ]
+        (builtins.readFile ./config/hypr/hyprlock.conf));
+      "hypr/hyprpaper.conf".text = builtins.replaceStrings
+        [ "@WALLPAPER@" ]
+        [ "${./assets/wallpaper.png}" ]
+        (builtins.readFile ./config/hypr/hyprpaper.conf);
+      "waybar/config".text = builtins.readFile ./config/waybar/config.jsonc;
+      "waybar/style.css".text = themeText (builtins.readFile ./config/waybar/style.css);
       "waybar/zen-workspace.svg".source = ./config/waybar/zen-workspace.svg;
       "waybar/vscode-workspace.svg".source = ./config/waybar/vscode-workspace.svg;
       "waybar/spotify-workspace.svg".source = ./config/waybar/spotify-workspace.svg;
       "waybar/scratchpad-workspace.svg".source = ./config/waybar/scratchpad-workspace.svg;
-      "rofi/config.rasi".source = ./config/rofi/config.rasi;
-      "ghostty/config".source = ./config/ghostty/config;
+      "rofi/config.rasi".text = themeText (builtins.readFile ./config/rofi/config.rasi);
+      "ghostty/config".text = themeText (builtins.readFile ./config/ghostty/config);
       "xfce4/helpers.rc".text = ''
         TerminalEmulator=ghostty
       '';
@@ -201,7 +321,7 @@ in
         X-XFCE-CommandsWithParameter=ghostty --working-directory=%s
       '';
       "swaync/config.json".source = ./config/swaync/config.json;
-      "swaync/style.css".source = ./config/swaync/style.css;
+      "swaync/style.css".text = themeText (builtins.readFile ./config/swaync/style.css);
     };
 
     desktopEntries.yazi = {
@@ -232,6 +352,8 @@ in
     };
   };
 
+  home.file.".pi/agent/extensions/thinking-level-picker.ts".source = ./config/pi/thinking-level-picker.ts;
+
   home.activation.retireLegacyHyprlandLua = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     legacy="$HOME/.config/hypr/hyprland.lua"
     backup="$legacy.hm-backup"
@@ -247,6 +369,47 @@ in
 
   services.gnome-keyring.enable = true;
   services.poweralertd.enable = false;
+
+  services.hypridle = {
+    enable = true;
+    settings = {
+      general = {
+        lock_cmd = "pidof hyprlock || hyprlock";
+        before_sleep_cmd = "loginctl lock-session";
+        after_sleep_cmd = "hyprctl dispatch dpms on";
+      };
+      listener = [
+        {
+          timeout = 300;
+          on-timeout = "loginctl lock-session";
+        }
+        {
+          timeout = 420;
+          on-timeout = "hyprctl dispatch dpms off";
+          on-resume = "hyprctl dispatch dpms on";
+        }
+        {
+          timeout = 1800;
+          on-timeout = "systemctl suspend";
+        }
+      ];
+    };
+  };
+
+  systemd.user.services.hypr-monitor-auto = {
+    Unit = {
+      Description = "Hyprland monitor auto-switcher";
+      After = [ "graphical-session.target" ];
+    };
+
+    Service = {
+      ExecStart = "${hyprMonitorAuto}/bin/hypr-monitor-auto";
+      Restart = "always";
+      RestartSec = "2s";
+    };
+
+    Install.WantedBy = [ "default.target" ];
+  };
 
   programs.bash.enable = true;
 
@@ -278,131 +441,131 @@ in
 
     theme = {
       mgr = {
-        cwd = { fg = "#2f8cff"; };
+        cwd = { fg = palette.accent; };
         # Yazi is a terminal TUI, so it cannot draw real rounded outline boxes
         # around rows. Keep the selected row unfilled, white, and blue-underlined
         # to avoid the default pale-blue pill.
         hovered = {
-          fg = "#f5f5f5";
+          fg = palette.foreground;
           bg = "reset";
           bold = true;
           underline = true;
         };
         preview_hovered = {
-          fg = "#f5f5f5";
+          fg = palette.foreground;
           bg = "reset";
           bold = true;
           underline = true;
         };
         find_keyword = {
-          fg = "#2f8cff";
+          fg = palette.accent;
           bold = true;
         };
-        find_position = { fg = "#aeb8c4"; };
-        marker_copied = { fg = "#3fb950"; };
-        marker_cut = { fg = "#f05a5a"; };
-        marker_marked = { fg = "#f59e0b"; };
-        marker_selected = { fg = "#2f8cff"; };
+        find_position = { fg = palette.subtext; };
+        marker_copied = { fg = palette.success; };
+        marker_cut = { fg = palette.danger; };
+        marker_marked = { fg = palette.warning; };
+        marker_selected = { fg = palette.accent; };
         tab_active = {
-          fg = "#000000";
-          bg = "#2f8cff";
+          fg = palette.black;
+          bg = palette.accent;
         };
         tab_inactive = {
-          fg = "#aeb8c4";
-          bg = "#101418";
+          fg = palette.subtext;
+          bg = palette.bg;
         };
         border_symbol = "│";
-        border_style = { fg = "#141b22"; };
+        border_style = { fg = palette.borderDim; };
       };
 
       status = {
         separator_open = " ";
         separator_close = " ";
         separator_style = {
-          fg = "#101418";
-          bg = "#101418";
+          fg = palette.bg;
+          bg = palette.bg;
         };
         mode_normal = {
-          fg = "#ffffff";
-          bg = "#14508f";
+          fg = palette.white;
+          bg = palette.accentDark;
           bold = true;
         };
         mode_select = {
-          fg = "#ffffff";
-          bg = "#14508f";
+          fg = palette.white;
+          bg = palette.accentDark;
           bold = true;
         };
         mode_unset = {
-          fg = "#ffffff";
-          bg = "#8f2d2d";
+          fg = palette.white;
+          bg = palette.dangerDark;
           bold = true;
         };
         progress_label = {
-          fg = "#ffffff";
-          bg = "#14508f";
+          fg = palette.white;
+          bg = palette.accentDark;
           bold = true;
         };
         progress_normal = {
-          fg = "#14508f";
-          bg = "#101418";
+          fg = palette.accentDark;
+          bg = palette.bg;
         };
         progress_error = {
-          fg = "#8f2d2d";
-          bg = "#101418";
+          fg = palette.dangerDark;
+          bg = palette.bg;
         };
-        permissions_t = { fg = "#f5f5f5"; bold = true; };
-        permissions_r = { fg = "#f5f5f5"; bold = true; };
-        permissions_w = { fg = "#f5f5f5"; bold = true; };
-        permissions_x = { fg = "#f5f5f5"; bold = true; };
-        permissions_s = { fg = "#69727d"; };
+        permissions_t = { fg = palette.foreground; bold = true; };
+        permissions_r = { fg = palette.foreground; bold = true; };
+        permissions_w = { fg = palette.foreground; bold = true; };
+        permissions_x = { fg = palette.foreground; bold = true; };
+        permissions_s = { fg = palette.muted; };
       };
 
       input = {
-        border = { fg = "#2f8cff"; };
-        title = { fg = "#d7dee8"; };
-        value = { fg = "#f5f5f5"; };
-        selected = { bg = "#26455f"; };
+        border = { fg = palette.accent; };
+        title = { fg = palette.text; };
+        value = { fg = palette.foreground; };
+        selected = { bg = palette.selectedBg; };
       };
 
       select = {
-        border = { fg = "#2f8cff"; };
-        active = { fg = "#2f8cff"; };
-        inactive = { fg = "#aeb8c4"; };
+        border = { fg = palette.accent; };
+        active = { fg = palette.accent; };
+        inactive = { fg = palette.subtext; };
       };
 
       tasks = {
-        border = { fg = "#2f8cff"; };
-        title = { fg = "#d7dee8"; };
-        hovered = { bg = "#26455f"; };
+        border = { fg = palette.accent; };
+        title = { fg = palette.text; };
+        hovered = { bg = palette.selectedBg; };
       };
 
       which = {
         cols = 3;
-        mask = { bg = "#101418"; };
-        cand = { fg = "#2f8cff"; };
-        desc = { fg = "#aeb8c4"; };
+        mask = { bg = palette.bg; };
+        cand = { fg = palette.accent; };
+        desc = { fg = palette.subtext; };
         separator = "  ";
-        separator_style = { fg = "#69727d"; };
+        separator_style = { fg = palette.muted; };
       };
 
       help = {
-        on = { fg = "#2f8cff"; };
-        run = { fg = "#aeb8c4"; };
-        desc = { fg = "#d7dee8"; };
-        hovered = { bg = "#26455f"; };
-        footer = { fg = "#101418"; bg = "#d7dee8"; };
+        on = { fg = palette.accent; };
+        run = { fg = palette.subtext; };
+        desc = { fg = palette.text; };
+        hovered = { bg = palette.selectedBg; };
+        footer = { fg = palette.bg; bg = palette.text; };
       };
 
       filetype = {
         rules = [
-          { mime = "image/*"; fg = "#f5f5f5"; }
-          { mime = "video/*"; fg = "#f5f5f5"; }
-          { mime = "audio/*"; fg = "#f5f5f5"; }
-          { mime = "application/zip"; fg = "#f5f5f5"; }
-          { mime = "application/gzip"; fg = "#f5f5f5"; }
-          { mime = "application/x-tar"; fg = "#f5f5f5"; }
-          { url = "*/"; fg = "#f5f5f5"; bold = true; }
-          { url = "*"; fg = "#f5f5f5"; }
+          { mime = "image/*"; fg = palette.foreground; }
+          { mime = "video/*"; fg = palette.foreground; }
+          { mime = "audio/*"; fg = palette.foreground; }
+          { mime = "application/zip"; fg = palette.foreground; }
+          { mime = "application/gzip"; fg = palette.foreground; }
+          { mime = "application/x-tar"; fg = palette.foreground; }
+          { url = "*/"; fg = palette.foreground; bold = true; }
+          { url = "*"; fg = palette.foreground; }
         ];
       };
     };
@@ -415,9 +578,13 @@ in
 
   programs.git = {
     enable = true;
-    userName = "Paul Fleming";
-    userEmail = "67100074+pmfleming@users.noreply.github.com";
-    settings.core.editor = "code --wait";
+    settings = {
+      user = {
+        name = "Paul Fleming";
+        email = "67100074+pmfleming@users.noreply.github.com";
+      };
+      core.editor = "code --wait";
+    };
   };
 
   programs.home-manager.enable = true;

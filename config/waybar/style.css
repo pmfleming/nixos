@@ -21,7 +21,7 @@ window#waybar {
   min-height: 27px;
   padding: 0;
   margin: 12px 4px;
-  border-radius: 2px;
+  border-radius: @RADIUS@;
   color: #ffffff;
   font-weight: 700;
   background: #69727d;
