@@ -46,55 +46,5 @@
           homeManagerModule
         ];
       };
-
-      nixosConfigurations.hyperv = nixpkgs.lib.nixosSystem {
-        inherit system;
-        specialArgs = { inherit inputs; };
-        modules = [
-          ({ modulesPath, pkgs, ... }: {
-            imports = [
-              "${modulesPath}/profiles/minimal.nix"
-              "${modulesPath}/virtualisation/hyperv-image.nix"
-            ];
-
-            nix.settings.experimental-features = [
-              "nix-command"
-              "flakes"
-            ];
-            nixpkgs.config.allowUnfree = true;
-
-            networking.hostName = "nixos-hyperv";
-            networking.networkmanager.enable = true;
-            virtualisation.diskSize = 8 * 1024;
-            time.timeZone = "Europe/Amsterdam";
-            console.keyMap = "us";
-
-            users.users.laufan = {
-              isNormalUser = true;
-              description = "Paul Fleming";
-              initialPassword = "changeme";
-              extraGroups = [
-                "networkmanager"
-                "wheel"
-              ];
-            };
-
-            services.openssh.enable = true;
-            environment.systemPackages = with pkgs; [
-              git
-              neovim
-              ripgrep
-              wget
-            ];
-
-            system.stateVersion = "26.05";
-          })
-          home-manager.nixosModules.home-manager
-          homeManagerModule
-        ];
-      };
-
-      packages.${system}.hyperv-vhdx =
-        self.nixosConfigurations.hyperv.config.system.build.hypervImage;
     };
 }

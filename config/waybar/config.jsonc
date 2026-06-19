@@ -10,6 +10,7 @@
     "mpris"
   ],
   "modules-right": [
+    "tray",
     "network",
     "custom/updates",
     "bluetooth",
@@ -47,21 +48,26 @@
     "tooltip-format": "NixOS flake input updates have been available for 3+ days; automatic update may need attention",
     "on-click": "ghostty -e bash -lc 'journalctl -u delayed-nixos-update.service -n 80 --no-pager; read -r -p \"Press enter to close\"'"
   },
+  "tray": {
+    "icon-size": 18,
+    "spacing": 6
+  },
   "network": {
     "format-wifi": "",
     "format-ethernet": "󰈀",
     "format-disconnected": "󰤮",
-    "tooltip-format-wifi": "{essid} {signalStrength}%",
-    "tooltip-format-ethernet": "{ifname}",
-    "on-click": "nm-connection-editor"
+    "tooltip-format-wifi": "{essid} {signalStrength}%\nLeft: Wi-Fi menu\nRight: captive portal browser",
+    "tooltip-format-ethernet": "{ifname}\nRight: captive portal browser",
+    "on-click": "rofi-wifi-menu",
+    "on-click-right": "captive-portal-browser"
   },
   "bluetooth": {
     "format": "",
     "format-disabled": "",
     "format-off": "",
     "format-connected": "",
-    "tooltip-format": "{status}",
-    "on-click": "blueman-manager"
+    "tooltip-format": "{status}\nLeft: Bluetooth menu",
+    "on-click": "rofi-bluetooth-menu"
   },
   "pulseaudio": {
     "format": "{icon}",

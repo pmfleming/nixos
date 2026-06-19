@@ -1,6 +1,6 @@
 configuration {
   modi: "drun,run,window";
-  font: "JetBrainsMono Nerd Font 12";
+  font: "@FONT_MONO_NERD@ @FONT_SIZE@";
   show-icons: true;
   display-drun: "apps";
   display-run: "run";
@@ -10,15 +10,15 @@ configuration {
 * {
   background: rgba(0, 0, 0, 82%);
   background-alt: rgba(12, 18, 24, 88%);
-  foreground: #f5f5f5;
-  muted: #8f9ba8;
-  accent: #2f8cff;
-  urgent: #f05a5a;
-  border: #2f8cff;
+  foreground: @FOREGROUND@;
+  muted: @SUBTEXT@;
+  accent: @ACCENT@;
+  urgent: @DANGER@;
+  border: @ACCENT@;
 }
 
 window {
-  width: 36%;
+  width: @ROFI_WIDTH@;
   border: 1px;
   border-color: @border;
   border-radius: @RADIUS@;
@@ -46,10 +46,18 @@ entry {
 }
 
 listview {
-  lines: 10;
+  lines: @ROFI_LINES@;
   columns: 1;
   fixed-height: true;
+  scrollbar: true;
   spacing: 4px;
+}
+
+scrollbar {
+  handle-width: @SCROLLBAR_WIDTH@;
+  handle-color: @accent;
+  background-color: @background-alt;
+  border-radius: @RADIUS@;
 }
 
 element {
@@ -81,7 +89,7 @@ element selected.normal,
 element selected.active,
 element selected.urgent {
   background-color: @accent;
-  text-color: #000000;
+  text-color: @BLACK@;
 }
 
 element-icon {
@@ -92,3 +100,4 @@ element-icon {
 element-text {
   text-color: inherit;
 }
+/* git-hash-padding: 1 */

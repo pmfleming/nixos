@@ -1,15 +1,15 @@
 * {
   border: none;
   border-radius: 0;
-  font-family: "JetBrainsMono Nerd Font", monospace;
-  font-size: 12px;
+  font-family: "@FONT_MONO@", monospace;
+  font-size: @FONT_SIZE@px;
   min-height: 0;
 }
 
 window#waybar {
   background: rgba(0, 0, 0, 0.92);
-  color: #f5f5f5;
-  border-bottom: 1px solid #141b22;
+  color: @FOREGROUND@;
+  border-bottom: 1px solid @BORDER_DIM@;
 }
 
 #workspaces {
@@ -24,7 +24,7 @@ window#waybar {
   border-radius: @RADIUS@;
   color: #ffffff;
   font-weight: 700;
-  background: #69727d;
+  background: @MUTED@;
   opacity: 0.45;
 }
 
@@ -78,6 +78,7 @@ window#waybar {
 
 #custom-updates,
 #mpris,
+#tray,
 #network,
 #bluetooth,
 #pulseaudio,
@@ -91,47 +92,47 @@ window#waybar {
 }
 
 #custom-updates {
-  color: #2f8cff;
+  color: @ACCENT@;
   font-weight: 700;
 }
 
 #mpris {
-  color: #d7dee8;
+  color: @TEXT@;
 }
 
 #network.disconnected,
 #bluetooth.disabled,
 #pulseaudio.muted {
-  color: #69727d;
+  color: @MUTED@;
 }
 
 #battery.warning:not(.charging) {
-  color: #f59e0b;
+  color: @WARNING@;
 }
 
 #battery.critical:not(.charging) {
-  color: #f05a5a;
+  color: @DANGER@;
 }
 
 #battery.charging,
 #battery.plugged,
 #battery.full {
-  color: #3fb950;
+  color: @SUCCESS@;
 }
 
 #power-profiles-daemon,
 #custom-notifications {
-  color: #d7dee8;
+  color: @TEXT@;
 }
 
 #power-profiles-daemon.performance {
-  color: #f05a5a;
+  color: @DANGER@;
 }
 
 #power-profiles-daemon.balanced {
-  color: #2f8cff;
+  color: @ACCENT@;
 }
 
 #power-profiles-daemon.power-saver {
-  color: #3fb950;
+  color: @SUCCESS@;
 }

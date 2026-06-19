@@ -1,18 +1,18 @@
 * {
-  font-family: "JetBrainsMono Nerd Font", monospace;
-  font-size: 12px;
+  font-family: "@FONT_MONO@", monospace;
+  font-size: @FONT_SIZE@px;
 }
 
 :root {
-  --accent: #2f8cff;
+  --accent: @ACCENT@;
   --cc-bg: rgba(0, 0, 0, 0.58);
   --panel-bg: rgba(5, 9, 13, 0.38);
   --noti-bg: rgba(0, 0, 0, 0.72);
   --noti-bg-hover: rgba(17, 24, 32, 0.86);
-  --noti-border: rgba(47, 140, 255, 0.82);
-  --text: #f5f5f5;
-  --muted: #aeb8c4;
-  --disabled: #69727d;
+  --noti-border: rgba(@ACCENT_RGB@, 0.82);
+  --text: @FOREGROUND@;
+  --muted: @SUBTEXT@;
+  --disabled: @MUTED@;
   --radius: @RADIUS@;
   --notification-icon-size: 64px;
 }
@@ -33,7 +33,7 @@ blankwindow,
 
 .control-center .control-center-list {
   background: var(--panel-bg);
-  border-top: 1px solid rgba(47, 140, 255, 0.22);
+  border-top: 1px solid rgba(@, 0.22);
   padding: 8px 0 14px;
 }
 
@@ -62,7 +62,7 @@ blankwindow,
 button {
   background: rgba(17, 24, 32, 0.82);
   color: var(--text);
-  border: 1px solid rgba(47, 140, 255, 0.16);
+  border: 1px solid rgba(@, 0.16);
   border-radius: 5px;
   padding: 8px 14px;
 }
@@ -70,7 +70,7 @@ button {
 .widget-title > button:hover,
 button:hover {
   background: var(--accent);
-  color: #000000;
+  color: @;
 }
 
 .widget-dnd label {
@@ -80,12 +80,12 @@ button:hover {
 
 .widget-dnd switch {
   background: rgba(17, 24, 32, 0.72);
-  border: 1px solid rgba(47, 140, 255, 0.2);
+  border: 1px solid rgba(@, 0.2);
   border-radius: 999px;
 }
 
 .widget-dnd switch:checked {
-  background: rgba(47, 140, 255, 0.55);
+  background: rgba(@, 0.55);
 }
 
 .widget-dnd switch slider {
@@ -152,7 +152,7 @@ button:hover {
 }
 
 .summary {
-  color: #ffffff;
+  color: @;
   font-weight: 800;
 }
 
@@ -184,8 +184,8 @@ button:hover {
 }
 
 .close-button {
-  background: rgba(47, 140, 255, 0.9);
-  color: #000000;
+  background: rgba(@, 0.9);
+  color: @;
   border-radius: 999px;
   min-width: 22px;
   min-height: 22px;
@@ -193,6 +193,6 @@ button:hover {
 }
 
 .close-button:hover {
-  background: #ffffff;
-  color: #000000;
+  background: @;
+  color: @;
 }

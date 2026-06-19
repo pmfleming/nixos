@@ -1,6 +1,8 @@
 { config, lib, pkgs, unstablePkgs, ... }:
 
 let
+  theme = import ./theme.nix;
+
   delayedNixosUpdate = pkgs.writeShellApplication {
     name = "delayed-nixos-update";
     runtimeInputs = with pkgs; [
@@ -62,6 +64,14 @@ let
         fi
       }
 
+      install_lock() {
+        # This service runs as root, so a plain cp would leave flake.lock
+        # root-owned and break later user-level git operations in the checkout.
+        # Match the flake directory's existing ownership instead.
+        cp "$1" "$flake_dir/flake.lock"
+        chown --reference="$flake_dir" "$flake_dir/flake.lock"
+      }
+
       mkdir -p "$state_dir"
       rm -f "$ready_file"
 
@@ -71,7 +81,7 @@ let
       immediate_lock="$tmp_dir/immediate-flake.lock"
       if nix flake update "''${immediate_inputs[@]}" --flake "$flake_dir" --output-lock-file "$immediate_lock" >/dev/null 2>&1; then
         if ! cmp -s "$flake_dir/flake.lock" "$immediate_lock"; then
-          cp "$immediate_lock" "$flake_dir/flake.lock"
+          install_lock "$immediate_lock"
           touch "$pending_switch_file"
         fi
       fi
@@ -118,7 +128,7 @@ let
       merge_immediate_inputs_from_current "$candidate_lock" "$flake_dir/flake.lock" > "$merged_lock"
 
       touch "$ready_file"
-      cp "$merged_lock" "$flake_dir/flake.lock"
+      install_lock "$merged_lock"
       touch "$pending_switch_file"
 
       if nixos-rebuild switch --flake "$flake_dir#$flake_attr"; then
@@ -141,6 +151,11 @@ let
       keep_recent=5
       keep_every=10
 
+      refresh_boot_entries() {
+        echo "Refreshing systemd-boot entries"
+        /run/current-system/bin/switch-to-configuration boot
+      }
+
       mapfile -t gens < <(
         nix-env --profile "$profile" --list-generations \
           | awk '{print $1}' \
@@ -150,6 +165,7 @@ let
       total="''${#gens[@]}"
       if (( total <= keep_recent )); then
         echo "Keeping all $total NixOS generations"
+        refresh_boot_entries
         exit 0
       fi
 
@@ -202,6 +218,8 @@ let
       else
         echo "No NixOS generations to delete"
       fi
+
+      refresh_boot_entries
     '';
   };
 in
@@ -228,7 +246,15 @@ in
   boot.loader.efi.canTouchEfiVariables = true;
 
   networking.hostName = "thinkpad";
-  networking.networkmanager.enable = true;
+  networking.networkmanager = {
+    enable = true;
+    settings.connectivity = {
+      enabled = true;
+      uri = "http://nmcheck.gnome.org/check_network_status.txt";
+      response = "NetworkManager is online";
+      interval = 300;
+    };
+  };
   networking.firewall.enable = true;
 
   time.timeZone = "Europe/Amsterdam";
@@ -335,9 +361,9 @@ in
       noto-fonts-color-emoji
     ];
     fontconfig.defaultFonts = {
-      monospace = [ "JetBrainsMono Nerd Font" ];
-      sansSerif = [ "Noto Sans" ];
-      serif = [ "Noto Serif" ];
+      monospace = [ theme.fonts.mono ];
+      sansSerif = [ theme.fonts.sans ];
+      serif = [ theme.fonts.serif ];
     };
   };
 
@@ -462,7 +488,6 @@ in
     libdrm
     libnotify
     neovim
-    networkmanagerapplet
     nodejs
     nwg-displays
     pavucontrol
@@ -483,3 +508,4 @@ in
 
   system.stateVersion = "26.05";
 }
+# git-hash-padding: 1

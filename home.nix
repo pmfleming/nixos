@@ -5,32 +5,27 @@ let
   hyprlandGuiutils = inputs.hyprland-guiutils.packages.${system}.default;
   zenBrowser = inputs.zen-browser.packages.${system}.default;
 
-  palette = {
-    bg = "#101418";
-    muted = "#69727d";
-    text = "#d7dee8";
-    subtext = "#aeb8c4";
-    accent = "#2f8cff";
-    accentBare = "2f8cff";
+  theme = import ./theme.nix;
+  inherit (theme) palette fonts themeText;
 
-    # Extra terminal/TUI tones that are only consumed from Nix-native config.
-    black = "#000000";
-    white = "#ffffff";
-    foreground = "#f5f5f5";
-    borderDim = "#141b22";
-    selectedBg = "#26455f";
-    accentDark = "#14508f";
-    dangerDark = "#8f2d2d";
-    success = "#3fb950";
-    danger = "#f05a5a";
-    warning = "#f59e0b";
+  mkUserService = description: execStart: restartSec: {
+    Unit = {
+      Description = description;
+      After = [ "graphical-session.target" ];
+    };
+
+    Service = {
+      ExecStart = execStart;
+      Restart = "always";
+      RestartSec = restartSec;
+    };
+
+    Install.WantedBy = [ "default.target" ];
   };
-  radius = "3px";
 
-  themeText = text: builtins.replaceStrings
-    [ "#101418" "#69727d" "#d7dee8" "#aeb8c4" "#2f8cff" "2f8cff" "@RADIUS@" ]
-    [ palette.bg palette.muted palette.text palette.subtext palette.accent palette.accentBare radius ]
-    text;
+  binShim = drv: name: lib.nameValuePair ".local/bin/${name}" {
+    source = "${drv}/bin/${name}";
+  };
 
   togglesplitPlugin = pkgs.stdenv.mkDerivation {
     pname = "hyprland-togglesplit";
@@ -205,6 +200,486 @@ let
       notify-send "togglesplit $label"
     '';
   };
+
+  captivePortalBrowser = pkgs.writeShellApplication {
+    name = "captive-portal-browser";
+    runtimeInputs = with pkgs; [
+      coreutils
+      google-chrome
+    ];
+    text = ''
+      set -euo pipefail
+
+      profile_dir="''${XDG_DATA_HOME:-$HOME/.local/share}/captive-portal-chrome"
+      mkdir -p "$profile_dir"
+
+      if [ "$#" -eq 0 ]; then
+        set -- \
+          "http://example.com" \
+          "http://captive.apple.com/hotspot-detect.html" \
+          "http://www.msftconnecttest.com/connecttest.txt" \
+          "http://nmcheck.gnome.org/check_network_status.txt"
+      fi
+
+      exec google-chrome-stable \
+        --user-data-dir="$profile_dir" \
+        --no-first-run \
+        --no-default-browser-check \
+        --disable-search-engine-choice-screen \
+        --new-window \
+        --disable-extensions \
+        --disable-quic \
+        --disable-features=HttpsUpgrades,HttpsFirstBalancedModeAutoEnable,HttpsFirstModeV2,DnsOverHttpsUpgrade \
+        --no-proxy-server \
+        "$@"
+    '';
+  };
+
+  rofiWifiMenu = pkgs.writeShellApplication {
+    name = "rofi-wifi-menu";
+    runtimeInputs = with pkgs; [
+      captivePortalBrowser
+      coreutils
+      gawk
+      gnused
+      libnotify
+      networkmanager
+      rofi
+    ];
+    text = ''
+      set -euo pipefail
+
+      notify() {
+        notify-send -a "Wi-Fi" "$@" >/dev/null 2>&1 || true
+      }
+
+      markup_escape() {
+        printf '%s' "$1" \
+          | sed \
+              -e 's/&/\&amp;/g' \
+              -e 's/</\&lt;/g' \
+              -e 's/>/\&gt;/g'
+      }
+
+      current_ssid() {
+        # `nmcli device wifi` can trigger a slow scan on first use. The explicit
+        # cached list form stays fast and still gives the active SSID.
+        nmcli -t -f IN-USE,SSID device wifi list --rescan no 2>/dev/null \
+          | awk -F: '$1 == "*" { sub(/^[^:]*:/, ""); print; exit }' \
+          | sed 's/\\:/:/g'
+      }
+
+      wifi_entries() {
+        nmcli -m multiline -f IN-USE,SSID,SECURITY,SIGNAL,BARS device wifi list --rescan no 2>/dev/null \
+          | awk '
+              function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
+              BEGIN { sep = sprintf("%c", 31) }
+              function flush() {
+                if (ssid == "") return
+                sig = signal + 0
+                if (!(ssid in best) || sig > bestSignal[ssid]) {
+                  bestSignal[ssid] = sig
+                  best[ssid] = active sep security sep signal sep bars
+                }
+              }
+              /^IN-USE:/ { flush(); active = trim(substr($0, index($0, ":") + 1)); ssid = security = signal = bars = ""; next }
+              /^SSID:/ { ssid = trim(substr($0, index($0, ":") + 1)); next }
+              /^SECURITY:/ { security = trim(substr($0, index($0, ":") + 1)); next }
+              /^SIGNAL:/ { signal = trim(substr($0, index($0, ":") + 1)); next }
+              /^BARS:/ { bars = trim(substr($0, index($0, ":") + 1)); next }
+              END {
+                flush()
+                for (s in best) print bestSignal[s] sep s sep best[s]
+              }
+            ' \
+          | sort -t $'\037' -k1,1rn
+      }
+
+      network_count() {
+        wifi_entries | wc -l | tr -d ' '
+      }
+
+      rescan_networks() {
+        notify "Scanning Wi-Fi" "Refreshing nearby networks…"
+        if nmcli device wifi rescan >/dev/null 2>&1; then
+          # Give NetworkManager a moment to publish the refreshed AP list.
+          sleep 2
+          count="$(network_count)"
+          notify "Wi-Fi scan complete" "$count networks found"
+        else
+          notify "Wi-Fi scan failed" "Could not refresh nearby networks"
+        fi
+      }
+
+      open_captive_portal() {
+        captive-portal-browser >/dev/null 2>&1 &
+      }
+
+      after_connect() {
+        connected_ssid="$1"
+        notify "Connected" "$connected_ssid"
+
+        for _ in 1 2 3 4 5 6; do
+          state="$(nmcli -t -f CONNECTIVITY general status 2>/dev/null || printf 'unknown')"
+          case "$state" in
+            full)
+              return 0
+              ;;
+            portal|limited)
+              notify "Captive portal detected" "Opening login page for $connected_ssid"
+              open_captive_portal
+              return 0
+              ;;
+          esac
+
+          nmcli networking connectivity check >/dev/null 2>&1 || true
+          sleep 2
+        done
+      }
+
+      connect_saved_profile() {
+        target_ssid="$1"
+        while IFS=: read -r uuid type; do
+          [ "$type" = "802-11-wireless" ] || continue
+          profile_ssid="$(nmcli -g 802-11-wireless.ssid connection show uuid "$uuid" 2>/dev/null | sed 's/\\:/:/g' || true)"
+          if [ "$profile_ssid" = "$target_ssid" ]; then
+            nmcli --wait 30 connection up uuid "$uuid" && return 0
+          fi
+        done < <(nmcli -t -f UUID,TYPE connection show)
+
+        return 1
+      }
+
+      build_menu() {
+        map_file="$1"
+        rows_file="$(mktemp)"
+        : > "$map_file"
+
+        id=0
+        while IFS=$'\037' read -r _sort_signal ssid active security signal _bars; do
+          [ -n "$ssid" ] || continue
+          id=$((id + 1))
+          key="$(printf '%02d' "$id")"
+          marker=" "
+          [ "$active" = "*" ] && marker="●"
+          security="''${security:---}"
+          if [ "$security" = "--" ] || [ -z "$security" ]; then
+            security_icon=""
+          else
+            security_icon=""
+          fi
+
+          signal_value="''${signal:-0}"
+          if [ "$signal_value" -ge 85 ]; then
+            signal_icon="󰤨"
+          elif [ "$signal_value" -ge 65 ]; then
+            signal_icon="󰤥"
+          elif [ "$signal_value" -ge 45 ]; then
+            signal_icon="󰤢"
+          elif [ "$signal_value" -ge 25 ]; then
+            signal_icon="󰤟"
+          else
+            signal_icon="󰤯"
+          fi
+
+          if [ "$signal_value" -ge 70 ]; then
+            signal_color="${palette.success}"
+          elif [ "$signal_value" -ge 45 ]; then
+            signal_color="${palette.warning}"
+          else
+            signal_color="${palette.danger}"
+          fi
+          signal_percent="$(printf '%3s%%' "$signal_value")"
+          signal_markup="$signal_icon <span foreground=\"$signal_color\">$signal_percent</span>"
+
+          display_ssid="$ssid"
+          # Some SSIDs genuinely start with '*'. Render that as a look-alike
+          # glyph so it is not confused with the status/current column.
+          case "$display_ssid" in
+            \**) display_ssid="∗''${display_ssid:1}" ;;
+          esac
+          if [ "''${#display_ssid}" -gt 25 ]; then
+            display_ssid="''${display_ssid:0:24}…"
+          fi
+          display_ssid="$(markup_escape "$display_ssid")"
+
+          printf '%s\t%s\n' "$key" "$ssid" >> "$map_file"
+          printf '%s  %s   %-25s %s %s\n' \
+            "$key" "$marker" "$display_ssid" "$signal_markup" "$security_icon" >> "$rows_file"
+        done < <(wifi_entries)
+
+        printf '%s\n' \
+          "r   󰑓  $id Networks (Rescan)" \
+          "p   󰖟  Captive portal login"
+        cat "$rows_file"
+        rm -f "$rows_file"
+      }
+
+      # Keep the cache warming in the background without delaying the menu.
+      nmcli device wifi rescan >/dev/null 2>&1 &
+
+      while true; do
+        current="$(current_ssid)"
+        map_file="$(mktemp)"
+        trap 'rm -f "$map_file"' EXIT
+        menu="$(build_menu "$map_file")"
+        choice="$(printf '%s\n' "$menu" | rofi -dmenu -i -markup-rows -p "Wi-Fi" || true)"
+        [ -n "$choice" ] || exit 0
+
+        key="$(printf '%s' "$choice" | awk '{print $1}')"
+        case "$key" in
+          r) rm -f "$map_file"; rescan_networks; continue ;;
+          p) exec captive-portal-browser ;;
+        esac
+
+        ssid="$(awk -F '\t' -v key="$key" '$1 == key { print $2; exit }' "$map_file")"
+        rm -f "$map_file"
+        [ -n "$ssid" ] || exit 0
+
+        if [ "$ssid" = "$current" ]; then
+          notify "Already connected" "$ssid"
+          after_connect "$ssid"
+          exit 0
+        fi
+
+        if connect_saved_profile "$ssid"; then
+          after_connect "$ssid"
+          exit 0
+        fi
+
+        if nmcli --wait 30 device wifi connect "$ssid"; then
+          after_connect "$ssid"
+          exit 0
+        fi
+
+        password="$(rofi -dmenu -password -p "Password for $ssid" || true)"
+        [ -n "$password" ] || exit 1
+
+        if nmcli --wait 30 device wifi connect "$ssid" password "$password"; then
+          after_connect "$ssid"
+        else
+          notify "Connection failed" "$ssid"
+          exit 1
+        fi
+        exit 0
+      done
+    '';
+  };
+
+  rofiBluetoothMenu = pkgs.writeShellApplication {
+    name = "rofi-bluetooth-menu";
+    runtimeInputs = with pkgs; [
+      bluez
+      coreutils
+      gawk
+      gnused
+      libnotify
+      rofi
+    ];
+    text = ''
+      set -euo pipefail
+
+      notify() {
+        notify-send -a "Bluetooth" "$@" >/dev/null 2>&1 || true
+      }
+
+      powered() {
+        bluetoothctl show 2>/dev/null | awk -F': ' '/^[[:space:]]*Powered:/ { print $2; exit }'
+      }
+
+      device_field() {
+        mac="$1"
+        field="$2"
+        bluetoothctl info "$mac" 2>/dev/null \
+          | awk -F': ' -v field="$field" '$1 ~ "^[[:space:]]*" field "$" { print $2; exit }'
+      }
+
+      scan_devices() {
+        bluetoothctl power on >/dev/null 2>&1 || true
+        notify "Scanning" "Looking for nearby Bluetooth devices…"
+        timeout 8s bluetoothctl scan on >/dev/null 2>&1 || true
+        bluetoothctl scan off >/dev/null 2>&1 || true
+      }
+
+      build_menu() {
+        map_file="$1"
+        : > "$map_file"
+
+        if ! bluetoothctl show >/dev/null 2>&1; then
+          printf '%s\n' "x  󰂲  No Bluetooth controller found"
+          return 0
+        fi
+
+        power="$(powered)"
+        if [ "$power" = "yes" ]; then
+          printf '%s\n' "t  󰂲  Turn Bluetooth off" "s  ⟳  Scan for devices"
+        else
+          printf '%s\n' "t  󰂯  Turn Bluetooth on"
+        fi
+
+        id=0
+        while read -r _ mac name; do
+          [ -n "''${mac:-}" ] || continue
+          [ -n "''${name:-}" ] || name="$mac"
+          id=$((id + 1))
+          key="$(printf '%02d' "$id")"
+
+          connected="$(device_field "$mac" Connected || true)"
+          paired="$(device_field "$mac" Paired || true)"
+          trusted="$(device_field "$mac" Trusted || true)"
+
+          marker=" "
+          status="new"
+          if [ "$connected" = "yes" ]; then
+            marker="●"
+            status="connected"
+          elif [ "$paired" = "yes" ]; then
+            status="paired"
+          fi
+          [ "$trusted" = "yes" ] && status="$status trusted"
+
+          printf '%s\t%s\t%s\n' "$key" "$mac" "$name" >> "$map_file"
+          printf '%s  %s  %-34.34s  %s\n' "$key" "$marker" "$name" "$status"
+        done < <(bluetoothctl devices 2>/dev/null | sort -k3)
+      }
+
+      connect_device() {
+        mac="$1"
+        name="$2"
+
+        bluetoothctl power on >/dev/null 2>&1 || true
+        bluetoothctl agent on >/dev/null 2>&1 || true
+        bluetoothctl default-agent >/dev/null 2>&1 || true
+
+        connected="$(device_field "$mac" Connected || true)"
+        paired="$(device_field "$mac" Paired || true)"
+
+        if [ "$connected" = "yes" ]; then
+          if bluetoothctl disconnect "$mac" >/dev/null 2>&1; then
+            notify "Disconnected" "$name"
+            exit 0
+          fi
+          notify "Disconnect failed" "$name"
+          exit 1
+        fi
+
+        if [ "$paired" != "yes" ]; then
+          bluetoothctl pair "$mac" >/dev/null 2>&1 || true
+        fi
+        bluetoothctl trust "$mac" >/dev/null 2>&1 || true
+
+        if bluetoothctl connect "$mac" >/dev/null 2>&1; then
+          notify "Connected" "$name"
+        else
+          notify "Connection failed" "$name"
+          exit 1
+        fi
+      }
+
+      while true; do
+        map_file="$(mktemp)"
+        trap 'rm -f "$map_file"' EXIT
+        power="$(powered || true)"
+        menu="$(build_menu "$map_file")"
+        message="Enter connects/disconnects • current: Bluetooth ''${power:-unknown}"
+        choice="$(printf '%s\n' "$menu" | rofi -dmenu -i -p "Bluetooth" -mesg "$message" || true)"
+        [ -n "$choice" ] || exit 0
+
+        key="$(printf '%s' "$choice" | awk '{print $1}')"
+        case "$key" in
+          x) exit 0 ;;
+          t)
+            if [ "$(powered || true)" = "yes" ]; then
+              bluetoothctl power off >/dev/null 2>&1 || true
+              notify "Bluetooth off"
+            else
+              bluetoothctl power on >/dev/null 2>&1 || true
+              notify "Bluetooth on"
+            fi
+            rm -f "$map_file"
+            continue
+            ;;
+          s)
+            rm -f "$map_file"
+            scan_devices
+            continue
+            ;;
+        esac
+
+        mac="$(awk -F '\t' -v key="$key" '$1 == key { print $2; exit }' "$map_file")"
+        name="$(awk -F '\t' -v key="$key" '$1 == key { print $3; exit }' "$map_file")"
+        rm -f "$map_file"
+        [ -n "$mac" ] || exit 0
+
+        connect_device "$mac" "''${name:-$mac}"
+        exit 0
+      done
+    '';
+  };
+
+  captivePortalMonitor = pkgs.writeShellApplication {
+    name = "captive-portal-monitor";
+    runtimeInputs = with pkgs; [
+      coreutils
+      gnugrep
+      hyprland
+      libnotify
+      networkmanager
+    ];
+    text = ''
+      set -euo pipefail
+
+      last_state=""
+      last_opened=0
+      cooldown=300
+
+      notify() {
+        notify-send -a "NetworkManager" "$@" >/dev/null 2>&1 || true
+      }
+
+      hypr_exec() {
+        runtime_dir="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+        if [ -n "''${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
+          hyprctl dispatch exec "$*" >/dev/null 2>&1 && return 0
+        fi
+
+        for socket in "$runtime_dir"/hypr/*/.socket.sock; do
+          [ -S "$socket" ] || continue
+          instance="''${socket%/.socket.sock}"
+          export HYPRLAND_INSTANCE_SIGNATURE="''${instance##*/}"
+          hyprctl dispatch exec "$*" >/dev/null 2>&1 && return 0
+        done
+
+        return 1
+      }
+
+      while true; do
+        state="$(nmcli -t -f CONNECTIVITY general status 2>/dev/null || printf 'unknown')"
+        now="$(date +%s)"
+
+        case "$state" in
+          portal|limited)
+            if [ "$state" != "$last_state" ] || [ $((now - last_opened)) -ge "$cooldown" ]; then
+              notify "Captive portal or limited network" "Connectivity is '$state'; opening plain-HTTP login pages."
+              sleep 2
+              if hypr_exec "${captivePortalBrowser}/bin/captive-portal-browser"; then
+                last_opened="$now"
+              fi
+            fi
+            ;;
+          full)
+            if [ "$last_state" = "portal" ] || [ "$last_state" = "limited" ]; then
+              notify "Network online" "Connectivity check is full."
+            fi
+            ;;
+        esac
+
+        last_state="$state"
+        sleep 10
+      done
+    '';
+  };
 in
 {
   home.username = "laufan";
@@ -214,6 +689,9 @@ in
   home.packages = with pkgs; [
     hyprMonitorAuto
     togglesplitToggle
+    captivePortalBrowser
+    rofiWifiMenu
+    rofiBluetoothMenu
     zenBrowser
     unstablePkgs.codex
     ghostty
@@ -250,8 +728,8 @@ in
       size = 24;
     };
     font = {
-      name = "JetBrainsMono Nerd Font";
-      size = 12;
+      name = fonts.mono;
+      size = theme.ui.fontSizeInt;
     };
   };
 
@@ -350,9 +828,29 @@ in
         "Utility"
       ];
     };
+
+    desktopEntries.captive-portal-browser = {
+      name = "Captive Portal Browser";
+      genericName = "Captive Portal Browser";
+      comment = "Open a clean Chrome profile on plain-HTTP captive portal check pages";
+      exec = "captive-portal-browser";
+      terminal = false;
+      categories = [
+        "Network"
+        "WebBrowser"
+      ];
+    };
   };
 
-  home.file.".pi/agent/extensions/thinking-level-picker.ts".source = ./config/pi/thinking-level-picker.ts;
+  # User-level shims keep interactive launchers current even before the next
+  # root-level NixOS profile switch updates /etc/profiles/per-user.
+  home.file = lib.listToAttrs [
+    (binShim rofiWifiMenu "rofi-wifi-menu")
+    (binShim rofiBluetoothMenu "rofi-bluetooth-menu")
+    (binShim captivePortalBrowser "captive-portal-browser")
+  ] // {
+    ".pi/agent/extensions/thinking-level-picker.ts".source = ./config/pi/thinking-level-picker.ts;
+  };
 
   home.activation.retireLegacyHyprlandLua = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
     legacy="$HOME/.config/hypr/hyprland.lua"
@@ -365,6 +863,11 @@ in
         rm "$legacy"
       fi
     fi
+  '';
+
+  home.activation.stopDuplicateNetworkTrayApplets = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    ${pkgs.procps}/bin/pkill -u "$USER" -x nm-applet >/dev/null 2>&1 || true
+    ${pkgs.procps}/bin/pkill -u "$USER" -f '[b]lueman-applet' >/dev/null 2>&1 || true
   '';
 
   services.gnome-keyring.enable = true;
@@ -396,19 +899,16 @@ in
     };
   };
 
-  systemd.user.services.hypr-monitor-auto = {
-    Unit = {
-      Description = "Hyprland monitor auto-switcher";
-      After = [ "graphical-session.target" ];
-    };
+  systemd.user.services = {
+    hypr-monitor-auto = mkUserService
+      "Hyprland monitor auto-switcher"
+      "${hyprMonitorAuto}/bin/hypr-monitor-auto"
+      "2s";
 
-    Service = {
-      ExecStart = "${hyprMonitorAuto}/bin/hypr-monitor-auto";
-      Restart = "always";
-      RestartSec = "2s";
-    };
-
-    Install.WantedBy = [ "default.target" ];
+    captive-portal-monitor = mkUserService
+      "Notify and open a browser when NetworkManager detects a captive portal"
+      "${captivePortalMonitor}/bin/captive-portal-monitor"
+      "5s";
   };
 
   programs.bash.enable = true;
