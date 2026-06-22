@@ -5,6 +5,9 @@ configuration {
   display-drun: "apps";
   display-run: "run";
   display-window: "win";
+  display-wifi: "wifi";
+  display-bluetooth: "bt";
+  display-clipboard: "paste";
 }
 
 * {

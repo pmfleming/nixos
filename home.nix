@@ -235,6 +235,80 @@ let
     '';
   };
 
+  rofiScriptHelpers = pkgs.writeText "rofi-script-helpers.sh" ''
+    markup_escape() {
+      printf '%s' "$1" \
+        | sed \
+            -e 's/&/\&amp;/g' \
+            -e 's/</\&lt;/g' \
+            -e 's/>/\&gt;/g'
+    }
+
+    rofi_header() {
+      printf '\0%s\x1f%s\n' "$1" "$2"
+    }
+
+    rofi_common_headers() {
+      prompt="$1"
+      message="''${2:-}"
+      rofi_header prompt "$prompt"
+      rofi_header markup-rows true
+      rofi_header no-custom true
+      [ -z "$message" ] || rofi_header message "$message"
+    }
+
+    rofi_row() {
+      search="$1"
+      info="$2"
+      display="$3"
+
+      printf '%s\0display\x1f%s' "$search" "$display"
+      [ -z "$info" ] || printf '\x1finfo\x1f%s' "$info"
+      printf '\n'
+    }
+
+    rofi_static_row() {
+      search="$1"
+      display="$2"
+
+      printf '%s\0display\x1f%s\x1fnonselectable\x1ftrue\n' "$search" "$display"
+    }
+
+    rofi_script_launch() {
+      mode="$1"
+      prompt="$2"
+      shift 2
+
+      exec rofi -show "$mode" -modes "$mode:$0" -i -p "$prompt" "$@"
+    }
+
+    hypr_active_window_paste_context() {
+      target="activewindow"
+      class=""
+
+      if ! command -v hyprctl >/dev/null 2>&1; then
+        printf 'none|%s|%s\n' "$target" "$class"
+        return 0
+      fi
+
+      while IFS= read -r line; do
+        case "$line" in
+          Window\ *\ -\>*)
+            address="''${line#Window }"
+            address="''${address%% ->*}"
+            address="''${address#0x}"
+            [ -z "$address" ] || target="address:0x$address"
+            ;;
+          *class:\ *)
+            class="''${line#*: }"
+            ;;
+        esac
+      done < <(hyprctl activewindow 2>/dev/null || true)
+
+      printf 'hyprland|%s|%s\n' "$target" "$class"
+    }
+  '';
+
   rofiWifiMenu = pkgs.writeShellApplication {
     name = "rofi-wifi-menu";
     runtimeInputs = with pkgs; [
@@ -248,22 +322,14 @@ let
     ];
     text = ''
       set -euo pipefail
+      # shellcheck source=/dev/null
+      source ${rofiScriptHelpers}
 
       notify() {
         notify-send -a "Wi-Fi" "$@" >/dev/null 2>&1 || true
       }
 
-      markup_escape() {
-        printf '%s' "$1" \
-          | sed \
-              -e 's/&/\&amp;/g' \
-              -e 's/</\&lt;/g' \
-              -e 's/>/\&gt;/g'
-      }
-
       current_ssid() {
-        # `nmcli device wifi` can trigger a slow scan on first use. The explicit
-        # cached list form stays fast and still gives the active SSID.
         nmcli -t -f IN-USE,SSID device wifi list --rescan no 2>/dev/null \
           | awk -F: '$1 == "*" { sub(/^[^:]*:/, ""); print; exit }' \
           | sed 's/\\:/:/g'
@@ -299,16 +365,29 @@ let
         wifi_entries | wc -l | tr -d ' '
       }
 
-      rescan_networks() {
-        notify "Scanning Wi-Fi" "Refreshing nearby networks…"
-        if nmcli device wifi rescan >/dev/null 2>&1; then
-          # Give NetworkManager a moment to publish the refreshed AP list.
-          sleep 2
-          count="$(network_count)"
-          notify "Wi-Fi scan complete" "$count networks found"
-        else
-          notify "Wi-Fi scan failed" "Could not refresh nearby networks"
-        fi
+      refresh_wifi_cache() {
+        scan_rc=0
+        nmcli --wait 8 device wifi rescan >/dev/null 2>&1 || scan_rc=$?
+        sleep 2
+        return "$scan_rc"
+      }
+
+      refresh_wifi_cache_with_progress() {
+        nmcli --wait 8 device wifi rescan >/dev/null 2>&1 &
+        scan_pid="$!"
+        elapsed=0
+
+        while kill -0 "$scan_pid" 2>/dev/null; do
+          rofi_header message "Scanning Wi-Fi… ''${elapsed}s elapsed. Waiting for NetworkManager."
+          elapsed=$((elapsed + 1))
+          sleep 1
+        done
+
+        scan_rc=0
+        wait "$scan_pid" || scan_rc=$?
+        rofi_header message "Publishing refreshed Wi-Fi list…"
+        sleep 2
+        return "$scan_rc"
       }
 
       open_captive_portal() {
@@ -350,91 +429,115 @@ let
         return 1
       }
 
-      build_menu() {
-        map_file="$1"
+      saved_wifi_profiles() {
+        while IFS=: read -r uuid type; do
+          [ "$type" = "802-11-wireless" ] || continue
+          profile_ssid="$(nmcli -g 802-11-wireless.ssid connection show uuid "$uuid" 2>/dev/null | sed 's/\\:/:/g' || true)"
+          [ -n "$profile_ssid" ] || continue
+          printf '%s\n' "$profile_ssid"
+        done < <(nmcli -t -f UUID,TYPE connection show)
+      }
+
+      display_ssid() {
+        label="$1"
+        case "$label" in
+          \**) label="∗''${label:1}" ;;
+        esac
+        if [ "''${#label}" -gt 25 ]; then
+          label="''${label:0:24}…"
+        fi
+        markup_escape "$label"
+      }
+
+      visible_wifi_row() {
+        id="$1"
+        ssid="$2"
+        active="$3"
+        security="$4"
+        signal="$5"
+
+        key="$(printf '%02d' "$id")"
+        marker=" "
+        [ "$active" = "*" ] && marker="●"
+        security="''${security:---}"
+        if [ "$security" = "--" ] || [ -z "$security" ]; then
+          security_icon=""
+        else
+          security_icon=""
+        fi
+
+        signal_value="''${signal:-0}"
+        if [ "$signal_value" -ge 85 ]; then
+          signal_icon="󰤨"
+        elif [ "$signal_value" -ge 65 ]; then
+          signal_icon="󰤥"
+        elif [ "$signal_value" -ge 45 ]; then
+          signal_icon="󰤢"
+        elif [ "$signal_value" -ge 25 ]; then
+          signal_icon="󰤟"
+        else
+          signal_icon="󰤯"
+        fi
+
+        if [ "$signal_value" -ge 70 ]; then
+          signal_color="${palette.success}"
+        elif [ "$signal_value" -ge 45 ]; then
+          signal_color="${palette.warning}"
+        else
+          signal_color="${palette.danger}"
+        fi
+
+        signal_percent="$(printf '%3s%%' "$signal_value")"
+        signal_markup="$signal_icon <span foreground=\"$signal_color\">$signal_percent</span>"
+        display="$(printf '%s  %s   %-25s %s %s' "$key" "$marker" "$(display_ssid "$ssid")" "$signal_markup" "$security_icon")"
+        printf -v info 'connect\t%s' "$ssid"
+        rofi_row "$ssid" "$info" "$display"
+      }
+
+      saved_wifi_row() {
+        id="$1"
+        ssid="$2"
+        key="$(printf '%02d' "$id")"
+        display="$(printf '%s  %s   %-25s %s %s' "$key" "◇" "$(display_ssid "$ssid")" "<span foreground=\"${palette.muted}\">saved</span>" "")"
+        printf -v info 'connect\t%s' "$ssid"
+        rofi_row "$ssid" "$info" "$display"
+      }
+
+      emit_wifi_menu() {
+        message="''${1:-Enter connects • saved profiles are shown when not currently visible}"
         rows_file="$(mktemp)"
-        : > "$map_file"
+        : > "$rows_file"
 
         id=0
+        visible_count=0
+        declare -A seen_ssids=()
+
         while IFS=$'\037' read -r _sort_signal ssid active security signal _bars; do
           [ -n "$ssid" ] || continue
+          seen_ssids["$ssid"]=1
           id=$((id + 1))
-          key="$(printf '%02d' "$id")"
-          marker=" "
-          [ "$active" = "*" ] && marker="●"
-          security="''${security:---}"
-          if [ "$security" = "--" ] || [ -z "$security" ]; then
-            security_icon=""
-          else
-            security_icon=""
-          fi
-
-          signal_value="''${signal:-0}"
-          if [ "$signal_value" -ge 85 ]; then
-            signal_icon="󰤨"
-          elif [ "$signal_value" -ge 65 ]; then
-            signal_icon="󰤥"
-          elif [ "$signal_value" -ge 45 ]; then
-            signal_icon="󰤢"
-          elif [ "$signal_value" -ge 25 ]; then
-            signal_icon="󰤟"
-          else
-            signal_icon="󰤯"
-          fi
-
-          if [ "$signal_value" -ge 70 ]; then
-            signal_color="${palette.success}"
-          elif [ "$signal_value" -ge 45 ]; then
-            signal_color="${palette.warning}"
-          else
-            signal_color="${palette.danger}"
-          fi
-          signal_percent="$(printf '%3s%%' "$signal_value")"
-          signal_markup="$signal_icon <span foreground=\"$signal_color\">$signal_percent</span>"
-
-          display_ssid="$ssid"
-          # Some SSIDs genuinely start with '*'. Render that as a look-alike
-          # glyph so it is not confused with the status/current column.
-          case "$display_ssid" in
-            \**) display_ssid="∗''${display_ssid:1}" ;;
-          esac
-          if [ "''${#display_ssid}" -gt 25 ]; then
-            display_ssid="''${display_ssid:0:24}…"
-          fi
-          display_ssid="$(markup_escape "$display_ssid")"
-
-          printf '%s\t%s\n' "$key" "$ssid" >> "$map_file"
-          printf '%s  %s   %-25s %s %s\n' \
-            "$key" "$marker" "$display_ssid" "$signal_markup" "$security_icon" >> "$rows_file"
+          visible_wifi_row "$id" "$ssid" "$active" "$security" "$signal" >> "$rows_file"
         done < <(wifi_entries)
+        visible_count="$id"
 
-        printf '%s\n' \
-          "r   󰑓  $id Networks (Rescan)" \
-          "p   󰖟  Captive portal login"
+        while IFS= read -r ssid; do
+          [ -n "$ssid" ] || continue
+          [ -z "''${seen_ssids[$ssid]+x}" ] || continue
+          seen_ssids["$ssid"]=1
+          id=$((id + 1))
+          saved_wifi_row "$id" "$ssid" >> "$rows_file"
+        done < <(saved_wifi_profiles)
+
+        rofi_common_headers "Wi-Fi" "$message"
+        rofi_row "rescan" "rescan" "r   󰑓  $visible_count Visible (Rescan)"
+        rofi_row "captive portal" "portal" "p   󰖟  Captive portal login"
         cat "$rows_file"
         rm -f "$rows_file"
       }
 
-      # Keep the cache warming in the background without delaying the menu.
-      nmcli device wifi rescan >/dev/null 2>&1 &
-
-      while true; do
+      connect_wifi() {
+        ssid="$1"
         current="$(current_ssid)"
-        map_file="$(mktemp)"
-        trap 'rm -f "$map_file"' EXIT
-        menu="$(build_menu "$map_file")"
-        choice="$(printf '%s\n' "$menu" | rofi -dmenu -i -markup-rows -p "Wi-Fi" || true)"
-        [ -n "$choice" ] || exit 0
-
-        key="$(printf '%s' "$choice" | awk '{print $1}')"
-        case "$key" in
-          r) rm -f "$map_file"; rescan_networks; continue ;;
-          p) exec captive-portal-browser ;;
-        esac
-
-        ssid="$(awk -F '\t' -v key="$key" '$1 == key { print $2; exit }' "$map_file")"
-        rm -f "$map_file"
-        [ -n "$ssid" ] || exit 0
 
         if [ "$ssid" = "$current" ]; then
           notify "Already connected" "$ssid"
@@ -461,8 +564,35 @@ let
           notify "Connection failed" "$ssid"
           exit 1
         fi
-        exit 0
-      done
+      }
+
+      if [ -z "''${ROFI_RETV:-}" ]; then
+        rofi_script_launch wifi "Wi-Fi" -markup-rows
+      fi
+
+      tab=$'\t'
+      info="''${ROFI_INFO:-}"
+      case "$info" in
+        rescan)
+          rofi_common_headers "Wi-Fi" "Scanning Wi-Fi…"
+          rofi_static_row "scanning" "󰑓  Scanning Wi-Fi…"
+          if refresh_wifi_cache_with_progress; then
+            count="$(network_count)"
+            emit_wifi_menu "Scan complete: $count visible networks."
+          else
+            emit_wifi_menu "Scan failed; showing cached and saved networks."
+          fi
+          ;;
+        portal)
+          open_captive_portal
+          ;;
+        connect"$tab"*)
+          connect_wifi "''${info#connect"$tab"}"
+          ;;
+        *)
+          emit_wifi_menu
+          ;;
+      esac
     '';
   };
 
@@ -478,6 +608,8 @@ let
     ];
     text = ''
       set -euo pipefail
+      # shellcheck source=/dev/null
+      source ${rofiScriptHelpers}
 
       notify() {
         notify-send -a "Bluetooth" "$@" >/dev/null 2>&1 || true
@@ -494,53 +626,79 @@ let
           | awk -F': ' -v field="$field" '$1 ~ "^[[:space:]]*" field "$" { print $2; exit }'
       }
 
-      scan_devices() {
+      scan_devices_with_progress() {
         bluetoothctl power on >/dev/null 2>&1 || true
-        notify "Scanning" "Looking for nearby Bluetooth devices…"
-        timeout 8s bluetoothctl scan on >/dev/null 2>&1 || true
+        timeout 8s bluetoothctl scan on >/dev/null 2>&1 &
+        scan_pid="$!"
+        elapsed=0
+
+        while kill -0 "$scan_pid" 2>/dev/null; do
+          rofi_header message "Scanning Bluetooth… ''${elapsed}s elapsed."
+          elapsed=$((elapsed + 1))
+          sleep 1
+        done
+
+        wait "$scan_pid" >/dev/null 2>&1 || true
         bluetoothctl scan off >/dev/null 2>&1 || true
       }
 
-      build_menu() {
-        map_file="$1"
-        : > "$map_file"
+      bluetooth_device_row() {
+        id="$1"
+        mac="$2"
+        name="$3"
+        [ -n "$name" ] || name="$mac"
+
+        connected="$(device_field "$mac" Connected || true)"
+        paired="$(device_field "$mac" Paired || true)"
+        trusted="$(device_field "$mac" Trusted || true)"
+
+        marker=" "
+        status="new"
+        if [ "$connected" = "yes" ]; then
+          marker="●"
+          status="connected"
+        elif [ "$paired" = "yes" ]; then
+          status="paired"
+        fi
+        [ "$trusted" = "yes" ] && status="$status trusted"
+
+        key="$(printf '%02d' "$id")"
+        safe_name="$(markup_escape "$name")"
+        display="$(printf '%s  %s  %-34.34s  %s' "$key" "$marker" "$safe_name" "$status")"
+        printf -v info 'device\t%s\t%s' "$mac" "$name"
+        rofi_row "$name $mac" "$info" "$display"
+      }
+
+      emit_bluetooth_menu() {
+        message="''${1:-Enter connects/disconnects}"
+        rows_file="$(mktemp)"
+        : > "$rows_file"
+
+        rofi_common_headers "Bluetooth" "$message"
 
         if ! bluetoothctl show >/dev/null 2>&1; then
-          printf '%s\n' "x  󰂲  No Bluetooth controller found"
+          rofi_static_row "no controller" "󰂲  No Bluetooth controller found"
+          rm -f "$rows_file"
           return 0
         fi
 
-        power="$(powered)"
+        power="$(powered || true)"
         if [ "$power" = "yes" ]; then
-          printf '%s\n' "t  󰂲  Turn Bluetooth off" "s  ⟳  Scan for devices"
+          rofi_row "toggle bluetooth" "toggle" "t  󰂲  Turn Bluetooth off"
+          rofi_row "scan bluetooth" "scan" "s  ⟳  Scan for devices"
         else
-          printf '%s\n' "t  󰂯  Turn Bluetooth on"
+          rofi_row "toggle bluetooth" "toggle" "t  󰂯  Turn Bluetooth on"
         fi
 
         id=0
         while read -r _ mac name; do
           [ -n "''${mac:-}" ] || continue
-          [ -n "''${name:-}" ] || name="$mac"
           id=$((id + 1))
-          key="$(printf '%02d' "$id")"
-
-          connected="$(device_field "$mac" Connected || true)"
-          paired="$(device_field "$mac" Paired || true)"
-          trusted="$(device_field "$mac" Trusted || true)"
-
-          marker=" "
-          status="new"
-          if [ "$connected" = "yes" ]; then
-            marker="●"
-            status="connected"
-          elif [ "$paired" = "yes" ]; then
-            status="paired"
-          fi
-          [ "$trusted" = "yes" ] && status="$status trusted"
-
-          printf '%s\t%s\t%s\n' "$key" "$mac" "$name" >> "$map_file"
-          printf '%s  %s  %-34.34s  %s\n' "$key" "$marker" "$name" "$status"
+          bluetooth_device_row "$id" "$mac" "''${name:-$mac}" >> "$rows_file"
         done < <(bluetoothctl devices 2>/dev/null | sort -k3)
+
+        cat "$rows_file"
+        rm -f "$rows_file"
       }
 
       connect_device() {
@@ -576,44 +734,266 @@ let
         fi
       }
 
-      while true; do
-        map_file="$(mktemp)"
-        trap 'rm -f "$map_file"' EXIT
-        power="$(powered || true)"
-        menu="$(build_menu "$map_file")"
-        message="Enter connects/disconnects • current: Bluetooth ''${power:-unknown}"
-        choice="$(printf '%s\n' "$menu" | rofi -dmenu -i -p "Bluetooth" -mesg "$message" || true)"
-        [ -n "$choice" ] || exit 0
+      if [ -z "''${ROFI_RETV:-}" ]; then
+        rofi_script_launch bluetooth "Bluetooth" -markup-rows
+      fi
 
-        key="$(printf '%s' "$choice" | awk '{print $1}')"
-        case "$key" in
-          x) exit 0 ;;
-          t)
-            if [ "$(powered || true)" = "yes" ]; then
-              bluetoothctl power off >/dev/null 2>&1 || true
-              notify "Bluetooth off"
-            else
-              bluetoothctl power on >/dev/null 2>&1 || true
-              notify "Bluetooth on"
-            fi
-            rm -f "$map_file"
-            continue
+      tab=$'\t'
+      info="''${ROFI_INFO:-}"
+      case "$info" in
+        toggle)
+          if [ "$(powered || true)" = "yes" ]; then
+            bluetoothctl power off >/dev/null 2>&1 || true
+            notify "Bluetooth off"
+            emit_bluetooth_menu "Bluetooth is off."
+          else
+            bluetoothctl power on >/dev/null 2>&1 || true
+            notify "Bluetooth on"
+            emit_bluetooth_menu "Bluetooth is on."
+          fi
+          ;;
+        scan)
+          rofi_common_headers "Bluetooth" "Scanning Bluetooth…"
+          rofi_static_row "scanning" "⟳  Scanning for Bluetooth devices…"
+          scan_devices_with_progress
+          emit_bluetooth_menu "Bluetooth scan complete."
+          ;;
+        device"$tab"*)
+          rest="''${info#device"$tab"}"
+          mac="''${rest%%"$tab"*}"
+          name="''${rest#*"$tab"}"
+          connect_device "$mac" "''${name:-$mac}"
+          ;;
+        *)
+          power="$(powered || true)"
+          emit_bluetooth_menu "Enter connects/disconnects • current: Bluetooth ''${power:-unknown}"
+          ;;
+      esac
+    '';
+  };
+
+  rofiClipboardMenu = pkgs.writeShellApplication {
+    name = "rofi-clipboard-menu";
+    runtimeInputs = with pkgs; [
+      cliphist
+      hyprland
+      libnotify
+      rofi
+      wl-clipboard
+    ];
+    text = ''
+      set -euo pipefail
+      # shellcheck source=/dev/null
+      source ${rofiScriptHelpers}
+
+      notify() {
+        notify-send -a "Clipboard" "$@" >/dev/null 2>&1 || true
+      }
+
+      # Single arbiter of "is this entry a stored image?". cliphist renders
+      # binary as a "[[ binary data <size> <type> <dims> ]]" placeholder; in this
+      # config the only binary entries are png screenshots (the wl-paste image
+      # watcher and the screenshot pipeline both store image/png). A predicate
+      # (return code, not echo) keeps the per-row menu loop fork-free.
+      clip_is_image() {
+        case "$1" in
+          "[[ binary data "*) return 0 ;;
+          *) return 1 ;;
+        esac
+      }
+
+      clipboard_row() {
+        entry="$1"
+        id="''${entry%%"$tab"*}"
+        preview="''${entry#*"$tab"}"
+
+        if clip_is_image "$preview"; then
+          text="''${preview#\[\[ binary data }"
+          text="''${text% \]\]}"
+          text="''${text//x/×}"
+          icon=$'\uf03e'
+          search="$id image screenshot $text"
+        else
+          text="$preview"
+          icon=$'\uf0ea'
+          search="$preview"
+        fi
+
+        display="$(printf '%-4s  %s  %s' "$id" "$icon" "$(markup_escape "$text")")"
+
+        printf -v info 'paste\t%s' "$entry"
+        rofi_row "$search" "$info" "$display"
+      }
+
+      # Resolve "backend|target|class" for the window focused before rofi
+      # opened. ROFI_DATA carries it across script reentry; ROFI_CLIPBOARD_TARGET
+      # is the launch-time export; the live query is the last-resort fallback.
+      clipboard_context() {
+        printf '%s' "''${ROFI_DATA:-''${ROFI_CLIPBOARD_TARGET:-$(hypr_active_window_paste_context)}}"
+      }
+
+      split_paste_context() {
+        context="$1"
+        paste_backend="''${context%%|*}"
+        rest="''${context#*|}"
+        paste_target="''${rest%%|*}"
+        paste_class="''${rest#*|}"
+        [ "$paste_class" != "$rest" ] || paste_class=""
+      }
+
+      paste_shortcut_for_class() {
+        case "$1" in
+          com.mitchellh.ghostty|ghostty|Ghostty|Alacritty|alacritty|kitty|foot|footclient|org.wezfurlong.wezterm|org.gnome.Terminal|org.gnome.Console|org.kde.konsole|konsole|Ptyxis|dev.warp.Warp|com.raggesilver.BlackBox)
+            printf 'CTRL_SHIFT,V'
             ;;
-          s)
-            rm -f "$map_file"
-            scan_devices
-            continue
+          *)
+            printf 'CTRL,V'
             ;;
         esac
+      }
 
-        mac="$(awk -F '\t' -v key="$key" '$1 == key { print $2; exit }' "$map_file")"
-        name="$(awk -F '\t' -v key="$key" '$1 == key { print $3; exit }' "$map_file")"
-        rm -f "$map_file"
-        [ -n "$mac" ] || exit 0
+      send_paste_shortcut() {
+        context="$1"
+        shortcut="$2"
+        split_paste_context "$context"
 
-        connect_device "$mac" "''${name:-$mac}"
-        exit 0
-      done
+        case "$paste_backend" in
+          hyprland)
+            hyprctl dispatch sendshortcut "$shortcut,$paste_target" >/dev/null 2>&1
+            ;;
+          *)
+            return 1
+            ;;
+        esac
+      }
+
+      emit_clipboard_menu() {
+        context="$(clipboard_context)"
+        rofi_common_headers "Paste" "Enter pastes selected item • screenshot images are marked "
+        rofi_header data "$context"
+        rofi_row "clear clipboard history" "clear" "󰆴  Clear clipboard history"
+
+        count=0
+        while IFS= read -r entry; do
+          [ -n "$entry" ] || continue
+          count=$((count + 1))
+          clipboard_row "$entry"
+        done < <(cliphist list 2>/dev/null || true)
+
+        if [ "$count" -eq 0 ]; then
+          rofi_static_row "no clipboard history" "No clipboard history"
+        fi
+      }
+
+      paste_entry() {
+        entry="$1"
+        preview="''${entry#*"$tab"}"
+
+        if clip_is_image "$preview"; then
+          printf '%s\n' "$entry" | cliphist decode | wl-copy --sensitive --type image/png
+        else
+          printf '%s\n' "$entry" | cliphist decode | wl-copy --sensitive
+        fi
+
+        context="$(clipboard_context)"
+        split_paste_context "$context"
+        shortcut="$(paste_shortcut_for_class "$paste_class")"
+
+        # Compositor-native paste backend: Hyprland sends the chosen shortcut
+        # directly to the window that was focused before rofi opened. The
+        # per-app shortcut map above handles terminals that paste with
+        # Ctrl+Shift+V instead of Ctrl+V. wl-copy --sensitive tells the cliphist
+        # watcher not to re-store/dedupe this paste, so selecting an item does
+        # not move or remove it from history.
+        if send_paste_shortcut "$context" "$shortcut"; then
+          notify "Pasted from history" "$preview"
+        else
+          notify "Paste shortcut failed" "Item is on the clipboard; press paste manually."
+        fi
+      }
+
+      if [ -z "''${ROFI_RETV:-}" ]; then
+        ROFI_CLIPBOARD_TARGET="$(hypr_active_window_paste_context)"
+        export ROFI_CLIPBOARD_TARGET
+        rofi_script_launch clipboard "Paste" -markup-rows
+      fi
+
+      tab=$'\t'
+      info="''${ROFI_INFO:-}"
+      case "$info" in
+        clear)
+          cliphist wipe
+          notify "Clipboard history cleared"
+          emit_clipboard_menu
+          ;;
+        paste"$tab"*)
+          paste_entry "''${info#paste"$tab"}"
+          ;;
+        *)
+          emit_clipboard_menu
+          ;;
+      esac
+    '';
+  };
+
+  screenshotAnnotate = pkgs.writeShellApplication {
+    name = "screenshot-annotate";
+    runtimeInputs = with pkgs; [
+      coreutils
+      grim
+      libnotify
+      slurp
+      swappy
+      wl-clipboard
+    ];
+    text = ''
+      set -euo pipefail
+
+      notify() {
+        notify-send -a "Screenshot" "$@" >/dev/null 2>&1 || true
+      }
+
+      tmp_dir="$(mktemp -d)"
+      trap 'rm -rf "$tmp_dir"' EXIT
+      raw="$tmp_dir/capture.png"
+      edited="$tmp_dir/edited.png"
+
+      geometry="$(slurp || true)"
+      [ -n "$geometry" ] || exit 0
+
+      grim -g "$geometry" "$raw"
+
+      # Swappy's own clipboard button can race/confuse history. Instead, write
+      # the final annotated image to a file, copy it once with an explicit MIME
+      # type, and let the wl-paste/cliphist image watcher store exactly that.
+      swappy -f "$raw" -o "$edited" >/dev/null 2>&1 || exit 0
+      [ -s "$edited" ] || exit 0
+
+      wl-copy --type image/png < "$edited"
+      notify "Copied screenshot" "Available in clipboard history as an image item."
+    '';
+  };
+
+  rofiAppMenu = pkgs.writeShellApplication {
+    name = "rofi-app-menu";
+    runtimeInputs = [
+      pkgs.hyprland
+      pkgs.rofi
+      rofiWifiMenu
+      rofiBluetoothMenu
+      rofiClipboardMenu
+    ];
+    text = ''
+      set -euo pipefail
+      # shellcheck source=/dev/null
+      source ${rofiScriptHelpers}
+
+      ROFI_CLIPBOARD_TARGET="$(hypr_active_window_paste_context)"
+      export ROFI_CLIPBOARD_TARGET
+
+      # Keep apps on rofi's native drun mode rather than cloning desktop-entry
+      # parsing. Wi-Fi/Bluetooth/Paste are script modes in the same menu.
+      exec rofi -show drun -modes "drun,run,window,wifi:rofi-wifi-menu,bluetooth:rofi-bluetooth-menu,clipboard:rofi-clipboard-menu" -i
     '';
   };
 
@@ -690,8 +1070,11 @@ in
     hyprMonitorAuto
     togglesplitToggle
     captivePortalBrowser
+    rofiAppMenu
     rofiWifiMenu
     rofiBluetoothMenu
+    rofiClipboardMenu
+    screenshotAnnotate
     zenBrowser
     unstablePkgs.codex
     ghostty
@@ -702,7 +1085,6 @@ in
     swayosd
     wlogout
     btop
-    htop
   ];
 
   home.sessionVariables = {
@@ -711,7 +1093,7 @@ in
     # to use VS Code for commit messages and interactive operations.
     EDITOR = "nvim";
     VISUAL = "code --wait";
-    GTK_THEME = "Adwaita:dark";
+    GTK_THEME = theme.appearance.gtkThemeEnv;
   };
 
   home.sessionPath = [
@@ -720,12 +1102,12 @@ in
 
   gtk = {
     enable = true;
-    theme.name = "Adwaita-dark";
-    iconTheme.name = "Adwaita";
+    theme.name = theme.appearance.gtkTheme;
+    iconTheme.name = theme.appearance.iconTheme;
     cursorTheme = {
-      name = "Bibata-Modern-Ice";
+      name = theme.appearance.cursorTheme;
       package = pkgs.bibata-cursors;
-      size = 24;
+      size = theme.appearance.cursorSize;
     };
     font = {
       name = fonts.mono;
@@ -735,21 +1117,21 @@ in
 
   qt = {
     enable = true;
-    platformTheme.name = "gtk";
-    style.name = "adwaita-dark";
+    platformTheme.name = theme.appearance.qtPlatformThemeName;
+    style.name = theme.appearance.qtStyle;
   };
 
   dconf.settings = {
     "org/gnome/desktop/interface" = {
-      color-scheme = "prefer-dark";
-      gtk-theme = "Adwaita-dark";
+      color-scheme = theme.appearance.gtkColorScheme;
+      gtk-theme = theme.appearance.gtkTheme;
     };
   };
 
   home.pointerCursor = {
-    name = "Bibata-Modern-Ice";
+    name = theme.appearance.cursorTheme;
     package = pkgs.bibata-cursors;
-    size = 24;
+    size = theme.appearance.cursorSize;
     gtk.enable = true;
     x11.enable = true;
   };
@@ -807,6 +1189,7 @@ in
       genericName = "Terminal File Manager";
       comment = "Browse files in Yazi";
       exec = "ghostty -e yazi %f";
+      icon = "${pkgs.adwaita-icon-theme}/share/icons/Adwaita/symbolic/legacy/system-file-manager-symbolic.svg";
       terminal = false;
       mimeType = [
         "inode/directory"
@@ -822,6 +1205,7 @@ in
       genericName = "AI Coding Assistant";
       comment = "Open Pi coding assistant";
       exec = "ghostty -e pi";
+      icon = "${./assets/pi-logo-on-dark.svg}";
       terminal = false;
       categories = [
         "Development"
@@ -845,8 +1229,11 @@ in
   # User-level shims keep interactive launchers current even before the next
   # root-level NixOS profile switch updates /etc/profiles/per-user.
   home.file = lib.listToAttrs [
+    (binShim rofiAppMenu "rofi-app-menu")
     (binShim rofiWifiMenu "rofi-wifi-menu")
     (binShim rofiBluetoothMenu "rofi-bluetooth-menu")
+    (binShim rofiClipboardMenu "rofi-clipboard-menu")
+    (binShim screenshotAnnotate "screenshot-annotate")
     (binShim captivePortalBrowser "captive-portal-browser")
   ] // {
     ".pi/agent/extensions/thinking-level-picker.ts".source = ./config/pi/thinking-level-picker.ts;

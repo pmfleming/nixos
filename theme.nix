@@ -35,6 +35,18 @@ let
     scrollbarWidth = "5px";
   };
 
+  appearance = {
+    gtkTheme = "Adwaita-dark";
+    gtkThemeEnv = "Adwaita:dark";
+    gtkColorScheme = "prefer-dark";
+    iconTheme = "Adwaita";
+    cursorTheme = "Bibata-Modern-Ice";
+    cursorSize = 24;
+    qtPlatformThemeName = "gtk";
+    qtPlatformThemeEnv = "gtk3";
+    qtStyle = "adwaita-dark";
+  };
+
   colorBare = color: builtins.substring 1 6 color;
 
   themeTokens = {
@@ -62,6 +74,8 @@ let
     "@FONT_MONO@" = fonts.mono;
     "@FONT_MONO_NERD@" = fonts.monoNerd;
     "@FONT_SIZE@" = ui.fontSize;
+    "@GTK_THEME_ENV@" = appearance.gtkThemeEnv;
+    "@QT_QPA_PLATFORMTHEME@" = appearance.qtPlatformThemeEnv;
     "@ROFI_WIDTH@" = ui.rofiWidth;
     "@ROFI_LINES@" = ui.rofiLines;
     "@SCROLLBAR_WIDTH@" = ui.scrollbarWidth;
@@ -73,6 +87,6 @@ let
     text;
 in
 {
-  inherit palette fonts ui themeTokens themeText;
+  inherit palette fonts ui appearance themeTokens themeText;
 }
 # hash-padding: 1
