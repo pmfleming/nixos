@@ -266,12 +266,33 @@
         "type": "github"
       }
     },
+    "nm-wifi-rofi": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782211576,
+        "narHash": "sha256-+LUMol6AF78kIwn9mh9Fu9z0/jitpsrS0yHyYZmVYcQ=",
+        "owner": "pmfleming",
+        "repo": "rofinetworkadvanced",
+        "rev": "d1cf728ce39d52b16464eabda8a1f67cef575bc5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "pmfleming",
+        "repo": "rofinetworkadvanced",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "home-manager": "home-manager",
         "hyprland-guiutils": "hyprland-guiutils",
         "nixpkgs": "nixpkgs",
         "nixpkgs-unstable": "nixpkgs-unstable",
+        "nm-wifi-rofi": "nm-wifi-rofi",
         "zen-browser": "zen-browser"
       }
     },

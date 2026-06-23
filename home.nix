@@ -3,6 +3,7 @@
 let
   system = pkgs.stdenv.hostPlatform.system;
   hyprlandGuiutils = inputs.hyprland-guiutils.packages.${system}.default;
+  nmWifiRofi = inputs.nm-wifi-rofi.packages.${system}.default;
   zenBrowser = inputs.zen-browser.packages.${system}.default;
 
   theme = import ./theme.nix;
@@ -26,6 +27,10 @@ let
   binShim = drv: name: lib.nameValuePair ".local/bin/${name}" {
     source = "${drv}/bin/${name}";
   };
+
+  scriptLib = import ./lib/scripts.nix;
+  scriptWith = scriptLib.withPlaceholders;
+  mkScript = scriptLib.mkShellApplication pkgs;
 
   togglesplitPlugin = pkgs.stdenv.mkDerivation {
     pname = "hyprland-togglesplit";
@@ -63,7 +68,7 @@ let
     [ "${togglesplitPlugin}/lib/togglesplit.so" "${pkgs.hyprpolkitagent}" ]
     (builtins.readFile ./config/hypr/hyprland.conf));
 
-  hyprMonitorAuto = pkgs.writeShellApplication {
+  hyprMonitorAuto = mkScript {
     name = "hypr-monitor-auto";
     runtimeInputs = with pkgs; [
       coreutils
@@ -72,244 +77,38 @@ let
       procps
       socat
     ];
-    text = ''
-      last_state=""
-
-      restart_waybar() {
-        # Waybar can stay attached to the disabled output after a monitor swap.
-        # Restart it through Hyprland so it binds to the currently visible output.
-        sleep 0.5
-        pkill -u "$(id -u)" -f '(^|/)waybar( |$)' >/dev/null 2>&1 || true
-        for _ in 1 2 3 4 5; do
-          pgrep -u "$(id -u)" -f '(^|/)waybar( |$)' >/dev/null || break
-          sleep 0.2
-        done
-        hyprctl dispatch exec "${pkgs.waybar}/bin/waybar >/dev/null 2>&1" >/dev/null || true
-      }
-
-      external_connected() {
-        for status in /sys/class/drm/card*-DP-*/status /sys/class/drm/card*-HDMI-A-*/status; do
-          [ -e "$status" ] || continue
-          grep -q '^connected$' "$status" && return 0
-        done
-        return 1
-      }
-
-      custom_monitors_file="''${XDG_CONFIG_HOME:-$HOME/.config}/hypr/monitors.conf"
-
-      custom_monitor_config_matches_state() {
-        [ -f "$custom_monitors_file" ] || return 1
-        grep -Eq '^[[:space:]]*monitor[[:space:]]*=' "$custom_monitors_file" || return 1
-
-        if external_connected; then
-          # Respect saved nwg-displays external layouts; ignore stale internal-only configs.
-          # Match external connector names only at the start of the monitor field;
-          # otherwise eDP-1 is accidentally treated as a DP-* external output.
-          grep -Eq '^[[:space:]]*monitor[[:space:]]*=[[:space:]]*((DP-|HDMI-A-)|desc:)' "$custom_monitors_file"
-        else
-          grep -Eq '^[[:space:]]*monitor[[:space:]]*=[[:space:]]*eDP-' "$custom_monitors_file"
-        fi
-      }
-
-      apply_state() {
-        if custom_monitor_config_matches_state; then
-          state="custom"
-          if [ "$state" != "$last_state" ]; then
-            restart_waybar
-            last_state="$state"
-          fi
-          return 0
-        fi
-
-        if external_connected; then
-          state="external"
-          if [ "$state" != "$last_state" ]; then
-            hyprctl keyword monitor ",preferred,auto,1.25" >/dev/null || true
-            hyprctl keyword monitor "eDP-1,disable" >/dev/null || true
-            restart_waybar
-            last_state="$state"
-          fi
-        else
-          state="internal"
-          if [ "$state" != "$last_state" ]; then
-            hyprctl keyword monitor "eDP-1,preferred,auto,1.25" >/dev/null || true
-            restart_waybar
-            last_state="$state"
-          fi
-        fi
-      }
-
-      runtime_dir="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-
-      find_socket() {
-        if [ -n "''${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
-          socket="$runtime_dir/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
-          [ -S "$socket" ] && printf '%s\n' "$socket" && return 0
-        fi
-
-        for socket in "$runtime_dir"/hypr/*/.socket2.sock; do
-          [ -S "$socket" ] && printf '%s\n' "$socket" && return 0
-        done
-
-        return 1
-      }
-
-      export_instance_from_socket() {
-        instance="''${1%/.socket2.sock}"
-        export HYPRLAND_INSTANCE_SIGNATURE="''${instance##*/}"
-      }
-
-      while true; do
-        while ! socket="$(find_socket)"; do
-          sleep 1
-        done
-
-        export_instance_from_socket "$socket"
-        apply_state
-
-        socat -U - UNIX-CONNECT:"$socket" | while IFS= read -r event; do
-          case "$event" in
-            monitoradded*|monitorremoved*|configreloaded*) apply_state ;;
-          esac
-        done
-
-        sleep 1
-      done
-    '';
+    replacements."@WAYBAR@" = "${pkgs.waybar}/bin/waybar";
+    path = ./config/scripts/hypr-monitor-auto.sh;
   };
 
-  togglesplitToggle = pkgs.writeShellApplication {
+  togglesplitToggle = mkScript {
     name = "togglesplit-toggle";
     runtimeInputs = with pkgs; [
       hyprland
       jq
       libnotify
     ];
-    text = ''
-      current="$(hyprctl getoption -j plugin:togglesplit:enabled | jq -r '.int')"
-
-      if [ "$current" = "1" ]; then
-        next=false
-        label=disabled
-      else
-        next=true
-        label=enabled
-      fi
-
-      hyprctl keyword plugin:togglesplit:enabled "$next" >/dev/null
-      notify-send "togglesplit $label"
-    '';
+    path = ./config/scripts/togglesplit-toggle.sh;
   };
 
-  captivePortalBrowser = pkgs.writeShellApplication {
+  captivePortalBrowser = mkScript {
     name = "captive-portal-browser";
     runtimeInputs = with pkgs; [
       coreutils
       google-chrome
     ];
-    text = ''
-      set -euo pipefail
-
-      profile_dir="''${XDG_DATA_HOME:-$HOME/.local/share}/captive-portal-chrome"
-      mkdir -p "$profile_dir"
-
-      if [ "$#" -eq 0 ]; then
-        set -- \
-          "http://example.com" \
-          "http://captive.apple.com/hotspot-detect.html" \
-          "http://www.msftconnecttest.com/connecttest.txt" \
-          "http://nmcheck.gnome.org/check_network_status.txt"
-      fi
-
-      exec google-chrome-stable \
-        --user-data-dir="$profile_dir" \
-        --no-first-run \
-        --no-default-browser-check \
-        --disable-search-engine-choice-screen \
-        --new-window \
-        --disable-extensions \
-        --disable-quic \
-        --disable-features=HttpsUpgrades,HttpsFirstBalancedModeAutoEnable,HttpsFirstModeV2,DnsOverHttpsUpgrade \
-        --no-proxy-server \
-        "$@"
-    '';
+    path = ./config/scripts/captive-portal-browser.sh;
   };
 
-  rofiScriptHelpers = pkgs.writeText "rofi-script-helpers.sh" ''
-    markup_escape() {
-      printf '%s' "$1" \
-        | sed \
-            -e 's/&/\&amp;/g' \
-            -e 's/</\&lt;/g' \
-            -e 's/>/\&gt;/g'
-    }
+  rofiScriptHelpers = pkgs.writeText "rofi-helpers.sh" (scriptWith {} ./config/scripts/rofi-helpers.sh);
+  rofiHelperReplacement = {
+    "@ROFI_SCRIPT_HELPERS@" = "${rofiScriptHelpers}";
+  };
+  mkRofiScript = attrs: mkScript (attrs // {
+    replacements = rofiHelperReplacement // (attrs.replacements or {});
+  });
 
-    rofi_header() {
-      printf '\0%s\x1f%s\n' "$1" "$2"
-    }
-
-    rofi_common_headers() {
-      prompt="$1"
-      message="''${2:-}"
-      rofi_header prompt "$prompt"
-      rofi_header markup-rows true
-      rofi_header no-custom true
-      [ -z "$message" ] || rofi_header message "$message"
-    }
-
-    rofi_row() {
-      search="$1"
-      info="$2"
-      display="$3"
-
-      printf '%s\0display\x1f%s' "$search" "$display"
-      [ -z "$info" ] || printf '\x1finfo\x1f%s' "$info"
-      printf '\n'
-    }
-
-    rofi_static_row() {
-      search="$1"
-      display="$2"
-
-      printf '%s\0display\x1f%s\x1fnonselectable\x1ftrue\n' "$search" "$display"
-    }
-
-    rofi_script_launch() {
-      mode="$1"
-      prompt="$2"
-      shift 2
-
-      exec rofi -show "$mode" -modes "$mode:$0" -i -p "$prompt" "$@"
-    }
-
-    hypr_active_window_paste_context() {
-      target="activewindow"
-      class=""
-
-      if ! command -v hyprctl >/dev/null 2>&1; then
-        printf 'none|%s|%s\n' "$target" "$class"
-        return 0
-      fi
-
-      while IFS= read -r line; do
-        case "$line" in
-          Window\ *\ -\>*)
-            address="''${line#Window }"
-            address="''${address%% ->*}"
-            address="''${address#0x}"
-            [ -z "$address" ] || target="address:0x$address"
-            ;;
-          *class:\ *)
-            class="''${line#*: }"
-            ;;
-        esac
-      done < <(hyprctl activewindow 2>/dev/null || true)
-
-      printf 'hyprland|%s|%s\n' "$target" "$class"
-    }
-  '';
-
-  rofiWifiMenu = pkgs.writeShellApplication {
+  rofiWifiMenu = mkRofiScript {
     name = "rofi-wifi-menu";
     runtimeInputs = with pkgs; [
       captivePortalBrowser
@@ -320,283 +119,56 @@ let
       networkmanager
       rofi
     ];
-    text = ''
-      set -euo pipefail
-      # shellcheck source=/dev/null
-      source ${rofiScriptHelpers}
-
-      notify() {
-        notify-send -a "Wi-Fi" "$@" >/dev/null 2>&1 || true
-      }
-
-      current_ssid() {
-        nmcli -t -f IN-USE,SSID device wifi list --rescan no 2>/dev/null \
-          | awk -F: '$1 == "*" { sub(/^[^:]*:/, ""); print; exit }' \
-          | sed 's/\\:/:/g'
-      }
-
-      wifi_entries() {
-        nmcli -m multiline -f IN-USE,SSID,SECURITY,SIGNAL,BARS device wifi list --rescan no 2>/dev/null \
-          | awk '
-              function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
-              BEGIN { sep = sprintf("%c", 31) }
-              function flush() {
-                if (ssid == "") return
-                sig = signal + 0
-                if (!(ssid in best) || sig > bestSignal[ssid]) {
-                  bestSignal[ssid] = sig
-                  best[ssid] = active sep security sep signal sep bars
-                }
-              }
-              /^IN-USE:/ { flush(); active = trim(substr($0, index($0, ":") + 1)); ssid = security = signal = bars = ""; next }
-              /^SSID:/ { ssid = trim(substr($0, index($0, ":") + 1)); next }
-              /^SECURITY:/ { security = trim(substr($0, index($0, ":") + 1)); next }
-              /^SIGNAL:/ { signal = trim(substr($0, index($0, ":") + 1)); next }
-              /^BARS:/ { bars = trim(substr($0, index($0, ":") + 1)); next }
-              END {
-                flush()
-                for (s in best) print bestSignal[s] sep s sep best[s]
-              }
-            ' \
-          | sort -t $'\037' -k1,1rn
-      }
-
-      network_count() {
-        wifi_entries | wc -l | tr -d ' '
-      }
-
-      refresh_wifi_cache() {
-        scan_rc=0
-        nmcli --wait 8 device wifi rescan >/dev/null 2>&1 || scan_rc=$?
-        sleep 2
-        return "$scan_rc"
-      }
-
-      refresh_wifi_cache_with_progress() {
-        nmcli --wait 8 device wifi rescan >/dev/null 2>&1 &
-        scan_pid="$!"
-        elapsed=0
-
-        while kill -0 "$scan_pid" 2>/dev/null; do
-          rofi_header message "Scanning Wi-Fi… ''${elapsed}s elapsed. Waiting for NetworkManager."
-          elapsed=$((elapsed + 1))
-          sleep 1
-        done
-
-        scan_rc=0
-        wait "$scan_pid" || scan_rc=$?
-        rofi_header message "Publishing refreshed Wi-Fi list…"
-        sleep 2
-        return "$scan_rc"
-      }
-
-      open_captive_portal() {
-        captive-portal-browser >/dev/null 2>&1 &
-      }
-
-      after_connect() {
-        connected_ssid="$1"
-        notify "Connected" "$connected_ssid"
-
-        for _ in 1 2 3 4 5 6; do
-          state="$(nmcli -t -f CONNECTIVITY general status 2>/dev/null || printf 'unknown')"
-          case "$state" in
-            full)
-              return 0
-              ;;
-            portal|limited)
-              notify "Captive portal detected" "Opening login page for $connected_ssid"
-              open_captive_portal
-              return 0
-              ;;
-          esac
-
-          nmcli networking connectivity check >/dev/null 2>&1 || true
-          sleep 2
-        done
-      }
-
-      connect_saved_profile() {
-        target_ssid="$1"
-        while IFS=: read -r uuid type; do
-          [ "$type" = "802-11-wireless" ] || continue
-          profile_ssid="$(nmcli -g 802-11-wireless.ssid connection show uuid "$uuid" 2>/dev/null | sed 's/\\:/:/g' || true)"
-          if [ "$profile_ssid" = "$target_ssid" ]; then
-            nmcli --wait 30 connection up uuid "$uuid" && return 0
-          fi
-        done < <(nmcli -t -f UUID,TYPE connection show)
-
-        return 1
-      }
-
-      saved_wifi_profiles() {
-        while IFS=: read -r uuid type; do
-          [ "$type" = "802-11-wireless" ] || continue
-          profile_ssid="$(nmcli -g 802-11-wireless.ssid connection show uuid "$uuid" 2>/dev/null | sed 's/\\:/:/g' || true)"
-          [ -n "$profile_ssid" ] || continue
-          printf '%s\n' "$profile_ssid"
-        done < <(nmcli -t -f UUID,TYPE connection show)
-      }
-
-      display_ssid() {
-        label="$1"
-        case "$label" in
-          \**) label="∗''${label:1}" ;;
-        esac
-        if [ "''${#label}" -gt 25 ]; then
-          label="''${label:0:24}…"
-        fi
-        markup_escape "$label"
-      }
-
-      visible_wifi_row() {
-        id="$1"
-        ssid="$2"
-        active="$3"
-        security="$4"
-        signal="$5"
-
-        key="$(printf '%02d' "$id")"
-        marker=" "
-        [ "$active" = "*" ] && marker="●"
-        security="''${security:---}"
-        if [ "$security" = "--" ] || [ -z "$security" ]; then
-          security_icon=""
-        else
-          security_icon=""
-        fi
-
-        signal_value="''${signal:-0}"
-        if [ "$signal_value" -ge 85 ]; then
-          signal_icon="󰤨"
-        elif [ "$signal_value" -ge 65 ]; then
-          signal_icon="󰤥"
-        elif [ "$signal_value" -ge 45 ]; then
-          signal_icon="󰤢"
-        elif [ "$signal_value" -ge 25 ]; then
-          signal_icon="󰤟"
-        else
-          signal_icon="󰤯"
-        fi
-
-        if [ "$signal_value" -ge 70 ]; then
-          signal_color="${palette.success}"
-        elif [ "$signal_value" -ge 45 ]; then
-          signal_color="${palette.warning}"
-        else
-          signal_color="${palette.danger}"
-        fi
-
-        signal_percent="$(printf '%3s%%' "$signal_value")"
-        signal_markup="$signal_icon <span foreground=\"$signal_color\">$signal_percent</span>"
-        display="$(printf '%s  %s   %-25s %s %s' "$key" "$marker" "$(display_ssid "$ssid")" "$signal_markup" "$security_icon")"
-        printf -v info 'connect\t%s' "$ssid"
-        rofi_row "$ssid" "$info" "$display"
-      }
-
-      saved_wifi_row() {
-        id="$1"
-        ssid="$2"
-        key="$(printf '%02d' "$id")"
-        display="$(printf '%s  %s   %-25s %s %s' "$key" "◇" "$(display_ssid "$ssid")" "<span foreground=\"${palette.muted}\">saved</span>" "")"
-        printf -v info 'connect\t%s' "$ssid"
-        rofi_row "$ssid" "$info" "$display"
-      }
-
-      emit_wifi_menu() {
-        message="''${1:-Enter connects • saved profiles are shown when not currently visible}"
-        rows_file="$(mktemp)"
-        : > "$rows_file"
-
-        id=0
-        visible_count=0
-        declare -A seen_ssids=()
-
-        while IFS=$'\037' read -r _sort_signal ssid active security signal _bars; do
-          [ -n "$ssid" ] || continue
-          seen_ssids["$ssid"]=1
-          id=$((id + 1))
-          visible_wifi_row "$id" "$ssid" "$active" "$security" "$signal" >> "$rows_file"
-        done < <(wifi_entries)
-        visible_count="$id"
-
-        while IFS= read -r ssid; do
-          [ -n "$ssid" ] || continue
-          [ -z "''${seen_ssids[$ssid]+x}" ] || continue
-          seen_ssids["$ssid"]=1
-          id=$((id + 1))
-          saved_wifi_row "$id" "$ssid" >> "$rows_file"
-        done < <(saved_wifi_profiles)
-
-        rofi_common_headers "Wi-Fi" "$message"
-        rofi_row "rescan" "rescan" "r   󰑓  $visible_count Visible (Rescan)"
-        rofi_row "captive portal" "portal" "p   󰖟  Captive portal login"
-        cat "$rows_file"
-        rm -f "$rows_file"
-      }
-
-      connect_wifi() {
-        ssid="$1"
-        current="$(current_ssid)"
-
-        if [ "$ssid" = "$current" ]; then
-          notify "Already connected" "$ssid"
-          after_connect "$ssid"
-          exit 0
-        fi
-
-        if connect_saved_profile "$ssid"; then
-          after_connect "$ssid"
-          exit 0
-        fi
-
-        if nmcli --wait 30 device wifi connect "$ssid"; then
-          after_connect "$ssid"
-          exit 0
-        fi
-
-        password="$(rofi -dmenu -password -p "Password for $ssid" || true)"
-        [ -n "$password" ] || exit 1
-
-        if nmcli --wait 30 device wifi connect "$ssid" password "$password"; then
-          after_connect "$ssid"
-        else
-          notify "Connection failed" "$ssid"
-          exit 1
-        fi
-      }
-
-      if [ -z "''${ROFI_RETV:-}" ]; then
-        rofi_script_launch wifi "Wi-Fi" -markup-rows
-      fi
-
-      tab=$'\t'
-      info="''${ROFI_INFO:-}"
-      case "$info" in
-        rescan)
-          rofi_common_headers "Wi-Fi" "Scanning Wi-Fi…"
-          rofi_static_row "scanning" "󰑓  Scanning Wi-Fi…"
-          if refresh_wifi_cache_with_progress; then
-            count="$(network_count)"
-            emit_wifi_menu "Scan complete: $count visible networks."
-          else
-            emit_wifi_menu "Scan failed; showing cached and saved networks."
-          fi
-          ;;
-        portal)
-          open_captive_portal
-          ;;
-        connect"$tab"*)
-          connect_wifi "''${info#connect"$tab"}"
-          ;;
-        *)
-          emit_wifi_menu
-          ;;
-      esac
-    '';
+    replacements = {
+      "@PALETTE_SUCCESS@" = palette.success;
+      "@PALETTE_WARNING@" = palette.warning;
+      "@PALETTE_DANGER@" = palette.danger;
+      "@PALETTE_MUTED@" = palette.muted;
+    };
+    path = ./config/scripts/rofi-wifi-menu.sh;
   };
 
-  rofiBluetoothMenu = pkgs.writeShellApplication {
+  cliphistStore = mkScript {
+    name = "cliphist-store";
+    runtimeInputs = with pkgs; [ cliphist ];
+    path = ./config/scripts/cliphist-store.sh;
+  };
+
+  cliphistWatchers = {
+    cliphist-text = {
+      description = "Store text clipboard history with cliphist";
+      mime = "text";
+    };
+    cliphist-image = {
+      description = "Store image clipboard history with cliphist";
+      mime = "image";
+    };
+    cliphist-uri-list = {
+      description = "Store copied file URI clipboard history with cliphist";
+      mime = "text/uri-list";
+    };
+    cliphist-gnome-copied-files = {
+      description = "Store GNOME-style copied file clipboard history with cliphist";
+      mime = "x-special/gnome-copied-files";
+    };
+  };
+
+  mkCliphistWatcher = { description, mime }:
+    mkUserService
+      description
+      "${pkgs.wl-clipboard}/bin/wl-paste --type ${mime} --watch ${cliphistStore}/bin/cliphist-store"
+      "2s";
+
+  rofiNmWifiMenu = mkRofiScript {
+    name = "rofi-nm-wifi-menu";
+    runtimeInputs = [
+      nmWifiRofi
+      pkgs.rofi
+    ];
+    path = ./config/scripts/rofi-nm-wifi-menu.sh;
+  };
+
+  rofiBluetoothMenu = mkRofiScript {
     name = "rofi-bluetooth-menu";
     runtimeInputs = with pkgs; [
       bluez
@@ -606,337 +178,24 @@ let
       libnotify
       rofi
     ];
-    text = ''
-      set -euo pipefail
-      # shellcheck source=/dev/null
-      source ${rofiScriptHelpers}
-
-      notify() {
-        notify-send -a "Bluetooth" "$@" >/dev/null 2>&1 || true
-      }
-
-      powered() {
-        bluetoothctl show 2>/dev/null | awk -F': ' '/^[[:space:]]*Powered:/ { print $2; exit }'
-      }
-
-      device_field() {
-        mac="$1"
-        field="$2"
-        bluetoothctl info "$mac" 2>/dev/null \
-          | awk -F': ' -v field="$field" '$1 ~ "^[[:space:]]*" field "$" { print $2; exit }'
-      }
-
-      scan_devices_with_progress() {
-        bluetoothctl power on >/dev/null 2>&1 || true
-        timeout 8s bluetoothctl scan on >/dev/null 2>&1 &
-        scan_pid="$!"
-        elapsed=0
-
-        while kill -0 "$scan_pid" 2>/dev/null; do
-          rofi_header message "Scanning Bluetooth… ''${elapsed}s elapsed."
-          elapsed=$((elapsed + 1))
-          sleep 1
-        done
-
-        wait "$scan_pid" >/dev/null 2>&1 || true
-        bluetoothctl scan off >/dev/null 2>&1 || true
-      }
-
-      bluetooth_device_row() {
-        id="$1"
-        mac="$2"
-        name="$3"
-        [ -n "$name" ] || name="$mac"
-
-        connected="$(device_field "$mac" Connected || true)"
-        paired="$(device_field "$mac" Paired || true)"
-        trusted="$(device_field "$mac" Trusted || true)"
-
-        marker=" "
-        status="new"
-        if [ "$connected" = "yes" ]; then
-          marker="●"
-          status="connected"
-        elif [ "$paired" = "yes" ]; then
-          status="paired"
-        fi
-        [ "$trusted" = "yes" ] && status="$status trusted"
-
-        key="$(printf '%02d' "$id")"
-        safe_name="$(markup_escape "$name")"
-        display="$(printf '%s  %s  %-34.34s  %s' "$key" "$marker" "$safe_name" "$status")"
-        printf -v info 'device\t%s\t%s' "$mac" "$name"
-        rofi_row "$name $mac" "$info" "$display"
-      }
-
-      emit_bluetooth_menu() {
-        message="''${1:-Enter connects/disconnects}"
-        rows_file="$(mktemp)"
-        : > "$rows_file"
-
-        rofi_common_headers "Bluetooth" "$message"
-
-        if ! bluetoothctl show >/dev/null 2>&1; then
-          rofi_static_row "no controller" "󰂲  No Bluetooth controller found"
-          rm -f "$rows_file"
-          return 0
-        fi
-
-        power="$(powered || true)"
-        if [ "$power" = "yes" ]; then
-          rofi_row "toggle bluetooth" "toggle" "t  󰂲  Turn Bluetooth off"
-          rofi_row "scan bluetooth" "scan" "s  ⟳  Scan for devices"
-        else
-          rofi_row "toggle bluetooth" "toggle" "t  󰂯  Turn Bluetooth on"
-        fi
-
-        id=0
-        while read -r _ mac name; do
-          [ -n "''${mac:-}" ] || continue
-          id=$((id + 1))
-          bluetooth_device_row "$id" "$mac" "''${name:-$mac}" >> "$rows_file"
-        done < <(bluetoothctl devices 2>/dev/null | sort -k3)
-
-        cat "$rows_file"
-        rm -f "$rows_file"
-      }
-
-      connect_device() {
-        mac="$1"
-        name="$2"
-
-        bluetoothctl power on >/dev/null 2>&1 || true
-        bluetoothctl agent on >/dev/null 2>&1 || true
-        bluetoothctl default-agent >/dev/null 2>&1 || true
-
-        connected="$(device_field "$mac" Connected || true)"
-        paired="$(device_field "$mac" Paired || true)"
-
-        if [ "$connected" = "yes" ]; then
-          if bluetoothctl disconnect "$mac" >/dev/null 2>&1; then
-            notify "Disconnected" "$name"
-            exit 0
-          fi
-          notify "Disconnect failed" "$name"
-          exit 1
-        fi
-
-        if [ "$paired" != "yes" ]; then
-          bluetoothctl pair "$mac" >/dev/null 2>&1 || true
-        fi
-        bluetoothctl trust "$mac" >/dev/null 2>&1 || true
-
-        if bluetoothctl connect "$mac" >/dev/null 2>&1; then
-          notify "Connected" "$name"
-        else
-          notify "Connection failed" "$name"
-          exit 1
-        fi
-      }
-
-      if [ -z "''${ROFI_RETV:-}" ]; then
-        rofi_script_launch bluetooth "Bluetooth" -markup-rows
-      fi
-
-      tab=$'\t'
-      info="''${ROFI_INFO:-}"
-      case "$info" in
-        toggle)
-          if [ "$(powered || true)" = "yes" ]; then
-            bluetoothctl power off >/dev/null 2>&1 || true
-            notify "Bluetooth off"
-            emit_bluetooth_menu "Bluetooth is off."
-          else
-            bluetoothctl power on >/dev/null 2>&1 || true
-            notify "Bluetooth on"
-            emit_bluetooth_menu "Bluetooth is on."
-          fi
-          ;;
-        scan)
-          rofi_common_headers "Bluetooth" "Scanning Bluetooth…"
-          rofi_static_row "scanning" "⟳  Scanning for Bluetooth devices…"
-          scan_devices_with_progress
-          emit_bluetooth_menu "Bluetooth scan complete."
-          ;;
-        device"$tab"*)
-          rest="''${info#device"$tab"}"
-          mac="''${rest%%"$tab"*}"
-          name="''${rest#*"$tab"}"
-          connect_device "$mac" "''${name:-$mac}"
-          ;;
-        *)
-          power="$(powered || true)"
-          emit_bluetooth_menu "Enter connects/disconnects • current: Bluetooth ''${power:-unknown}"
-          ;;
-      esac
-    '';
+    path = ./config/scripts/rofi-bluetooth-menu.sh;
   };
 
-  rofiClipboardMenu = pkgs.writeShellApplication {
+  rofiClipboardMenu = mkRofiScript {
     name = "rofi-clipboard-menu";
     runtimeInputs = with pkgs; [
       cliphist
+      coreutils
       hyprland
       libnotify
       rofi
+      swappy
       wl-clipboard
     ];
-    text = ''
-      set -euo pipefail
-      # shellcheck source=/dev/null
-      source ${rofiScriptHelpers}
-
-      notify() {
-        notify-send -a "Clipboard" "$@" >/dev/null 2>&1 || true
-      }
-
-      # Single arbiter of "is this entry a stored image?". cliphist renders
-      # binary as a "[[ binary data <size> <type> <dims> ]]" placeholder; in this
-      # config the only binary entries are png screenshots (the wl-paste image
-      # watcher and the screenshot pipeline both store image/png). A predicate
-      # (return code, not echo) keeps the per-row menu loop fork-free.
-      clip_is_image() {
-        case "$1" in
-          "[[ binary data "*) return 0 ;;
-          *) return 1 ;;
-        esac
-      }
-
-      clipboard_row() {
-        entry="$1"
-        id="''${entry%%"$tab"*}"
-        preview="''${entry#*"$tab"}"
-
-        if clip_is_image "$preview"; then
-          text="''${preview#\[\[ binary data }"
-          text="''${text% \]\]}"
-          text="''${text//x/×}"
-          icon=$'\uf03e'
-          search="$id image screenshot $text"
-        else
-          text="$preview"
-          icon=$'\uf0ea'
-          search="$preview"
-        fi
-
-        display="$(printf '%-4s  %s  %s' "$id" "$icon" "$(markup_escape "$text")")"
-
-        printf -v info 'paste\t%s' "$entry"
-        rofi_row "$search" "$info" "$display"
-      }
-
-      # Resolve "backend|target|class" for the window focused before rofi
-      # opened. ROFI_DATA carries it across script reentry; ROFI_CLIPBOARD_TARGET
-      # is the launch-time export; the live query is the last-resort fallback.
-      clipboard_context() {
-        printf '%s' "''${ROFI_DATA:-''${ROFI_CLIPBOARD_TARGET:-$(hypr_active_window_paste_context)}}"
-      }
-
-      split_paste_context() {
-        context="$1"
-        paste_backend="''${context%%|*}"
-        rest="''${context#*|}"
-        paste_target="''${rest%%|*}"
-        paste_class="''${rest#*|}"
-        [ "$paste_class" != "$rest" ] || paste_class=""
-      }
-
-      paste_shortcut_for_class() {
-        case "$1" in
-          com.mitchellh.ghostty|ghostty|Ghostty|Alacritty|alacritty|kitty|foot|footclient|org.wezfurlong.wezterm|org.gnome.Terminal|org.gnome.Console|org.kde.konsole|konsole|Ptyxis|dev.warp.Warp|com.raggesilver.BlackBox)
-            printf 'CTRL_SHIFT,V'
-            ;;
-          *)
-            printf 'CTRL,V'
-            ;;
-        esac
-      }
-
-      send_paste_shortcut() {
-        context="$1"
-        shortcut="$2"
-        split_paste_context "$context"
-
-        case "$paste_backend" in
-          hyprland)
-            hyprctl dispatch sendshortcut "$shortcut,$paste_target" >/dev/null 2>&1
-            ;;
-          *)
-            return 1
-            ;;
-        esac
-      }
-
-      emit_clipboard_menu() {
-        context="$(clipboard_context)"
-        rofi_common_headers "Paste" "Enter pastes selected item • screenshot images are marked "
-        rofi_header data "$context"
-        rofi_row "clear clipboard history" "clear" "󰆴  Clear clipboard history"
-
-        count=0
-        while IFS= read -r entry; do
-          [ -n "$entry" ] || continue
-          count=$((count + 1))
-          clipboard_row "$entry"
-        done < <(cliphist list 2>/dev/null || true)
-
-        if [ "$count" -eq 0 ]; then
-          rofi_static_row "no clipboard history" "No clipboard history"
-        fi
-      }
-
-      paste_entry() {
-        entry="$1"
-        preview="''${entry#*"$tab"}"
-
-        if clip_is_image "$preview"; then
-          printf '%s\n' "$entry" | cliphist decode | wl-copy --sensitive --type image/png
-        else
-          printf '%s\n' "$entry" | cliphist decode | wl-copy --sensitive
-        fi
-
-        context="$(clipboard_context)"
-        split_paste_context "$context"
-        shortcut="$(paste_shortcut_for_class "$paste_class")"
-
-        # Compositor-native paste backend: Hyprland sends the chosen shortcut
-        # directly to the window that was focused before rofi opened. The
-        # per-app shortcut map above handles terminals that paste with
-        # Ctrl+Shift+V instead of Ctrl+V. wl-copy --sensitive tells the cliphist
-        # watcher not to re-store/dedupe this paste, so selecting an item does
-        # not move or remove it from history.
-        if send_paste_shortcut "$context" "$shortcut"; then
-          notify "Pasted from history" "$preview"
-        else
-          notify "Paste shortcut failed" "Item is on the clipboard; press paste manually."
-        fi
-      }
-
-      if [ -z "''${ROFI_RETV:-}" ]; then
-        ROFI_CLIPBOARD_TARGET="$(hypr_active_window_paste_context)"
-        export ROFI_CLIPBOARD_TARGET
-        rofi_script_launch clipboard "Paste" -markup-rows
-      fi
-
-      tab=$'\t'
-      info="''${ROFI_INFO:-}"
-      case "$info" in
-        clear)
-          cliphist wipe
-          notify "Clipboard history cleared"
-          emit_clipboard_menu
-          ;;
-        paste"$tab"*)
-          paste_entry "''${info#paste"$tab"}"
-          ;;
-        *)
-          emit_clipboard_menu
-          ;;
-      esac
-    '';
+    path = ./config/scripts/rofi-clipboard-menu.sh;
   };
 
-  screenshotAnnotate = pkgs.writeShellApplication {
+  screenshotAnnotate = mkScript {
     name = "screenshot-annotate";
     runtimeInputs = with pkgs; [
       coreutils
@@ -946,35 +205,10 @@ let
       swappy
       wl-clipboard
     ];
-    text = ''
-      set -euo pipefail
-
-      notify() {
-        notify-send -a "Screenshot" "$@" >/dev/null 2>&1 || true
-      }
-
-      tmp_dir="$(mktemp -d)"
-      trap 'rm -rf "$tmp_dir"' EXIT
-      raw="$tmp_dir/capture.png"
-      edited="$tmp_dir/edited.png"
-
-      geometry="$(slurp || true)"
-      [ -n "$geometry" ] || exit 0
-
-      grim -g "$geometry" "$raw"
-
-      # Swappy's own clipboard button can race/confuse history. Instead, write
-      # the final annotated image to a file, copy it once with an explicit MIME
-      # type, and let the wl-paste/cliphist image watcher store exactly that.
-      swappy -f "$raw" -o "$edited" >/dev/null 2>&1 || exit 0
-      [ -s "$edited" ] || exit 0
-
-      wl-copy --type image/png < "$edited"
-      notify "Copied screenshot" "Available in clipboard history as an image item."
-    '';
+    path = ./config/scripts/screenshot-annotate.sh;
   };
 
-  rofiAppMenu = pkgs.writeShellApplication {
+  rofiAppMenu = mkRofiScript {
     name = "rofi-app-menu";
     runtimeInputs = [
       pkgs.hyprland
@@ -983,21 +217,10 @@ let
       rofiBluetoothMenu
       rofiClipboardMenu
     ];
-    text = ''
-      set -euo pipefail
-      # shellcheck source=/dev/null
-      source ${rofiScriptHelpers}
-
-      ROFI_CLIPBOARD_TARGET="$(hypr_active_window_paste_context)"
-      export ROFI_CLIPBOARD_TARGET
-
-      # Keep apps on rofi's native drun mode rather than cloning desktop-entry
-      # parsing. Wi-Fi/Bluetooth/Paste are script modes in the same menu.
-      exec rofi -show drun -modes "drun,run,window,wifi:rofi-wifi-menu,bluetooth:rofi-bluetooth-menu,clipboard:rofi-clipboard-menu" -i
-    '';
+    path = ./config/scripts/rofi-app-menu.sh;
   };
 
-  captivePortalMonitor = pkgs.writeShellApplication {
+  captivePortalMonitor = mkScript {
     name = "captive-portal-monitor";
     runtimeInputs = with pkgs; [
       coreutils
@@ -1006,59 +229,18 @@ let
       libnotify
       networkmanager
     ];
-    text = ''
-      set -euo pipefail
+    replacements."@CAPTIVE_PORTAL_BROWSER@" = "${captivePortalBrowser}/bin/captive-portal-browser";
+    path = ./config/scripts/captive-portal-monitor.sh;
+  };
 
-      last_state=""
-      last_opened=0
-      cooldown=300
-
-      notify() {
-        notify-send -a "NetworkManager" "$@" >/dev/null 2>&1 || true
-      }
-
-      hypr_exec() {
-        runtime_dir="''${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
-
-        if [ -n "''${HYPRLAND_INSTANCE_SIGNATURE:-}" ]; then
-          hyprctl dispatch exec "$*" >/dev/null 2>&1 && return 0
-        fi
-
-        for socket in "$runtime_dir"/hypr/*/.socket.sock; do
-          [ -S "$socket" ] || continue
-          instance="''${socket%/.socket.sock}"
-          export HYPRLAND_INSTANCE_SIGNATURE="''${instance##*/}"
-          hyprctl dispatch exec "$*" >/dev/null 2>&1 && return 0
-        done
-
-        return 1
-      }
-
-      while true; do
-        state="$(nmcli -t -f CONNECTIVITY general status 2>/dev/null || printf 'unknown')"
-        now="$(date +%s)"
-
-        case "$state" in
-          portal|limited)
-            if [ "$state" != "$last_state" ] || [ $((now - last_opened)) -ge "$cooldown" ]; then
-              notify "Captive portal or limited network" "Connectivity is '$state'; opening plain-HTTP login pages."
-              sleep 2
-              if hypr_exec "${captivePortalBrowser}/bin/captive-portal-browser"; then
-                last_opened="$now"
-              fi
-            fi
-            ;;
-          full)
-            if [ "$last_state" = "portal" ] || [ "$last_state" = "limited" ]; then
-              notify "Network online" "Connectivity check is full."
-            fi
-            ;;
-        esac
-
-        last_state="$state"
-        sleep 10
-      done
-    '';
+  binShims = {
+    rofi-app-menu = rofiAppMenu;
+    rofi-wifi-menu = rofiWifiMenu;
+    rofi-nm-wifi-menu = rofiNmWifiMenu;
+    rofi-bluetooth-menu = rofiBluetoothMenu;
+    rofi-clipboard-menu = rofiClipboardMenu;
+    screenshot-annotate = screenshotAnnotate;
+    captive-portal-browser = captivePortalBrowser;
   };
 in
 {
@@ -1072,6 +254,7 @@ in
     captivePortalBrowser
     rofiAppMenu
     rofiWifiMenu
+    rofiNmWifiMenu
     rofiBluetoothMenu
     rofiClipboardMenu
     screenshotAnnotate
@@ -1228,14 +411,7 @@ in
 
   # User-level shims keep interactive launchers current even before the next
   # root-level NixOS profile switch updates /etc/profiles/per-user.
-  home.file = lib.listToAttrs [
-    (binShim rofiAppMenu "rofi-app-menu")
-    (binShim rofiWifiMenu "rofi-wifi-menu")
-    (binShim rofiBluetoothMenu "rofi-bluetooth-menu")
-    (binShim rofiClipboardMenu "rofi-clipboard-menu")
-    (binShim screenshotAnnotate "screenshot-annotate")
-    (binShim captivePortalBrowser "captive-portal-browser")
-  ] // {
+  home.file = lib.mapAttrs' (name: drv: binShim drv name) binShims // {
     ".pi/agent/extensions/thinking-level-picker.ts".source = ./config/pi/thinking-level-picker.ts;
   };
 
@@ -1296,7 +472,12 @@ in
       "Notify and open a browser when NetworkManager detects a captive portal"
       "${captivePortalMonitor}/bin/captive-portal-monitor"
       "5s";
-  };
+
+    wl-clip-persist = mkUserService
+      "Keep the regular Wayland clipboard available after source apps exit"
+      "${pkgs.wl-clip-persist}/bin/wl-clip-persist --clipboard regular"
+      "2s";
+  } // lib.mapAttrs (_: mkCliphistWatcher) cliphistWatchers;
 
   programs.bash.enable = true;
 
