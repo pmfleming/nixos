@@ -163,6 +163,7 @@ let
     name = "rofi-nm-wifi-menu";
     runtimeInputs = [
       nmWifiRofi
+      pkgs.networkmanager
       pkgs.rofi
     ];
     path = ./config/scripts/rofi-nm-wifi-menu.sh;
