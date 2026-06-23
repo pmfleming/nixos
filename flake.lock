@@ -273,11 +273,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1782217781,
-        "narHash": "sha256-gAqmJQieKCT8p+PZCbXvs9t4DY8FnBg8z/fuhwOFdAs=",
+        "lastModified": 1782218658,
+        "narHash": "sha256-hf9iwZJcn+Cn4gLZ0Hmsg6CpbQfvmNQP/aFBiMYH8HI=",
         "owner": "pmfleming",
         "repo": "rofinetworkadvanced",
-        "rev": "d58884da347c372d45e3a177af1dc2a23241b06f",
+        "rev": "f2140fc02ea09e6dcf4f947b060e748c880cfd2f",
         "type": "github"
       },
       "original": {
