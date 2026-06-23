@@ -5,4 +5,4 @@ exec rofi \
   -show nm-wifi \
   -modi "nm-wifi:nm-wifi-rofi rofi" \
   -kb-custom-1 "Alt+r" \
-  -theme-str 'configuration { timeout { delay: 0.01; action: "kb-custom-2"; } }'
+  -theme-str 'configuration { timeout { delay: 1; action: "kb-custom-2"; } }'
