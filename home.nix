@@ -3,7 +3,8 @@
 let
   system = pkgs.stdenv.hostPlatform.system;
   hyprlandGuiutils = inputs.hyprland-guiutils.packages.${system}.default;
-  nmWifiRofi = inputs.nm-wifi-rofi.packages.${system}.default;
+  nmWifi = inputs.nm-wifi.packages.${system}.default;
+  shelllistWifi = inputs.shelllist.packages.${system}.default;
   zenBrowser = inputs.zen-browser.packages.${system}.default;
 
   theme = import ./theme.nix;
@@ -108,26 +109,6 @@ let
     replacements = rofiHelperReplacement // (attrs.replacements or {});
   });
 
-  rofiWifiMenu = mkRofiScript {
-    name = "rofi-wifi-menu";
-    runtimeInputs = with pkgs; [
-      captivePortalBrowser
-      coreutils
-      gawk
-      gnused
-      libnotify
-      networkmanager
-      rofi
-    ];
-    replacements = {
-      "@PALETTE_SUCCESS@" = palette.success;
-      "@PALETTE_WARNING@" = palette.warning;
-      "@PALETTE_DANGER@" = palette.danger;
-      "@PALETTE_MUTED@" = palette.muted;
-    };
-    path = ./config/scripts/rofi-wifi-menu.sh;
-  };
-
   cliphistStore = mkScript {
     name = "cliphist-store";
     runtimeInputs = with pkgs; [ cliphist ];
@@ -158,16 +139,6 @@ let
       description
       "${pkgs.wl-clipboard}/bin/wl-paste --type ${mime} --watch ${cliphistStore}/bin/cliphist-store"
       "2s";
-
-  rofiNmWifiMenu = mkRofiScript {
-    name = "rofi-nm-wifi-menu";
-    runtimeInputs = [
-      nmWifiRofi
-      pkgs.networkmanager
-      pkgs.rofi
-    ];
-    path = ./config/scripts/rofi-nm-wifi-menu.sh;
-  };
 
   rofiBluetoothMenu = mkRofiScript {
     name = "rofi-bluetooth-menu";
@@ -211,13 +182,23 @@ let
 
   rofiAppMenu = mkRofiScript {
     name = "rofi-app-menu";
-    runtimeInputs = [
-      pkgs.hyprland
-      pkgs.rofi
-      rofiWifiMenu
+    runtimeInputs = with pkgs; [
+      coreutils
+      findutils
+      gawk
+      gnused
+      gtk3
+      hyprland
+      jq
+      rofi
+      util-linux
       rofiBluetoothMenu
       rofiClipboardMenu
     ];
+    replacements = {
+      "@PALETTE_SUCCESS@" = palette.success;
+      "@PALETTE_MUTED@" = palette.muted;
+    };
     path = ./config/scripts/rofi-app-menu.sh;
   };
 
@@ -236,12 +217,12 @@ let
 
   binShims = {
     rofi-app-menu = rofiAppMenu;
-    rofi-wifi-menu = rofiWifiMenu;
-    rofi-nm-wifi-menu = rofiNmWifiMenu;
+    shelllist-wifi = shelllistWifi;
     rofi-bluetooth-menu = rofiBluetoothMenu;
     rofi-clipboard-menu = rofiClipboardMenu;
     screenshot-annotate = screenshotAnnotate;
     captive-portal-browser = captivePortalBrowser;
+    nm-wifi = nmWifi;
   };
 in
 {
@@ -253,9 +234,9 @@ in
     hyprMonitorAuto
     togglesplitToggle
     captivePortalBrowser
+    nmWifi
     rofiAppMenu
-    rofiWifiMenu
-    rofiNmWifiMenu
+    shelllistWifi
     rofiBluetoothMenu
     rofiClipboardMenu
     screenshotAnnotate
@@ -351,6 +332,9 @@ in
       "waybar/scratchpad-workspace.svg".source = ./config/waybar/scratchpad-workspace.svg;
       "rofi/config.rasi".text = themeText (builtins.readFile ./config/rofi/config.rasi);
       "ghostty/config".text = themeText (builtins.readFile ./config/ghostty/config);
+      "gtk-3.0/gtk.css".text = themeText (builtins.readFile ./config/gtk/gtk.css);
+      "gtk-4.0/gtk.css".text = themeText (builtins.readFile ./config/gtk/gtk.css);
+      "scratchpad/system-appearance.toml".text = themeText (builtins.readFile ./config/scratchpad/system-appearance.toml);
       "xfce4/helpers.rc".text = ''
         TerminalEmulator=ghostty
       '';
@@ -474,11 +458,34 @@ in
       "${captivePortalMonitor}/bin/captive-portal-monitor"
       "5s";
 
+    nm-wifi-cache-refresh = {
+      Unit = {
+        Description = "Refresh nm-wifi Wi-Fi scan cache";
+        After = [ "graphical-session.target" ];
+      };
+
+      Service = {
+        Type = "oneshot";
+        ExecStart = "${nmWifi}/bin/nm-wifi scan --cache --timeout 12";
+      };
+    };
+
     wl-clip-persist = mkUserService
       "Keep the regular Wayland clipboard available after source apps exit"
       "${pkgs.wl-clip-persist}/bin/wl-clip-persist --clipboard regular"
       "2s";
   } // lib.mapAttrs (_: mkCliphistWatcher) cliphistWatchers;
+
+  systemd.user.timers.nm-wifi-cache-refresh = {
+    Unit.Description = "Periodically refresh nm-wifi Wi-Fi scan cache";
+    Timer = {
+      OnStartupSec = "15s";
+      OnUnitActiveSec = "2min";
+      AccuracySec = "15s";
+      Persistent = true;
+    };
+    Install.WantedBy = [ "timers.target" ];
+  };
 
   programs.bash.enable = true;
 
@@ -536,8 +543,10 @@ in
         marker_marked = { fg = palette.warning; };
         marker_selected = { fg = palette.accent; };
         tab_active = {
-          fg = palette.black;
-          bg = palette.accent;
+          fg = palette.foreground;
+          bg = palette.bg;
+          bold = true;
+          underline = true;
         };
         tab_inactive = {
           fg = palette.subtext;

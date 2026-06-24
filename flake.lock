@@ -266,24 +266,21 @@
         "type": "github"
       }
     },
-    "nm-wifi-rofi": {
+    "nm-wifi": {
       "inputs": {
         "nixpkgs": [
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1782218658,
-        "narHash": "sha256-hf9iwZJcn+Cn4gLZ0Hmsg6CpbQfvmNQP/aFBiMYH8HI=",
-        "owner": "pmfleming",
-        "repo": "rofinetworkadvanced",
-        "rev": "f2140fc02ea09e6dcf4f947b060e748c880cfd2f",
-        "type": "github"
+        "lastModified": 1782337826,
+        "narHash": "sha256-IGY2oJXrtgjTTvwlZmfOZoPrypQ3qzPufkShM2aF0kM=",
+        "path": "/home/laufan/Projects/nm-wifi",
+        "type": "path"
       },
       "original": {
-        "owner": "pmfleming",
-        "repo": "rofinetworkadvanced",
-        "type": "github"
+        "path": "/home/laufan/Projects/nm-wifi",
+        "type": "path"
       }
     },
     "root": {
@@ -292,8 +289,29 @@
         "hyprland-guiutils": "hyprland-guiutils",
         "nixpkgs": "nixpkgs",
         "nixpkgs-unstable": "nixpkgs-unstable",
-        "nm-wifi-rofi": "nm-wifi-rofi",
+        "nm-wifi": "nm-wifi",
+        "shelllist": "shelllist",
         "zen-browser": "zen-browser"
+      }
+    },
+    "shelllist": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ],
+        "nm-wifi": [
+          "nm-wifi"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782337879,
+        "narHash": "sha256-sigWQnezqtMtL/rRwEcF3oc1m842Sz3aEfO6OMRtVAE=",
+        "path": "/home/laufan/Projects/shelllist",
+        "type": "path"
+      },
+      "original": {
+        "path": "/home/laufan/Projects/shelllist",
+        "type": "path"
       }
     },
     "systems": {

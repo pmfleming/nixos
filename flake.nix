@@ -20,9 +20,15 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    nm-wifi-rofi = {
-      url = "github:pmfleming/rofinetworkadvanced";
+    nm-wifi = {
+      url = "path:/home/laufan/Projects/nm-wifi";
       inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    shelllist = {
+      url = "path:/home/laufan/Projects/shelllist";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nm-wifi.follows = "nm-wifi";
     };
   };
 

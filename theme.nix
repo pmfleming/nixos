@@ -27,6 +27,7 @@ let
   };
 
   ui = {
+    radiusInt = 3;
     radius = "3px";
     fontSizeInt = 12;
     fontSize = "12";
@@ -65,17 +66,20 @@ let
     "@BLACK@" = palette.black;
     "@WHITE@" = palette.white;
     "@BORDER_DIM@" = palette.borderDim;
+    "@BORDER_DIM_BARE@" = colorBare palette.borderDim;
     "@SELECTED_BG_BARE@" = colorBare palette.selectedBg;
     "@SUCCESS@" = palette.success;
     "@DANGER@" = palette.danger;
     "@DANGER_BARE@" = colorBare palette.danger;
     "@WARNING@" = palette.warning;
     "@RADIUS@" = ui.radius;
+    "@RADIUS_INT@" = builtins.toString ui.radiusInt;
     "@FONT_MONO@" = fonts.mono;
     "@FONT_MONO_NERD@" = fonts.monoNerd;
     "@FONT_SIZE@" = ui.fontSize;
     "@GTK_THEME_ENV@" = appearance.gtkThemeEnv;
     "@QT_QPA_PLATFORMTHEME@" = appearance.qtPlatformThemeEnv;
+    "@CURSOR_SIZE@" = builtins.toString appearance.cursorSize;
     "@ROFI_WIDTH@" = ui.rofiWidth;
     "@ROFI_LINES@" = ui.rofiLines;
     "@SCROLLBAR_WIDTH@" = ui.scrollbarWidth;

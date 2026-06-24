@@ -97,7 +97,19 @@ element selected.urgent {
 
 element-icon {
   size: 18px;
-  padding: 0 8px 0 0;
+  padding: 2px 6px;
+  border: 1px;
+  border-color: transparent;
+  border-radius: @RADIUS@;
+}
+
+element-icon normal.active,
+element-icon alternate.active {
+  border-color: @accent;
+}
+
+element-icon selected.active {
+  border-color: @BLACK@;
 }
 
 element-text {

@@ -58,7 +58,7 @@
     "format-disconnected": "󰤮",
     "tooltip-format-wifi": "{essid} {signalStrength}%\nLeft: Wi-Fi menu\nRight: captive portal browser",
     "tooltip-format-ethernet": "{ifname}\nRight: captive portal browser",
-    "on-click": "rofi-wifi-menu",
+    "on-click": "shelllist-wifi",
     "on-click-right": "captive-portal-browser"
   },
   "bluetooth": {
