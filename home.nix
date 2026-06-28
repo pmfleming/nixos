@@ -5,6 +5,7 @@ let
   hyprlandGuiutils = inputs.hyprland-guiutils.packages.${system}.default;
   nmWifi = inputs.nm-wifi.packages.${system}.default;
   shelllistWifi = inputs.shelllist.packages.${system}.default;
+  tsReactQualityLens = inputs.ts-react-quality-lens.packages.${system}.default;
   zenBrowser = inputs.zen-browser.packages.${system}.default;
 
   theme = import ./theme.nix;
@@ -237,6 +238,7 @@ in
     nmWifi
     rofiAppMenu
     shelllistWifi
+    tsReactQualityLens
     rofiBluetoothMenu
     rofiClipboardMenu
     screenshotAnnotate
@@ -308,6 +310,7 @@ in
       defaultApplications = {
         "inode/directory" = "yazi.desktop";
         "text/html" = "zen.desktop";
+        "application/xhtml+xml" = "zen.desktop";
         "x-scheme-handler/file" = "yazi.desktop";
         "x-scheme-handler/http" = "zen.desktop";
         "x-scheme-handler/https" = "zen.desktop";
@@ -397,6 +400,10 @@ in
   # User-level shims keep interactive launchers current even before the next
   # root-level NixOS profile switch updates /etc/profiles/per-user.
   home.file = lib.mapAttrs' (name: drv: binShim drv name) binShims // {
+    ".pi/agent/extensions/recent-sessions-sidebar" = {
+      source = ./config/pi/recent-sessions-sidebar;
+      force = true;
+    };
     ".pi/agent/extensions/thinking-level-picker.ts".source = ./config/pi/thinking-level-picker.ts;
   };
 
@@ -502,7 +509,7 @@ in
       opener = {
         edit = [
           {
-            run = ''${EDITOR:-nvim} "$@"'';
+            run = "\${EDITOR:-nvim} \"$@\"";
             block = true;
           }
         ];
@@ -511,6 +518,14 @@ in
             run = ''xdg-open "$1"'';
             orphan = true;
           }
+        ];
+      };
+      open = {
+        prepend_rules = [
+          { url = "*.html"; use = "open"; }
+          { url = "*.htm"; use = "open"; }
+          { mime = "text/html"; use = "open"; }
+          { mime = "application/xhtml+xml"; use = "open"; }
         ];
       };
     };

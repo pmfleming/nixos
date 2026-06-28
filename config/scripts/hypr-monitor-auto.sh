@@ -37,9 +37,11 @@ custom_monitor_config_matches_state() {
 }
 
 apply_state() {
+  force="${1:-}"
+
   if custom_monitor_config_matches_state; then
     state="custom"
-    if [ "$state" != "$last_state" ]; then
+    if [ "$force" = "force" ] || [ "$state" != "$last_state" ]; then
       restart_waybar
       last_state="$state"
     fi
@@ -48,7 +50,7 @@ apply_state() {
 
   if external_connected; then
     state="external"
-    if [ "$state" != "$last_state" ]; then
+    if [ "$force" = "force" ] || [ "$state" != "$last_state" ]; then
       hyprctl keyword monitor ",preferred,auto,1.25" >/dev/null || true
       hyprctl keyword monitor "eDP-1,disable" >/dev/null || true
       restart_waybar
@@ -56,7 +58,7 @@ apply_state() {
     fi
   else
     state="internal"
-    if [ "$state" != "$last_state" ]; then
+    if [ "$force" = "force" ] || [ "$state" != "$last_state" ]; then
       hyprctl keyword monitor "eDP-1,preferred,auto,1.25" >/dev/null || true
       restart_waybar
       last_state="$state"
@@ -94,7 +96,7 @@ while true; do
 
   socat -U - UNIX-CONNECT:"$socket" | while IFS= read -r event; do
     case "$event" in
-      monitoradded*|monitorremoved*|configreloaded*) apply_state ;;
+      monitoradded*|monitorremoved*|configreloaded*) apply_state force ;;
     esac
   done
 

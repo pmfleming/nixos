@@ -5,10 +5,10 @@
 
 :root {
   --accent: @ACCENT@;
-  --cc-bg: rgba(0, 0, 0, 0.58);
-  --panel-bg: rgba(5, 9, 13, 0.38);
-  --noti-bg: rgba(0, 0, 0, 0.72);
-  --noti-bg-hover: rgba(17, 24, 32, 0.86);
+  --cc-bg: rgba(0, 0, 0, 0.42);
+  --panel-bg: rgba(5, 9, 13, 0.24);
+  --noti-bg: rgba(0, 0, 0, 0.58);
+  --noti-bg-hover: rgba(17, 24, 32, 0.72);
   --noti-border: rgba(@ACCENT_RGB@, 0.82);
   --text: @FOREGROUND@;
   --muted: @SUBTEXT@;
@@ -33,7 +33,7 @@ blankwindow,
 
 .control-center .control-center-list {
   background: var(--panel-bg);
-  border-top: 1px solid rgba(@, 0.22);
+  border-top: 1px solid rgba(@ACCENT_RGB@, 0.22);
   padding: 8px 0 14px;
 }
 
@@ -60,9 +60,9 @@ blankwindow,
 
 .widget-title > button,
 button {
-  background: rgba(17, 24, 32, 0.82);
+  background: rgba(17, 24, 32, 0.64);
   color: var(--text);
-  border: 1px solid rgba(@, 0.16);
+  border: 1px solid rgba(@ACCENT_RGB@, 0.16);
   border-radius: 5px;
   padding: 8px 14px;
 }
@@ -70,7 +70,7 @@ button {
 .widget-title > button:hover,
 button:hover {
   background: var(--accent);
-  color: @;
+  color: @BLACK@;
 }
 
 .widget-dnd label {
@@ -79,13 +79,13 @@ button:hover {
 }
 
 .widget-dnd switch {
-  background: rgba(17, 24, 32, 0.72);
-  border: 1px solid rgba(@, 0.2);
+  background: rgba(17, 24, 32, 0.54);
+  border: 1px solid rgba(@ACCENT_RGB@, 0.2);
   border-radius: 999px;
 }
 
 .widget-dnd switch:checked {
-  background: rgba(@, 0.55);
+  background: rgba(@ACCENT_RGB@, 0.55);
 }
 
 .widget-dnd switch slider {
@@ -152,7 +152,7 @@ button:hover {
 }
 
 .summary {
-  color: @;
+  color: @FOREGROUND@;
   font-weight: 800;
 }
 
@@ -171,7 +171,7 @@ button:hover {
 }
 
 .notification-action > button {
-  background: rgba(17, 24, 32, 0.82);
+  background: rgba(17, 24, 32, 0.64);
   color: var(--text);
   border-radius: 5px;
   margin: 0 4px;
@@ -180,12 +180,12 @@ button:hover {
 
 .notification-action > button:disabled {
   color: var(--disabled);
-  background: rgba(17, 24, 32, 0.46);
+  background: rgba(17, 24, 32, 0.34);
 }
 
 .close-button {
-  background: rgba(@, 0.9);
-  color: @;
+  background: rgba(240, 90, 90, 0.9);
+  color: @WHITE@;
   border-radius: 999px;
   min-width: 22px;
   min-height: 22px;
@@ -193,6 +193,6 @@ button:hover {
 }
 
 .close-button:hover {
-  background: @;
-  color: @;
+  background: @DANGER@;
+  color: @BLACK@;
 }

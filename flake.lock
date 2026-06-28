@@ -273,8 +273,8 @@
         ]
       },
       "locked": {
-        "lastModified": 1782337826,
-        "narHash": "sha256-IGY2oJXrtgjTTvwlZmfOZoPrypQ3qzPufkShM2aF0kM=",
+        "lastModified": 1782573777,
+        "narHash": "sha256-YuVCELB3jgLfLzLnu1E2LDNLHD0ESTMoT88QR4yyHGg=",
         "path": "/home/laufan/Projects/nm-wifi",
         "type": "path"
       },
@@ -291,6 +291,7 @@
         "nixpkgs-unstable": "nixpkgs-unstable",
         "nm-wifi": "nm-wifi",
         "shelllist": "shelllist",
+        "ts-react-quality-lens": "ts-react-quality-lens",
         "zen-browser": "zen-browser"
       }
     },
@@ -304,8 +305,8 @@
         ]
       },
       "locked": {
-        "lastModified": 1782337879,
-        "narHash": "sha256-sigWQnezqtMtL/rRwEcF3oc1m842Sz3aEfO6OMRtVAE=",
+        "lastModified": 1782599585,
+        "narHash": "sha256-OHpAG4tkYeZzRXbxI3T+k8eSLU9v1HFKh7NKkJQa2sA=",
         "path": "/home/laufan/Projects/shelllist",
         "type": "path"
       },
@@ -327,6 +328,23 @@
         "owner": "nix-systems",
         "repo": "default-linux",
         "type": "github"
+      }
+    },
+    "ts-react-quality-lens": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782387947,
+        "narHash": "sha256-GuhInTk5Kyel3J217/eHinjOi4x4zAXK3g97B+7Vja0=",
+        "path": "/home/laufan/Projects/ts-react-quality-lens",
+        "type": "path"
+      },
+      "original": {
+        "path": "/home/laufan/Projects/ts-react-quality-lens",
+        "type": "path"
       }
     },
     "zen-browser": {

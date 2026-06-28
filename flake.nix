@@ -30,6 +30,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.nm-wifi.follows = "nm-wifi";
     };
+
+    ts-react-quality-lens = {
+      url = "path:/home/laufan/Projects/ts-react-quality-lens";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs@{ self, nixpkgs, home-manager, ... }:

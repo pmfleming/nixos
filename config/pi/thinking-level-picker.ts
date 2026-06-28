@@ -1,9 +1,16 @@
 import type { ExtensionAPI, ThinkingLevel } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
 
-const LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh"] as const;
-type Level = (typeof LEVELS)[number];
+type Level = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+type NotifyType = "info" | "warning" | "error";
+type ThinkingUi = {
+  notify: (message: string, type: NotifyType) => void;
+  select: (title: string, choices: string[]) => Promise<string | undefined>;
+  setStatus: (id: string, value: string | undefined) => void;
+};
+type ThinkingContext = { ui: ThinkingUi };
 
+const LEVELS: Level[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
 const DESCRIPTIONS: Record<Level, string> = {
   off: "no extended thinking",
   minimal: "fastest reasoning",
@@ -12,102 +19,64 @@ const DESCRIPTIONS: Record<Level, string> = {
   high: "deeper reasoning",
   xhigh: "maximum reasoning",
 };
+const ALIASES: Record<string, Level> = { extra: "xhigh", "extra-high": "xhigh", extra_high: "xhigh", max: "xhigh" };
 
 function isLevel(value: string): value is Level {
-  return (LEVELS as readonly string[]).includes(value);
+  return value === "off" || value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh";
 }
 
-function normalizeLevel(value: string): Level | undefined {
+function parseLevel(value: string): Level | undefined {
   const normalized = value.trim().toLowerCase();
-  if (normalized === "max") return "xhigh";
-  if (normalized === "extra" || normalized === "extra-high" || normalized === "extra_high") return "xhigh";
-  return isLevel(normalized) ? normalized : undefined;
+  return ALIASES[normalized] ?? (isLevel(normalized) ? normalized : undefined);
+}
+
+function updateStatus(pi: ExtensionAPI, ctx: ThinkingContext): void {
+  ctx.ui.setStatus("thinking-level", `think:${pi.getThinkingLevel()}`);
+}
+
+function notifyResult(pi: ExtensionAPI, ctx: ThinkingContext, requested: Level, before: ThinkingLevel): void {
+  const after = pi.getThinkingLevel();
+  if (after !== requested) ctx.ui.notify(`Requested ${requested}, but current model clamped thinking to ${after}.`, "warning");
+  else if (after !== before) ctx.ui.notify(`Thinking level set to ${after}.`, "info");
+  else ctx.ui.notify(`Thinking level is already ${after}.`, "info");
+}
+
+async function setLevel(pi: ExtensionAPI, rawLevel: string, ctx: ThinkingContext): Promise<void> {
+  const level = parseLevel(rawLevel);
+  if (!level) {
+    ctx.ui.notify(`Unknown thinking level: ${rawLevel}. Use: ${LEVELS.join(", ")}`, "error");
+    return;
+  }
+
+  const before = pi.getThinkingLevel();
+  pi.setThinkingLevel(level);
+  updateStatus(pi, ctx);
+  notifyResult(pi, ctx, level, before);
+}
+
+async function openPicker(pi: ExtensionAPI, ctx: ThinkingContext): Promise<void> {
+  const current = pi.getThinkingLevel();
+  const choices = LEVELS.map((level) => `${level === current ? "●" : "○"} ${level.padEnd(7)} ${DESCRIPTIONS[level]}`);
+  const choice = await ctx.ui.select("Choose model thinking level", choices);
+  const level = choice ? LEVELS[choices.indexOf(choice)] : undefined;
+  if (level) await setLevel(pi, level, ctx);
+}
+
+function handleThinkingCommand(pi: ExtensionAPI, args: string, ctx: ThinkingContext): Promise<void> {
+  const requested = args.trim();
+  return requested ? setLevel(pi, requested, ctx) : openPicker(pi, ctx);
 }
 
 export default function (pi: ExtensionAPI) {
-  function statusText(): string {
-    return `think:${pi.getThinkingLevel()}`;
-  }
-
-  function updateStatus(ctx: { ui: { setStatus: (id: string, value: string | undefined) => void } }) {
-    ctx.ui.setStatus("thinking-level", statusText());
-  }
-
-  async function setLevel(rawLevel: string, ctx: { ui: { notify: (message: string, type: "info" | "warning" | "error") => void; setStatus: (id: string, value: string | undefined) => void } }) {
-    const level = normalizeLevel(rawLevel);
-    if (!level) {
-      ctx.ui.notify(`Unknown thinking level: ${rawLevel}. Use: ${LEVELS.join(", ")}`, "error");
-      return;
-    }
-
-    const before = pi.getThinkingLevel();
-    pi.setThinkingLevel(level as ThinkingLevel);
-    const after = pi.getThinkingLevel();
-    updateStatus(ctx);
-
-    if (after !== level) {
-      ctx.ui.notify(`Requested ${level}, but current model clamped thinking to ${after}.`, "warning");
-    } else if (after !== before) {
-      ctx.ui.notify(`Thinking level set to ${after}.`, "info");
-    } else {
-      ctx.ui.notify(`Thinking level is already ${after}.`, "info");
-    }
-  }
-
-  async function openPicker(ctx: Parameters<Parameters<typeof pi.registerCommand>[1]["handler"]>[1]) {
-    const current = pi.getThinkingLevel();
-    const choices = LEVELS.map((level) => {
-      const marker = level === current ? "●" : "○";
-      return `${marker} ${level.padEnd(7)} ${DESCRIPTIONS[level]}`;
+  for (const name of ["think", "thinking"]) {
+    pi.registerCommand(name, {
+      description: `Choose model thinking level, or set one: /${name} high`,
+      handler: async (args, ctx) => handleThinkingCommand(pi, args, ctx),
     });
-
-    const choice = await ctx.ui.select("Choose model thinking level", choices);
-    if (!choice) return;
-
-    const selected = choice.split(/\s+/)[1];
-    await setLevel(selected, ctx);
   }
 
-  pi.registerCommand("think", {
-    description: "Choose model thinking level, or set one: /think high",
-    handler: async (args, ctx) => {
-      const requested = args.trim();
-      if (requested) {
-        await setLevel(requested, ctx);
-      } else {
-        await openPicker(ctx);
-      }
-    },
-  });
-
-  pi.registerCommand("thinking", {
-    description: "Choose model thinking level, or set one: /thinking high",
-    handler: async (args, ctx) => {
-      const requested = args.trim();
-      if (requested) {
-        await setLevel(requested, ctx);
-      } else {
-        await openPicker(ctx);
-      }
-    },
-  });
-
-  pi.registerShortcut(Key.alt("t"), {
-    description: "Choose thinking level",
-    handler: async (ctx) => {
-      await openPicker(ctx as Parameters<Parameters<typeof pi.registerCommand>[1]["handler"]>[1]);
-    },
-  });
-
-  pi.on("session_start", async (_event, ctx) => {
-    updateStatus(ctx);
-  });
-
-  pi.on("thinking_level_select", async (_event, ctx) => {
-    updateStatus(ctx);
-  });
-
-  pi.on("model_select", async (_event, ctx) => {
-    updateStatus(ctx);
-  });
+  pi.registerShortcut(Key.alt("t"), { description: "Choose thinking level", handler: async (ctx) => openPicker(pi, ctx) });
+  pi.on("session_start", async (_event, ctx) => updateStatus(pi, ctx));
+  pi.on("thinking_level_select", async (_event, ctx) => updateStatus(pi, ctx));
+  pi.on("model_select", async (_event, ctx) => updateStatus(pi, ctx));
 }
