@@ -4,16 +4,47 @@ let
   theme = import ./theme.nix;
   mkScript = (import ./lib/scripts.nix).mkShellApplication pkgs;
 
+  cleanTuigreet = pkgs.tuigreet.overrideAttrs (oldAttrs: {
+    patches = (oldAttrs.patches or []) ++ [
+      ./config/patches/tuigreet-filter-fingerprint-info.patch
+    ];
+  });
+
   delayedNixosUpdate = mkScript {
     name = "delayed-nixos-update";
     runtimeInputs = with pkgs; [
       coreutils
       diffutils
-      jq
+      git
+      gnutar
       nix
       nixos-rebuild
+      procps
+      util-linux
     ];
     path = ./config/scripts/delayed-nixos-update.sh;
+  };
+
+  mkNixosUpdateCheckService = { description, scope, mode ? "check", acOnly ? false }: {
+    inherit description;
+    wants = [ "network-online.target" ];
+    after = [ "network-online.target" ];
+    environment = {
+      NIX_CONFIG = ''
+        max-jobs = 1
+        cores = 2
+      '';
+    };
+    unitConfig = lib.optionalAttrs acOnly {
+      ConditionACPower = true;
+    };
+    serviceConfig = {
+      Type = "oneshot";
+      ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update ${mode}${lib.optionalString (mode == "check") " ${scope}"}";
+      Nice = 10;
+      CPUWeight = 20;
+      IOWeight = 20;
+    };
   };
 
   pruneNixosGenerations = mkScript {
@@ -38,8 +69,14 @@ in
         "flakes"
       ];
       auto-optimise-store = true;
+      extra-substituters = [
+        "https://cache.garnix.io"
+      ];
+      extra-trusted-public-keys = [
+        "cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g="
+      ];
     };
-    # Custom generation-pruning timer below handles GC; age-based GC would remove milestone generations.
+    # The bounded generation-pruning policy below handles system-profile GC.
     gc.automatic = false;
   };
 
@@ -47,6 +84,19 @@ in
 
   boot.loader.systemd-boot.enable = true;
   boot.loader.efi.canTouchEfiVariables = true;
+  # Show normal boot/startup status while diagnosing login/startup issues.
+  boot.consoleLogLevel = 4;
+  boot.initrd.verbose = true;
+  boot.kernelParams = [
+    "udev.log_level=info"
+    "rd.udev.log_level=info"
+    "systemd.show_status=true"
+    "rd.systemd.show_status=true"
+  ];
+  # Load the display driver in the initrd for an earlier, smoother framebuffer handoff.
+  boot.initrd.kernelModules = [ "amdgpu" ];
+  # Make the Qualcomm Wi-Fi device appear reliably after generation switches/reboots.
+  boot.kernelModules = [ "ath11k_pci" ];
 
   networking.hostName = "thinkpad";
   networking.networkmanager = {
@@ -58,9 +108,15 @@ in
       interval = 300;
     };
   };
+  programs.nm-applet.enable = false;
   networking.firewall.enable = true;
+  # NetworkManager-wait-online can take ~10s on Wi-Fi while autoconnect/DHCP
+  # settle. This does not block graphical login; it only gates units that
+  # explicitly wait for network-online.target, such as the update timer service.
+  # Keep it enabled so those jobs start with a real network when available.
 
-  time.timeZone = "Europe/Amsterdam";
+  time.timeZone = lib.mkDefault "Europe/Amsterdam";
+  services.automatic-timezoned.enable = true;
 
   i18n.defaultLocale = "en_IE.UTF-8";
   i18n.extraLocaleSettings = {
@@ -82,9 +138,10 @@ in
 
   services.greetd = {
     enable = true;
+    useTextGreeter = true;
     settings = {
       default_session = {
-        command = "${pkgs.tuigreet}/bin/tuigreet --time --remember --cmd ${config.programs.hyprland.package}/bin/start-hyprland";
+        command = "${cleanTuigreet}/bin/tuigreet --time --remember --prompt-padding 0 --cmd ${config.programs.hyprland.package}/bin/start-hyprland";
         user = "greeter";
       };
     };
@@ -109,7 +166,8 @@ in
 
   programs.dconf.enable = true;
   services.gnome.gnome-keyring.enable = true;
-  # Fingerprint reader support. PAM keeps the normal password as a fallback.
+  # Fingerprint reader support for login and lock-screen biometric auth.
+  # The patched tuigreet above filters PAM's instructional fingerprint text.
   services.fprintd.enable = true;
   security.polkit.enable = true;
   security.rtkit.enable = true;
@@ -151,10 +209,13 @@ in
     HandleLidSwitchDocked = "ignore";
   };
 
-  # Hyprlock has native fingerprint support, so keep its PAM stack password-only.
-  # This avoids PAM's serial fingerprint-then-password delay on the lock screen.
-  security.pam.services.hyprlock.fprintAuth = false;
+  # Enable fingerprint login for greetd/tuigreet. The patched tuigreet package
+  # filters fprintd's instructional PAM info messages from the visible prompt.
+  security.pam.services.greetd.fprintAuth = true;
   security.pam.services.greetd.enableGnomeKeyring = true;
+  # Hyprlock uses its native fingerprint support, so keep PAM fingerprint off
+  # there to avoid duplicate/serial fingerprint handling. Password stays fallback.
+  security.pam.services.hyprlock.fprintAuth = false;
 
   fonts = {
     packages = with pkgs; [
@@ -170,6 +231,8 @@ in
     };
   };
 
+  users.groups.plugdev = {};
+
   users.users.laufan = {
     isNormalUser = true;
     description = "Paul Fleming";
@@ -178,6 +241,7 @@ in
       "input"
       "kvm"
       "networkmanager"
+      "plugdev"
       "video"
       "wheel"
     ];
@@ -192,26 +256,63 @@ in
   programs.command-not-found.enable = false;
   programs.nix-index.enable = true;
 
-  systemd.services.delayed-nixos-update = {
-    description = "Update nixpkgs-unstable immediately and other flake inputs after 3 days";
+  systemd.services.delayed-nixos-update = mkNixosUpdateCheckService {
+    description = "Check and build NixOS flake updates for manual approval";
+    mode = "catch-up";
+    scope = "all";
+    acOnly = true;
+  };
+
+  systemd.services.nixos-update-check-all = mkNixosUpdateCheckService {
+    description = "Check and build updates for all NixOS flake inputs";
+    scope = "all";
+  };
+
+  systemd.services.nixos-update-check-apps = mkNixosUpdateCheckService {
+    description = "Check and build nixpkgs-unstable updates for Codex, Pi, and Claude";
+    scope = "apps";
+  };
+
+  systemd.services.nixos-update-catchup = mkNixosUpdateCheckService {
+    description = "Catch up a missed overnight NixOS update check when on AC power";
+    mode = "catch-up";
+    scope = "all";
+    acOnly = true;
+  };
+
+  systemd.services.nixos-update-approve = {
+    description = "Apply a checked NixOS flake update after manual approval";
+    wants = [ "network-online.target" ];
+    after = [ "network-online.target" ];
     serviceConfig = {
       Type = "oneshot";
-      ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update";
+      ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update approve";
     };
   };
 
   systemd.timers.delayed-nixos-update = {
-    description = "Run delayed NixOS flake updater";
+    description = "Run overnight NixOS update check";
     wantedBy = [ "timers.target" ];
     timerConfig = {
-      OnBootSec = "5m";
-      OnUnitActiveSec = "6h";
+      OnCalendar = "*-*-* 03:00:00";
+      AccuracySec = "15m";
+      RandomizedDelaySec = "30m";
       Persistent = true;
     };
   };
 
+  systemd.timers.nixos-update-catchup = {
+    description = "Retry missed overnight NixOS update checks when AC power is available";
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      OnCalendar = "*:0/15";
+      AccuracySec = "1m";
+      RandomizedDelaySec = "2m";
+    };
+  };
+
   systemd.services.prune-nixos-generations = {
-    description = "Prune NixOS generations, keeping latest 5 plus generation 1 and every 10th";
+    description = "Prune NixOS generations with bounded recent, weekly, and monthly retention";
     serviceConfig = {
       Type = "oneshot";
       ExecStart = "${pruneNixosGenerations}/bin/prune-nixos-generations";
@@ -259,6 +360,8 @@ in
     android-tools
     bibata-cursors
     brightnessctl
+    # AI coding agents track nixpkgs-unstable. The overnight updater can stage
+    # a new input revision, but switching it still requires manual approval.
     unstablePkgs.claude-code
     cliphist
     curl

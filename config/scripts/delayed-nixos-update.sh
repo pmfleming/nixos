@@ -1,121 +1,257 @@
 set -euo pipefail
+export GIT_OPTIONAL_LOCKS=0
 
 flake_dir=/etc/nixos
+flake_ref="path:$flake_dir"
 flake_attr=thinkpad
-delay_seconds=$((3 * 24 * 60 * 60))
 state_dir=/var/lib/nixos-delayed-updates
-candidate_lock="$state_dir/candidate-flake.lock"
-first_seen_file="$state_dir/first-seen"
-pending_switch_file="$state_dir/current-lock-needs-switch"
+ready_lock="$state_dir/ready-flake.lock"
+ready_revision="$state_dir/ready-revision"
+ready_scope="$state_dir/ready-scope"
+result_link="$state_dir/system"
 ready_file=/run/nixos-updates-available
+last_full_check="$state_dir/last-full-check"
+last_catchup_attempt="$state_dir/last-catchup-attempt"
+catchup_retry_seconds=$((60 * 60))
 
-# Keep fast-moving AI coding tools current without waiting for the
-# normal delayed-update window used by the rest of the flake inputs.
-immediate_inputs=(nixpkgs-unstable)
-immediate_inputs_json='["nixpkgs-unstable"]'
-
-strip_immediate_inputs() {
-  jq --argjson inputs "$immediate_inputs_json" '
-    reduce $inputs[] as $input (.;
-      if .nodes.root.inputs[$input] then
-        del(.nodes[.nodes.root.inputs[$input]])
-        | del(.nodes.root.inputs[$input])
-      else
-        .
-      end
-    )
-  ' "$1"
+notify_waybar_updates() {
+  # The waybar custom/updates module is signal-driven (RTMIN+8) instead of
+  # polling; tell it to re-check the ready file.
+  pkill "-RTMIN+8" -x '\.waybar-wrapped|waybar' >/dev/null 2>&1 || true
 }
 
-merge_immediate_inputs_from_current() {
-  jq --argjson inputs "$immediate_inputs_json" -s '
-    .[0] as $delayed | .[1] as $current |
-    reduce $inputs[] as $input ($delayed;
-      if $current.nodes.root.inputs[$input] then
-        .nodes.root.inputs[$input] = $current.nodes.root.inputs[$input]
-        | .nodes[$current.nodes.root.inputs[$input]] = $current.nodes[$current.nodes.root.inputs[$input]]
-      else
-        del(.nodes.root.inputs[$input])
-      end
-    )
-  ' "$1" "$2"
-}
+worktree_is_clean() {
+  status="$({
+    git \
+      -c safe.directory="$flake_dir" \
+      -C "$flake_dir" \
+      status --porcelain=v1 --untracked-files=normal
+  })"
 
-switch_current_if_pending() {
-  if [ -f "$pending_switch_file" ]; then
-    if nixos-rebuild switch --flake "$flake_dir#$flake_attr"; then
-      rm -f "$pending_switch_file"
-    fi
+  if [ -n "$status" ]; then
+    printf 'Skipping NixOS update: %s has uncommitted changes.\n' "$flake_dir" >&2
+    printf '%s\n' "$status" >&2
+    return 1
   fi
 }
 
-install_lock() {
-  # This service runs as root, so a plain cp would leave flake.lock
-  # root-owned and break later user-level git operations in the checkout.
-  # Match the flake directory's existing ownership instead.
-  cp "$1" "$flake_dir/flake.lock"
+stage_committed_worktree() {
+  mkdir -p "$staged_flake"
+  git \
+    -c safe.directory="$flake_dir" \
+    -C "$flake_dir" \
+    archive --format=tar "$revision" \
+    | tar -xf - -C "$staged_flake"
+}
+
+clear_ready_update() {
+  rm -f \
+    "$ready_lock" "$ready_lock.new" \
+    "$ready_revision" "$ready_revision.new" \
+    "$ready_scope" "$ready_scope.new" \
+    "$result_link" "$result_link.new" \
+    "$ready_file"
+}
+
+record_full_check_success() {
+  if [ "$scope" = all ]; then
+    date +%s > "$last_full_check.new"
+    mv -f "$last_full_check.new" "$last_full_check"
+    rm -f "$last_catchup_attempt"
+  fi
+}
+
+check_for_update() {
+  scope="$1"
+  case "$scope" in
+    all)
+      update_inputs=()
+      scope_label="all flake inputs"
+      ;;
+    apps)
+      # Codex, Pi, and Claude are all sourced from nixpkgs-unstable.
+      update_inputs=(nixpkgs-unstable)
+      scope_label="Codex, Pi, and Claude"
+      ;;
+    *)
+      printf 'Unknown update scope: %s\n' "$scope" >&2
+      return 2
+      ;;
+  esac
+
+  # Preserve an existing notification when a developer has local work in
+  # progress. Scheduled updates must never evaluate or modify a dirty checkout.
+  if [ -f "$ready_lock" ] && [ -f "$ready_revision" ] && [ -f "$ready_scope" ]; then
+    touch "$ready_file"
+  else
+    rm -f "$ready_file"
+  fi
+
+  if ! worktree_is_clean; then
+    notify_waybar_updates
+    return 0
+  fi
+
+  tmp_dir="$(mktemp -d)"
+  staged_flake="$tmp_dir/flake"
+  updated_lock="$tmp_dir/flake.lock"
+  revision="$(git -c safe.directory="$flake_dir" -C "$flake_dir" rev-parse --verify HEAD)"
+  trap 'rm -rf "$tmp_dir"; notify_waybar_updates' EXIT
+
+  stage_committed_worktree
+  nix flake update "${update_inputs[@]}" \
+    --flake "path:$staged_flake" \
+    --output-lock-file "$updated_lock"
+
+  if cmp -s "$staged_flake/flake.lock" "$updated_lock"; then
+    clear_ready_update
+    record_full_check_success
+    printf '%s are up to date.\n' "$scope_label"
+    return 0
+  fi
+
+  if [ -f "$ready_lock" ] \
+    && [ -f "$ready_revision" ] \
+    && [ -f "$ready_scope" ] \
+    && [ -L "$result_link" ] \
+    && [ "$(cat "$ready_revision")" = "$revision" ] \
+    && cmp -s "$ready_lock" "$updated_lock"; then
+    printf '%s\n' "$scope" > "$ready_scope"
+    touch "$ready_file"
+    record_full_check_success
+    printf 'The previously built %s update is still awaiting approval.\n' "$scope_label"
+    return 0
+  fi
+
+  cp "$updated_lock" "$staged_flake/flake.lock"
+  nix flake check "path:$staged_flake" --no-build --no-update-lock-file
+
+  rm -f "$result_link.new"
+  nix build \
+    --out-link "$result_link.new" \
+    "path:$staged_flake#nixosConfigurations.$flake_attr.config.system.build.toplevel"
+
+  cp "$updated_lock" "$ready_lock.new"
+  printf '%s\n' "$revision" > "$ready_revision.new"
+  printf '%s\n' "$scope" > "$ready_scope.new"
+  chmod 0644 "$ready_lock.new"
+  chmod 0644 "$ready_revision.new"
+  chmod 0644 "$ready_scope.new"
+  mv -Tf "$result_link.new" "$result_link"
+  mv -f "$ready_lock.new" "$ready_lock"
+  mv -f "$ready_revision.new" "$ready_revision"
+  mv -f "$ready_scope.new" "$ready_scope"
+  touch "$ready_file"
+  record_full_check_success
+
+  printf 'A checked and built %s update is ready for manual approval.\n' "$scope_label"
+  printf 'Review: diff -u %s/flake.lock %s\n' "$flake_dir" "$ready_lock"
+  printf 'Apply:  systemctl start nixos-update-approve.service\n'
+}
+
+catch_up_if_overdue() {
+  now="$(date +%s)"
+  overnight_cutoff="$(date --date='today 03:00' +%s)"
+  if (( now < overnight_cutoff )); then
+    overnight_cutoff="$(date --date='yesterday 03:00' +%s)"
+  fi
+
+  completed="$(cat "$last_full_check" 2>/dev/null || printf '0')"
+  if [[ "$completed" =~ ^[0-9]+$ ]] && (( completed >= overnight_cutoff )); then
+    return 0
+  fi
+
+  attempted="$(cat "$last_catchup_attempt" 2>/dev/null || printf '0')"
+  if [[ "$attempted" =~ ^[0-9]+$ ]] && (( now - attempted < catchup_retry_seconds )); then
+    return 0
+  fi
+
+  printf '%s\n' "$now" > "$last_catchup_attempt.new"
+  mv -f "$last_catchup_attempt.new" "$last_catchup_attempt"
+  printf 'The latest overnight NixOS update check was missed; starting an AC-power catch-up.\n'
+  check_for_update all
+}
+
+approve_update() {
+  if [ ! -f "$ready_lock" ] || [ ! -f "$ready_revision" ] || [ ! -f "$ready_scope" ]; then
+    clear_ready_update
+    notify_waybar_updates
+    printf 'No checked NixOS update is awaiting approval.\n'
+    return 0
+  fi
+
+  if ! worktree_is_clean; then
+    printf 'Commit or discard the local changes before approving the update.\n' >&2
+    return 1
+  fi
+
+  revision="$(git -c safe.directory="$flake_dir" -C "$flake_dir" rev-parse --verify HEAD)"
+  if [ "$(cat "$ready_revision")" != "$revision" ]; then
+    printf 'The checked update was built for a different Git revision. Run the update check again.\n' >&2
+    return 1
+  fi
+
+  scope="$(cat "$ready_scope")"
+  case "$scope" in
+    all) scope_label="all flake inputs" ;;
+    apps) scope_label="Codex, Pi, and Claude" ;;
+    *)
+      printf 'The checked update has an invalid scope: %s\n' "$scope" >&2
+      return 1
+      ;;
+  esac
+
+  tmp_dir="$(mktemp -d)"
+  original_lock="$tmp_dir/flake.lock"
+  cp "$flake_dir/flake.lock" "$original_lock"
+  lock_installed=false
+
+  restore_lock_on_failure() {
+    exit_status=$?
+    if [ "$exit_status" -ne 0 ] && [ "$lock_installed" = true ]; then
+      cp "$original_lock" "$flake_dir/flake.lock"
+      chown --reference="$flake_dir" "$flake_dir/flake.lock"
+      printf 'Approval failed; restored the original flake.lock.\n' >&2
+    fi
+    rm -rf "$tmp_dir"
+    notify_waybar_updates
+    exit "$exit_status"
+  }
+  trap restore_lock_on_failure EXIT
+
+  cp "$ready_lock" "$flake_dir/flake.lock"
   chown --reference="$flake_dir" "$flake_dir/flake.lock"
+  lock_installed=true
+
+  # Recheck the exact live configuration and candidate lock immediately before
+  # the explicitly approved deployment.
+  nix flake check "$flake_ref" --no-build --no-update-lock-file
+  nixos-rebuild switch --flake "$flake_ref#$flake_attr"
+
+  lock_installed=false
+  clear_ready_update
+  printf 'The approved %s update has been switched successfully.\n' "$scope_label"
 }
 
 mkdir -p "$state_dir"
-rm -f "$ready_file"
-
-tmp_dir="$(mktemp -d)"
-trap 'rm -rf "$tmp_dir"' EXIT
-
-immediate_lock="$tmp_dir/immediate-flake.lock"
-if nix flake update "${immediate_inputs[@]}" --flake "$flake_dir" --output-lock-file "$immediate_lock" >/dev/null 2>&1; then
-  if ! cmp -s "$flake_dir/flake.lock" "$immediate_lock"; then
-    install_lock "$immediate_lock"
-    touch "$pending_switch_file"
-  fi
+exec 9>"$state_dir/update.lock"
+if ! flock -n 9; then
+  printf 'Another NixOS update operation is already running.\n' >&2
+  exit 1
 fi
 
-if ! nix flake update --flake "$flake_dir" --output-lock-file "$tmp_dir/flake.lock" >/dev/null 2>&1; then
-  switch_current_if_pending
-  exit 0
-fi
-
-current_comparable="$tmp_dir/current-comparable-flake.lock"
-updated_comparable="$tmp_dir/updated-comparable-flake.lock"
-strip_immediate_inputs "$flake_dir/flake.lock" > "$current_comparable"
-strip_immediate_inputs "$tmp_dir/flake.lock" > "$updated_comparable"
-
-if cmp -s "$current_comparable" "$updated_comparable"; then
-  rm -f "$candidate_lock" "$first_seen_file" "$ready_file"
-  switch_current_if_pending
-  exit 0
-fi
-
-now="$(date +%s)"
-
-if [ -f "$candidate_lock" ]; then
-  candidate_comparable="$tmp_dir/candidate-comparable-flake.lock"
-  strip_immediate_inputs "$candidate_lock" > "$candidate_comparable"
-fi
-
-if [ ! -f "$candidate_lock" ] || ! cmp -s "$candidate_comparable" "$updated_comparable"; then
-  cp "$tmp_dir/flake.lock" "$candidate_lock"
-  printf '%s\n' "$now" > "$first_seen_file"
-  switch_current_if_pending
-  exit 0
-fi
-
-first_seen="$(cat "$first_seen_file" 2>/dev/null || printf '%s' "$now")"
-age=$((now - first_seen))
-
-if [ "$age" -lt "$delay_seconds" ]; then
-  switch_current_if_pending
-  exit 0
-fi
-
-merged_lock="$tmp_dir/merged-flake.lock"
-merge_immediate_inputs_from_current "$candidate_lock" "$flake_dir/flake.lock" > "$merged_lock"
-
-touch "$ready_file"
-install_lock "$merged_lock"
-touch "$pending_switch_file"
-
-if nixos-rebuild switch --flake "$flake_dir#$flake_attr"; then
-  rm -f "$candidate_lock" "$first_seen_file" "$pending_switch_file" "$ready_file"
-fi
+case "${1:-check}" in
+  check)
+    check_for_update "${2:-all}"
+    ;;
+  catch-up)
+    catch_up_if_overdue
+    ;;
+  approve)
+    approve_update
+    ;;
+  *)
+    printf 'Usage: %s check [all|apps] | catch-up | approve\n' "$0" >&2
+    exit 2
+    ;;
+esac

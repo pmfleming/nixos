@@ -1,6 +1,15 @@
 {
   description = "ThinkPad NixOS desktop configuration";
 
+  nixConfig = {
+    extra-substituters = [
+      "https://cache.garnix.io"
+    ];
+    extra-trusted-public-keys = [
+      "cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g="
+    ];
+  };
+
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
@@ -20,15 +29,17 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    nm-wifi = {
-      url = "path:/home/laufan/Projects/nm-wifi";
+    affinity-nix.url = "github:mrshmllow/affinity-nix";
+
+    nm-daemon = {
+      url = "path:/home/laufan/Projects/nm-daemon";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     shelllist = {
       url = "path:/home/laufan/Projects/shelllist";
       inputs.nixpkgs.follows = "nixpkgs";
-      inputs.nm-wifi.follows = "nm-wifi";
+      inputs.nm-daemon.follows = "nm-daemon";
     };
 
     ts-react-quality-lens = {
@@ -53,10 +64,21 @@
       };
     in
     {
+      packages.${system}.connectParityProbe = inputs.nm-daemon.packages.${system}.connectParityProbe;
+
+      apps.${system}.connectParityProbe = {
+        type = "app";
+        program = "${inputs.nm-daemon.packages.${system}.connectParityProbe}/bin/nm-daemon-connect-parity-probe";
+        meta.description = "Compare nm-daemon and nmcli Wi-Fi connection behavior";
+      };
+
       nixosConfigurations.thinkpad = nixpkgs.lib.nixosSystem {
         inherit system;
         specialArgs = { inherit inputs unstablePkgs; };
         modules = [
+          ({ ... }: {
+            nixpkgs.overlays = [ inputs.affinity-nix.overlays.default ];
+          })
           ./configuration.nix
           home-manager.nixosModules.home-manager
           homeManagerModule

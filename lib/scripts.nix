@@ -1,10 +1,12 @@
 let
-  withPlaceholders = replacements: path:
+  substitute = replacements: text:
     let keys = builtins.attrNames replacements;
-    in builtins.replaceStrings keys (map (key: replacements.${key}) keys) (builtins.readFile path);
+    in builtins.replaceStrings keys (map (key: replacements.${key}) keys) text;
+
+  withPlaceholders = replacements: path: substitute replacements (builtins.readFile path);
 in
 {
-  inherit withPlaceholders;
+  inherit substitute withPlaceholders;
 
   mkShellApplication = pkgs: { name, runtimeInputs ? [], replacements ? {}, path }:
     pkgs.writeShellApplication {

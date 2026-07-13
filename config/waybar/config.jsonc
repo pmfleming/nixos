@@ -19,6 +19,7 @@
     "battery",
     "power-profiles-daemon",
     "custom/notifications",
+    "custom/timezone",
     "clock"
   ],
   "hyprland/workspaces": {
@@ -41,7 +42,8 @@
     }
   },
   "custom/updates": {
-    "interval": 60,
+    "interval": "once",
+    "signal": 8,
     "exec": "test -e /run/nixos-updates-available && echo 󰚰 || true",
     "format": "{}",
     "tooltip": true,
@@ -56,9 +58,9 @@
     "format-wifi": "",
     "format-ethernet": "󰈀",
     "format-disconnected": "󰤮",
-    "tooltip-format-wifi": "{essid} {signalStrength}%\nLeft: Wi-Fi menu\nRight: captive portal browser",
-    "tooltip-format-ethernet": "{ifname}\nRight: captive portal browser",
-    "on-click": "shelllist-wifi",
+    "tooltip-format-wifi": "{essid} {signalStrength}%\nLeft: Wi-Fi popover\nRight: captive portal browser",
+    "tooltip-format-ethernet": "{ifname}\nLeft: Wi-Fi popover\nRight: captive portal browser",
+    "on-click": "shelllist-wifi toggle",
     "on-click-right": "captive-portal-browser"
   },
   "bluetooth": {
@@ -83,7 +85,6 @@
     "on-click": "pavucontrol"
   },
   "backlight": {
-    "device": "amdgpu_bl1",
     "format": "󰃠",
     "tooltip-format": "Brightness: {percent}%\nLeft click: brighter\nRight click: dimmer",
     "on-click": "brightnessctl set 5%+",
@@ -134,13 +135,22 @@
     }
   },
   "custom/notifications": {
-    "interval": 5,
-    "exec": "swaync-client --count --skip-wait 2>/dev/null || echo 0",
+    "exec": "swaync-client --subscribe-waybar",
+    "return-type": "json",
+    "escape": true,
     "format": " {}",
     "tooltip": true,
     "tooltip-format": "Notifications: {}\nLeft click: open history\nRight click: toggle do not disturb",
     "on-click": "swaync-client --toggle-panel --skip-wait",
     "on-click-right": "swaync-client --toggle-dnd --skip-wait"
+  },
+  "custom/timezone": {
+    "interval": 300,
+    "exec": "tz=$(timedatectl show -p Timezone --value 2>/dev/null || readlink /etc/localtime | sed 's#.*zoneinfo/##'); city=${tz##*/}; printf '%s\\n' \"${city//_/ }\"",
+    "format": "󰅐 {}",
+    "tooltip": true,
+    "tooltip-format": "Timezone city: {}\nTimezone is updated automatically from location",
+    "on-click": "ghostty -e bash -lc 'timedatectl; read -r -p \"Press enter to close\"'"
   },
   "mpris": {
     "format": "{player_icon} {title}  {status_icon}",
@@ -161,6 +171,6 @@
   },
   "clock": {
     "format": "{:%a %d %b  %H:%M}",
-    "tooltip-format": "{:%Y-%m-%d}"
+    "tooltip-format": "{:%Y-%m-%d %Z %z}"
   }
 }

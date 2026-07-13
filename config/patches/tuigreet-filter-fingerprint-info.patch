@@ -1,0 +1,38 @@
+diff --git a/src/ipc.rs b/src/ipc.rs
+index 02c0803..46c2f0d 100644
+--- a/src/ipc.rs
++++ b/src/ipc.rs
+@@ -96,6 +96,13 @@ impl Ipc {
+           self.send(Request::PostAuthMessageResponse { response: None }).await;
+         }
+ 
++        AuthMessageType::Info if is_fingerprint_auth_message(&auth_message) => {
++          // PAM/fprintd sends instructional messages such as "Place your finger
++          // on the fingerprint reader". Fingerprint auth still runs, but keep
++          // the text greeter visually password-clean.
++          self.send(Request::PostAuthMessageResponse { response: None }).await;
++        }
++
+         AuthMessageType::Info => {
+           greeter.remove_prompt();
+ 
+@@ -222,6 +229,19 @@ impl Ipc {
+   }
+ }
+ 
++fn is_fingerprint_auth_message(message: &str) -> bool {
++  let message = message.to_ascii_lowercase();
++
++  message.contains("fingerprint reader")
++    || message.contains("fingerprint")
++    || message.contains("finger across")
++    || message.contains("thumb across")
++    || message.contains("index finger")
++    || message.contains("middle finger")
++    || message.contains("ring finger")
++    || message.contains("little finger")
++}
++
+ fn desktop_names_to_xdg(names: &str) -> String {
+   names.replace(';', ":").trim_end_matches(':').to_string()
+ }

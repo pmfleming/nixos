@@ -5,10 +5,10 @@
 
 :root {
   --accent: @ACCENT@;
-  --cc-bg: rgba(0, 0, 0, 0.42);
-  --panel-bg: rgba(5, 9, 13, 0.24);
-  --noti-bg: rgba(0, 0, 0, 0.58);
-  --noti-bg-hover: rgba(17, 24, 32, 0.72);
+  --cc-bg: rgba(@BG_RGB@, 0.42);
+  --panel-bg: rgba(@BG_RGB@, 0.24);
+  --noti-bg: rgba(@BG_RGB@, 0.58);
+  --noti-bg-hover: rgba(@BG_RGB@, 0.72);
   --noti-border: rgba(@ACCENT_RGB@, 0.82);
   --text: @FOREGROUND@;
   --muted: @SUBTEXT@;
@@ -60,7 +60,7 @@ blankwindow,
 
 .widget-title > button,
 button {
-  background: rgba(17, 24, 32, 0.64);
+  background: rgba(@BG_RGB@, 0.64);
   color: var(--text);
   border: 1px solid rgba(@ACCENT_RGB@, 0.16);
   border-radius: 5px;
@@ -79,7 +79,7 @@ button:hover {
 }
 
 .widget-dnd switch {
-  background: rgba(17, 24, 32, 0.54);
+  background: rgba(@BG_RGB@, 0.54);
   border: 1px solid rgba(@ACCENT_RGB@, 0.2);
   border-radius: 999px;
 }
@@ -171,7 +171,7 @@ button:hover {
 }
 
 .notification-action > button {
-  background: rgba(17, 24, 32, 0.64);
+  background: rgba(@BG_RGB@, 0.64);
   color: var(--text);
   border-radius: 5px;
   margin: 0 4px;
@@ -180,7 +180,7 @@ button:hover {
 
 .notification-action > button:disabled {
   color: var(--disabled);
-  background: rgba(17, 24, 32, 0.34);
+  background: rgba(@BG_RGB@, 0.34);
 }
 
 .close-button {

@@ -1,13 +1,34 @@
 let
-  palette = {
-    bg = "#101418";
+  inherit (import ./lib/scripts.nix) substitute;
+
+  colorBare = color: builtins.substring 1 6 color;
+
+  hexDigits = {
+    "0" = 0; "1" = 1; "2" = 2; "3" = 3; "4" = 4;
+    "5" = 5; "6" = 6; "7" = 7; "8" = 8; "9" = 9;
+    "a" = 10; "b" = 11; "c" = 12; "d" = 13; "e" = 14; "f" = 15;
+    "A" = 10; "B" = 11; "C" = 12; "D" = 13; "E" = 14; "F" = 15;
+  };
+
+  hexPair = hex: pos:
+    16 * hexDigits.${builtins.substring pos 1 hex}
+    + hexDigits.${builtins.substring (pos + 1) 1 hex};
+
+  colorRgb = color:
+    let hex = colorBare color;
+    in "${toString (hexPair hex 0)}, ${toString (hexPair hex 2)}, ${toString (hexPair hex 4)}";
+
+  palette = rec {
+    black = "#000000";
+    bg = black;
+    bgRgb = colorRgb bg;
     muted = "#69727d";
     text = "#d7dee8";
     subtext = "#aeb8c4";
     accent = "#2f8cff";
-    accentBare = "2f8cff";
+    accentBare = colorBare accent;
+    accentRgb = colorRgb accent;
 
-    black = "#000000";
     white = "#ffffff";
     foreground = "#f5f5f5";
     borderDim = "#141b22";
@@ -36,6 +57,8 @@ let
     scrollbarWidth = "5px";
   };
 
+  wallpaper = ./assets/newback.png;
+
   appearance = {
     gtkTheme = "Adwaita-dark";
     gtkThemeEnv = "Adwaita:dark";
@@ -48,11 +71,10 @@ let
     qtStyle = "adwaita-dark";
   };
 
-  colorBare = color: builtins.substring 1 6 color;
-
   themeTokens = {
     "@BG@" = palette.bg;
     "@BG_BARE@" = colorBare palette.bg;
+    "@BG_RGB@" = palette.bgRgb;
     "@MUTED@" = palette.muted;
     "@TEXT@" = palette.text;
     "@TEXT_BARE@" = colorBare palette.text;
@@ -60,7 +82,7 @@ let
     "@SUBTEXT_BARE@" = colorBare palette.subtext;
     "@ACCENT@" = palette.accent;
     "@ACCENT_BARE@" = palette.accentBare;
-    "@ACCENT_RGB@" = "47, 140, 255";
+    "@ACCENT_RGB@" = palette.accentRgb;
     "@FOREGROUND@" = palette.foreground;
     "@FOREGROUND_BARE@" = colorBare palette.foreground;
     "@BLACK@" = palette.black;
@@ -77,20 +99,14 @@ let
     "@FONT_MONO@" = fonts.mono;
     "@FONT_MONO_NERD@" = fonts.monoNerd;
     "@FONT_SIZE@" = ui.fontSize;
-    "@GTK_THEME_ENV@" = appearance.gtkThemeEnv;
-    "@QT_QPA_PLATFORMTHEME@" = appearance.qtPlatformThemeEnv;
-    "@CURSOR_SIZE@" = builtins.toString appearance.cursorSize;
     "@ROFI_WIDTH@" = ui.rofiWidth;
     "@ROFI_LINES@" = ui.rofiLines;
     "@SCROLLBAR_WIDTH@" = ui.scrollbarWidth;
   };
 
-  themeText = text: builtins.replaceStrings
-    (builtins.attrNames themeTokens)
-    (builtins.map (name: themeTokens.${name}) (builtins.attrNames themeTokens))
-    text;
+  themeText = substitute themeTokens;
 in
 {
-  inherit palette fonts ui appearance themeTokens themeText;
+  inherit palette fonts ui appearance wallpaper themeTokens themeText;
 }
 # hash-padding: 1

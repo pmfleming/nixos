@@ -1,19 +1,53 @@
 set -euo pipefail
+export LC_ALL=C
 
 profile=/nix/var/nix/profiles/system
 keep_recent=5
-keep_every=10
+keep_weekly=8
+keep_monthly=12
 
 refresh_boot_entries() {
   echo "Refreshing systemd-boot entries"
   /run/current-system/bin/switch-to-configuration boot
 }
 
-mapfile -t gens < <(
+# Keep exactly bounded calendar buckets: the current week plus seven previous
+# ISO weeks, and the current month plus eleven previous calendar months.
+declare -A allowed_weeks=()
+declare -A allowed_months=()
+
+for ((offset = 0; offset < keep_weekly; offset++)); do
+  bucket="$(date --date="$offset weeks ago" +%G-W%V)"
+  allowed_weeks["$bucket"]=1
+done
+
+for ((offset = 0; offset < keep_monthly; offset++)); do
+  bucket="$(date --date="$offset months ago" +%Y-%m)"
+  allowed_months["$bucket"]=1
+done
+
+mapfile -t generation_rows < <(
   nix-env --profile "$profile" --list-generations \
-    | awk '{print $1}' \
-    | sort -n
+    | awk '$1 ~ /^[0-9]+$/ { print $1, $2, $3 }' \
+    | sort -n -k1,1
 )
+
+gens=()
+declare -A generation_epoch=()
+
+for row in "${generation_rows[@]}"; do
+  read -r gen created_date created_time <<< "$row"
+  gens+=("$gen")
+
+  if epoch="$(date --date="$created_date $created_time" +%s 2>/dev/null)"; then
+    generation_epoch["$gen"]="$epoch"
+  else
+    # An unparseable timestamp must fail safe: retain that generation.
+    generation_epoch["$gen"]=""
+    printf 'Keeping generation %s because its creation time could not be parsed: %s %s\n' \
+      "$gen" "$created_date" "$created_time" >&2
+  fi
+done
 
 total="${#gens[@]}"
 if (( total <= keep_recent )); then
@@ -26,21 +60,45 @@ profile_current="$(readlink -f "$profile" 2>/dev/null || true)"
 run_current="$(readlink -f /run/current-system 2>/dev/null || true)"
 run_booted="$(readlink -f /run/booted-system 2>/dev/null || true)"
 
+declare -A keep_by_policy=()
+declare -A selected_weeks=()
+declare -A selected_months=()
+
+# Traverse newest to oldest so each bucket retains its newest generation.
+for ((idx = total - 1; idx >= 0; idx--)); do
+  gen="${gens[$idx]}"
+  epoch="${generation_epoch[$gen]:-}"
+
+  if (( idx >= total - keep_recent )); then
+    keep_by_policy["$gen"]=1
+  fi
+
+  if [[ -z "$epoch" ]]; then
+    keep_by_policy["$gen"]=1
+    continue
+  fi
+
+  week_bucket="$(date --date="@$epoch" +%G-W%V)"
+  if [[ -n "${allowed_weeks[$week_bucket]+set}" && -z "${selected_weeks[$week_bucket]+set}" ]]; then
+    keep_by_policy["$gen"]=1
+    selected_weeks["$week_bucket"]="$gen"
+  fi
+
+  month_bucket="$(date --date="@$epoch" +%Y-%m)"
+  if [[ -n "${allowed_months[$month_bucket]+set}" && -z "${selected_months[$month_bucket]+set}" ]]; then
+    keep_by_policy["$gen"]=1
+    selected_months["$month_bucket"]="$gen"
+  fi
+done
+
 keep=()
 delete=()
 
-for idx in "${!gens[@]}"; do
-  gen="${gens[$idx]}"
+for gen in "${gens[@]}"; do
   link="$(readlink -f "$profile-$gen-link" 2>/dev/null || true)"
   keep_gen=0
 
-  # Keep newest N generations.
-  if (( idx >= total - keep_recent )); then
-    keep_gen=1
-  fi
-
-  # Keep generation 1 and every 10th generation: 10, 20, 30, ...
-  if (( gen == 1 || gen % keep_every == 0 )); then
+  if [[ -n "${keep_by_policy[$gen]+set}" ]]; then
     keep_gen=1
   fi
 

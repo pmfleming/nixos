@@ -7,7 +7,7 @@
 }
 
 window#waybar {
-  background: rgba(0, 0, 0, 0.92);
+  background: rgba(@BG_RGB@, 0.92);
   color: @FOREGROUND@;
   border-bottom: 1px solid @BORDER_DIM@;
 }
@@ -29,12 +29,12 @@ window#waybar {
 }
 
 #workspaces button:nth-child(1) {
-  background: #000000;
+  background: @BG@;
 }
 
 #workspaces button:nth-child(2) {
   color: transparent;
-  background-color: #000000;
+  background-color: @BG@;
   background-image: url("zen-workspace.svg");
   background-repeat: no-repeat;
   background-position: center;
@@ -43,7 +43,7 @@ window#waybar {
 
 #workspaces button:nth-child(3) {
   color: transparent;
-  background-color: #000000;
+  background-color: @BG@;
   background-image: url("vscode-workspace.svg");
   background-repeat: no-repeat;
   background-position: center;
@@ -52,7 +52,7 @@ window#waybar {
 
 #workspaces button:nth-child(4) {
   color: transparent;
-  background-color: #000000;
+  background-color: @BG@;
   background-image: url("spotify-workspace.svg");
   background-repeat: no-repeat;
   background-position: center;
@@ -61,7 +61,7 @@ window#waybar {
 
 #workspaces button:nth-child(5) {
   color: transparent;
-  background-color: #000000;
+  background-color: @BG@;
   background-image: url("scratchpad-workspace.svg");
   background-repeat: no-repeat;
   background-position: center;

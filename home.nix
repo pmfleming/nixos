@@ -3,18 +3,46 @@
 let
   system = pkgs.stdenv.hostPlatform.system;
   hyprlandGuiutils = inputs.hyprland-guiutils.packages.${system}.default;
-  nmWifi = inputs.nm-wifi.packages.${system}.default;
+  nmDaemon = inputs.nm-daemon.packages.${system}.default;
   shelllistWifi = inputs.shelllist.packages.${system}.default;
   tsReactQualityLens = inputs.ts-react-quality-lens.packages.${system}.default;
   zenBrowser = inputs.zen-browser.packages.${system}.default;
 
   theme = import ./theme.nix;
-  inherit (theme) palette fonts themeText;
+  inherit (theme) palette fonts themeText wallpaper;
+
+  sharedSessionVariables = {
+    GTK_THEME = theme.appearance.gtkThemeEnv;
+    QT_QPA_PLATFORM = "wayland;xcb";
+    QT_QPA_PLATFORMTHEME = theme.appearance.qtPlatformThemeEnv;
+    SHELLLIST_WIFI_MODE = "popover";
+    SHELLLIST_BG = palette.bg;
+    SHELLLIST_SURFACE = palette.borderDim;
+    SHELLLIST_TEXT = palette.text;
+    SHELLLIST_SUBTEXT = palette.subtext;
+    SHELLLIST_ACCENT = palette.accent;
+    SHELLLIST_SELECTED = palette.selectedBg;
+    SHELLLIST_BORDER = palette.borderDim;
+    SHELLLIST_SUCCESS = palette.success;
+    SHELLLIST_WARNING = palette.warning;
+    SHELLLIST_RADIUS = builtins.toString theme.ui.radiusInt;
+  };
+
+  hyprlandEnvVariables = sharedSessionVariables // {
+    XCURSOR_SIZE = builtins.toString theme.appearance.cursorSize;
+    HYPRCURSOR_SIZE = builtins.toString theme.appearance.cursorSize;
+    NIXOS_OZONE_WL = "1";
+  };
+
+  hyprlandEnvConfig = lib.concatStringsSep "\n" (
+    lib.mapAttrsToList (name: value: "env = ${name},${builtins.toString value}") hyprlandEnvVariables
+  );
 
   mkUserService = description: execStart: restartSec: {
     Unit = {
       Description = description;
       After = [ "graphical-session.target" ];
+      PartOf = [ "graphical-session.target" ];
     };
 
     Service = {
@@ -23,7 +51,7 @@ let
       RestartSec = restartSec;
     };
 
-    Install.WantedBy = [ "default.target" ];
+    Install.WantedBy = [ "graphical-session.target" ];
   };
 
   binShim = drv: name: lib.nameValuePair ".local/bin/${name}" {
@@ -34,41 +62,12 @@ let
   scriptWith = scriptLib.withPlaceholders;
   mkScript = scriptLib.mkShellApplication pkgs;
 
-  togglesplitPlugin = pkgs.stdenv.mkDerivation {
-    pname = "hyprland-togglesplit";
-    version = "local";
-    src = ./packages/togglesplit;
-    nativeBuildInputs = with pkgs; [ pkg-config ];
-    buildInputs = with pkgs; [
-      aquamarine
-      hyprcursor
-      hyprgraphics
-      hyprland
-      hyprlang
-      hyprutils
-      libdrm
-      libglvnd
-      libinput
-      libxkbcommon
-      mesa
-      pango
-      pixman
-      systemd
-      wayland
-      xcbutilerrors
-      xcbutilwm
-    ];
-    installPhase = ''
-      runHook preInstall
-      install -Dm755 togglesplit.so $out/lib/togglesplit.so
-      runHook postInstall
-    '';
-  };
-
-  hyprlandConfig = themeText (builtins.replaceStrings
-    [ "@TOGGLESPLIT_PLUGIN@" "@HYPRPOLKITAGENT@" ]
-    [ "${togglesplitPlugin}/lib/togglesplit.so" "${pkgs.hyprpolkitagent}" ]
-    (builtins.readFile ./config/hypr/hyprland.conf));
+  hyprlandConfig = themeText (scriptWith {
+    "@HYPRLAND_ENV@" = hyprlandEnvConfig;
+    "@HYPRPOLKITAGENT@" = "${pkgs.hyprpolkitagent}";
+    "@DBUS_UPDATE_ACTIVATION_ENVIRONMENT@" = "${pkgs.dbus}/bin/dbus-update-activation-environment";
+    "@SYSTEMCTL@" = "${pkgs.systemd}/bin/systemctl";
+  } ./config/hypr/hyprland.conf);
 
   hyprMonitorAuto = mkScript {
     name = "hypr-monitor-auto";
@@ -81,16 +80,6 @@ let
     ];
     replacements."@WAYBAR@" = "${pkgs.waybar}/bin/waybar";
     path = ./config/scripts/hypr-monitor-auto.sh;
-  };
-
-  togglesplitToggle = mkScript {
-    name = "togglesplit-toggle";
-    runtimeInputs = with pkgs; [
-      hyprland
-      jq
-      libnotify
-    ];
-    path = ./config/scripts/togglesplit-toggle.sh;
   };
 
   captivePortalBrowser = mkScript {
@@ -223,7 +212,7 @@ let
     rofi-clipboard-menu = rofiClipboardMenu;
     screenshot-annotate = screenshotAnnotate;
     captive-portal-browser = captivePortalBrowser;
-    nm-wifi = nmWifi;
+    nm-daemon = nmDaemon;
   };
 in
 {
@@ -231,28 +220,27 @@ in
   home.homeDirectory = "/home/laufan";
   home.stateVersion = "26.05";
 
-  home.packages = with pkgs; [
+  # Everything in binShims is also a package; register each script once there.
+  home.packages = lib.attrValues binShims ++ [
     hyprMonitorAuto
-    togglesplitToggle
-    captivePortalBrowser
-    nmWifi
-    rofiAppMenu
-    shelllistWifi
     tsReactQualityLens
-    rofiBluetoothMenu
-    rofiClipboardMenu
-    screenshotAnnotate
     zenBrowser
+    pkgs.affinity-v3
+    # Track the latest nixpkgs-unstable build; the system startup updater keeps
+    # this input current for Codex, Pi, and Claude.
     unstablePkgs.codex
+  ] ++ (with pkgs; [
     ghostty
     hyprlandGuiutils
     waybar
     hyprlock
     hyprpaper
     swayosd
+    qt5.qtwayland
+    qt6.qtwayland
     wlogout
     btop
-  ];
+  ]);
 
   home.sessionVariables = {
     BROWSER = "zen";
@@ -260,7 +248,8 @@ in
     # to use VS Code for commit messages and interactive operations.
     EDITOR = "nvim";
     VISUAL = "code --wait";
-    GTK_THEME = theme.appearance.gtkThemeEnv;
+  } // sharedSessionVariables // {
+    QT_QPA_PLATFORMTHEME = lib.mkForce sharedSessionVariables.QT_QPA_PLATFORMTHEME;
   };
 
   home.sessionPath = [
@@ -318,15 +307,25 @@ in
     };
 
     configFile = {
+      # Override package-provided XDG autostart entries; Waybar and the custom
+      # network/Bluetooth controls own these interfaces instead of tray applets.
+      "autostart/blueman.desktop".text = ''
+        [Desktop Entry]
+        Type=Application
+        Hidden=true
+      '';
+      "autostart/nm-applet.desktop".text = ''
+        [Desktop Entry]
+        Type=Application
+        Hidden=true
+      '';
       "hypr/hyprland.conf".text = hyprlandConfig;
-      "hypr/hyprlock.conf".text = themeText (builtins.replaceStrings
-        [ "@WALLPAPER@" ]
-        [ "${./assets/wallpaper.png}" ]
-        (builtins.readFile ./config/hypr/hyprlock.conf));
-      "hypr/hyprpaper.conf".text = builtins.replaceStrings
-        [ "@WALLPAPER@" ]
-        [ "${./assets/wallpaper.png}" ]
-        (builtins.readFile ./config/hypr/hyprpaper.conf);
+      "hypr/hyprlock.conf".text = themeText (scriptWith
+        { "@WALLPAPER@" = "${wallpaper}"; }
+        ./config/hypr/hyprlock.conf);
+      "hypr/hyprpaper.conf".text = scriptWith
+        { "@WALLPAPER@" = "${wallpaper}"; }
+        ./config/hypr/hyprpaper.conf;
       "waybar/config".text = builtins.readFile ./config/waybar/config.jsonc;
       "waybar/style.css".text = themeText (builtins.readFile ./config/waybar/style.css);
       "waybar/zen-workspace.svg".source = ./config/waybar/zen-workspace.svg;
@@ -400,6 +399,12 @@ in
   # User-level shims keep interactive launchers current even before the next
   # root-level NixOS profile switch updates /etc/profiles/per-user.
   home.file = lib.mapAttrs' (name: drv: binShim drv name) binShims // {
+    # Temporary compatibility shim while Shelllist migrates its command name.
+    ".local/bin/nm-api".source = "${nmDaemon}/bin/nm-daemon";
+    ".local/bin/pi" = {
+      source = "${unstablePkgs.pi-coding-agent}/bin/pi";
+      force = true;
+    };
     ".pi/agent/extensions/recent-sessions-sidebar" = {
       source = ./config/pi/recent-sessions-sidebar;
       force = true;
@@ -420,12 +425,8 @@ in
     fi
   '';
 
-  home.activation.stopDuplicateNetworkTrayApplets = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    ${pkgs.procps}/bin/pkill -u "$USER" -x nm-applet >/dev/null 2>&1 || true
-    ${pkgs.procps}/bin/pkill -u "$USER" -f '[b]lueman-applet' >/dev/null 2>&1 || true
-  '';
-
-  services.gnome-keyring.enable = true;
+  services.network-manager-applet.enable = false;
+  services.blueman-applet.enable = false;
   services.poweralertd.enable = false;
 
   services.hypridle = {
@@ -454,7 +455,37 @@ in
     };
   };
 
+  systemd.user.targets.hyprland-session = {
+    Unit = {
+      Description = "Hyprland compositor session";
+      Documentation = [ "man:systemd.special(7)" ];
+      BindsTo = [ "graphical-session.target" ];
+      Wants = [ "graphical-session-pre.target" ];
+      After = [ "graphical-session-pre.target" ];
+      Before = [ "graphical-session.target" ];
+    };
+  };
+
   systemd.user.services = {
+    # Mirror and enable the nm-daemon.service user unit installed by the package.
+    # D-Bus activation can be added later as a fallback startup path.
+    nm-daemon = {
+      Unit = {
+        Description = "nm-daemon NetworkManager user service";
+        Documentation = [ "https://github.com/pmfleming/nm-daemon" ];
+        After = [ "graphical-session.target" ];
+      };
+
+      Service = {
+        Type = "simple";
+        ExecStart = "${nmDaemon}/bin/nm-daemon daemon";
+        Restart = "on-failure";
+        RestartSec = "2s";
+      };
+
+      Install.WantedBy = [ "default.target" ];
+    };
+
     hypr-monitor-auto = mkUserService
       "Hyprland monitor auto-switcher"
       "${hyprMonitorAuto}/bin/hypr-monitor-auto"
@@ -465,15 +496,15 @@ in
       "${captivePortalMonitor}/bin/captive-portal-monitor"
       "5s";
 
-    nm-wifi-cache-refresh = {
+    nm-daemon-cache-refresh = {
       Unit = {
-        Description = "Refresh nm-wifi Wi-Fi scan cache";
+        Description = "Refresh nm-daemon Wi-Fi scan cache";
         After = [ "graphical-session.target" ];
       };
 
       Service = {
         Type = "oneshot";
-        ExecStart = "${nmWifi}/bin/nm-wifi scan --cache --timeout 12";
+        ExecStart = "${nmDaemon}/bin/nm-daemon wifi scan --cache --quiet --timeout 12";
       };
     };
 
@@ -483,8 +514,8 @@ in
       "2s";
   } // lib.mapAttrs (_: mkCliphistWatcher) cliphistWatchers;
 
-  systemd.user.timers.nm-wifi-cache-refresh = {
-    Unit.Description = "Periodically refresh nm-wifi Wi-Fi scan cache";
+  systemd.user.timers.nm-daemon-cache-refresh = {
+    Unit.Description = "Periodically refresh nm-daemon Wi-Fi scan cache";
     Timer = {
       OnStartupSec = "15s";
       OnUnitActiveSec = "2min";
