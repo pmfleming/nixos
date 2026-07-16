@@ -501,13 +501,14 @@
       "locked": {
         "lastModified": 1784201090,
         "narHash": "sha256-CCmdmV2JAQPGi2i179m1b6yKUFFO3UiWUht38KnAAtM=",
-        "ref": "refs/heads/main",
+        "ref": "main",
         "rev": "323b0369f067d68945aa341fb274ed05501107df",
         "revCount": 40,
         "type": "git",
         "url": "file:///home/laufan/Projects/nm-daemon"
       },
       "original": {
+        "ref": "main",
         "type": "git",
         "url": "file:///home/laufan/Projects/nm-daemon"
       }
@@ -583,14 +584,18 @@
         ]
       },
       "locked": {
-        "lastModified": 1784201031,
-        "narHash": "sha256-6e6wnLBhKnupMnsTYI3QTvEwGS3s7WSrRgRAc1Mr47s=",
-        "path": "/home/laufan/Projects/scratchpad",
-        "type": "path"
+        "lastModified": 1784236130,
+        "narHash": "sha256-ZNjHeXJWW755EwisRdBT9LyhEk9WQ9wQGuyn8/iZe00=",
+        "ref": "master",
+        "rev": "05122df2f14cd027fe646953177b36a092ea34f7",
+        "revCount": 122,
+        "type": "git",
+        "url": "file:///home/laufan/Projects/scratchpad"
       },
       "original": {
-        "path": "/home/laufan/Projects/scratchpad",
-        "type": "path"
+        "ref": "master",
+        "type": "git",
+        "url": "file:///home/laufan/Projects/scratchpad"
       }
     },
     "shelllist": {
@@ -603,15 +608,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1784200338,
-        "narHash": "sha256-d8UYQqNK9bz8Vvnc45pvqFwO9bSYwgwQCaTsRuhtlKM=",
-        "ref": "refs/heads/main",
-        "rev": "7d5eebc96e214d83456415490687c306036b6cac",
-        "revCount": 41,
+        "lastModified": 1784235896,
+        "narHash": "sha256-f/cleh5zMVHMGz2OM/uqbPGZiqItPb31h/lcH3axGLk=",
+        "ref": "main",
+        "rev": "d808aad3747aa03d75d656cb017da53d9f36dd74",
+        "revCount": 43,
         "type": "git",
         "url": "file:///home/laufan/Projects/shelllist"
       },
       "original": {
+        "ref": "main",
         "type": "git",
         "url": "file:///home/laufan/Projects/shelllist"
       }
@@ -656,14 +662,18 @@
         ]
       },
       "locked": {
-        "lastModified": 1782387947,
-        "narHash": "sha256-GuhInTk5Kyel3J217/eHinjOi4x4zAXK3g97B+7Vja0=",
-        "path": "/home/laufan/Projects/ts-react-quality-lens",
-        "type": "path"
+        "lastModified": 1784239364,
+        "narHash": "sha256-yebVmDS1e24CPCoSJGxyHre1uyD2kecabAHUYmTYn9E=",
+        "ref": "main",
+        "rev": "4e1bc5544af5c931ac42c8cc9cc5ef9c495e80ce",
+        "revCount": 6,
+        "type": "git",
+        "url": "file:///home/laufan/Projects/ts-react-quality-lens"
       },
       "original": {
-        "path": "/home/laufan/Projects/ts-react-quality-lens",
-        "type": "path"
+        "ref": "main",
+        "type": "git",
+        "url": "file:///home/laufan/Projects/ts-react-quality-lens"
       }
     },
     "zen-browser": {

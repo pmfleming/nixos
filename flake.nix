@@ -32,23 +32,23 @@
     affinity-nix.url = "github:mrshmllow/affinity-nix";
 
     nm-daemon = {
-      url = "git+file:///home/laufan/Projects/nm-daemon";
+      url = "git+file:///home/laufan/Projects/nm-daemon?ref=main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     shelllist = {
-      url = "git+file:///home/laufan/Projects/shelllist";
+      url = "git+file:///home/laufan/Projects/shelllist?ref=main";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.nm-daemon.follows = "nm-daemon";
     };
 
     scratchpad = {
-      url = "path:/home/laufan/Projects/scratchpad";
+      url = "git+file:///home/laufan/Projects/scratchpad?ref=master";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
     ts-react-quality-lens = {
-      url = "path:/home/laufan/Projects/ts-react-quality-lens";
+      url = "git+file:///home/laufan/Projects/ts-react-quality-lens?ref=main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
