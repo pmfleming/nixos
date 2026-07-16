@@ -43,7 +43,7 @@
     };
 
     scratchpad = {
-      url = "github:pmfleming/scratchpad";
+      url = "path:/home/laufan/Projects/scratchpad";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
