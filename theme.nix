@@ -41,9 +41,10 @@ let
   };
 
   fonts = {
-    mono = "JetBrainsMono Nerd Font";
-    monoNerd = "JetBrainsMono Nerd Font Mono";
-    sans = "Noto Sans";
+    ui = "Noto Sans";
+    terminal = "JetBrainsMono Nerd Font";
+    code = "JetBrainsMono Nerd Font";
+    icons = "JetBrainsMono Nerd Font Mono";
     serif = "Noto Serif";
   };
 
@@ -96,8 +97,10 @@ let
     "@WARNING@" = palette.warning;
     "@RADIUS@" = ui.radius;
     "@RADIUS_INT@" = builtins.toString ui.radiusInt;
-    "@FONT_MONO@" = fonts.mono;
-    "@FONT_MONO_NERD@" = fonts.monoNerd;
+    "@FONT_UI@" = fonts.ui;
+    "@FONT_TERMINAL@" = fonts.terminal;
+    "@FONT_CODE@" = fonts.code;
+    "@FONT_ICONS@" = fonts.icons;
     "@FONT_SIZE@" = ui.fontSize;
     "@ROFI_WIDTH@" = ui.rofiWidth;
     "@ROFI_LINES@" = ui.rofiLines;

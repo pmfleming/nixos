@@ -14,10 +14,16 @@ geometry="$(slurp || true)"
 
 grim -g "$geometry" "$raw"
 
-# Swappy's own clipboard button can race/confuse history. Instead, write
-# the final annotated image to a file, copy it once with an explicit MIME
-# type, and let the wl-paste/cliphist image watcher store exactly that.
-swappy -f "$raw" -o "$edited" >/dev/null 2>&1 || exit 0
+# Satty replaced Swappy because Swappy does not offer post-capture cropping.
+# Smart resizing caps the editor at 80% of the active monitor while retaining
+# the captured image's full output resolution.
+satty \
+  --filename "$raw" \
+  --output-filename "$edited" \
+  --resize smart \
+  --early-exit \
+  --actions-on-enter save-to-file \
+  >/dev/null 2>&1 || exit 0
 [ -s "$edited" ] || exit 0
 
 wl-copy --type image/png < "$edited"

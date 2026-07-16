@@ -2,7 +2,7 @@
 # Scratchpad reads this when editor.appearance_source = "system".
 
 [font]
-family = "@FONT_MONO@"
+family = "@FONT_CODE@"
 size = @FONT_SIZE@
 
 [palette]

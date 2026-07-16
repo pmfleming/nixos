@@ -250,9 +250,9 @@ paste_image_file_entry() {
   paste_clipboard_to_target "Image file: $file"
 }
 
-focus_swappy() {
+focus_satty() {
   for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-    hyprctl dispatch focuswindow 'class:^(swappy)$' >/dev/null 2>&1 && return 0
+    hyprctl dispatch focuswindow 'class:^(com\.gabm\.satty)$' >/dev/null 2>&1 && return 0
     sleep 0.05
   done
 }
@@ -267,10 +267,16 @@ annotate_state_file() {
   tmp_dir="$(dirname "$state")"
   trap 'rm -rf "$tmp_dir"' EXIT
 
-  swappy -f "$raw" -o "$edited" >/dev/null 2>&1 &
-  swappy_pid="$!"
-  focus_swappy
-  wait "$swappy_pid" || exit 0
+  satty \
+    --filename "$raw" \
+    --output-filename "$edited" \
+    --resize smart \
+    --early-exit \
+    --actions-on-enter save-to-file \
+    >/dev/null 2>&1 &
+  satty_pid="$!"
+  focus_satty
+  wait "$satty_pid" || exit 0
   [ -s "$edited" ] || exit 0
 
   wl-copy --sensitive --type image/png < "$edited"

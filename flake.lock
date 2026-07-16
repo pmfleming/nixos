@@ -499,14 +499,17 @@
         ]
       },
       "locked": {
-        "lastModified": 1783944430,
-        "narHash": "sha256-5ueqhMhV/GM3y7qSWvf4UH0dmo9YlvmpQaD7WGF7Ko0=",
-        "path": "/home/laufan/Projects/nm-daemon",
-        "type": "path"
+        "lastModified": 1784135807,
+        "narHash": "sha256-88NqzMwzFOBvZA0qz1jFFZ9n9zb1osv91TCYmc6amIY=",
+        "ref": "refs/heads/main",
+        "rev": "5ef77ca366068acdfeacda133cd64917ebb257a7",
+        "revCount": 38,
+        "type": "git",
+        "url": "file:///home/laufan/Projects/nm-daemon"
       },
       "original": {
-        "path": "/home/laufan/Projects/nm-daemon",
-        "type": "path"
+        "type": "git",
+        "url": "file:///home/laufan/Projects/nm-daemon"
       }
     },
     "on-linux": {
@@ -550,6 +553,7 @@
         "nixpkgs": "nixpkgs_4",
         "nixpkgs-unstable": "nixpkgs-unstable",
         "nm-daemon": "nm-daemon",
+        "scratchpad": "scratchpad",
         "shelllist": "shelllist",
         "ts-react-quality-lens": "ts-react-quality-lens",
         "zen-browser": "zen-browser"
@@ -572,6 +576,26 @@
         "type": "github"
       }
     },
+    "scratchpad": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1784040027,
+        "narHash": "sha256-Z+q+KtyaFb4RlOVv4qBls61BtiUJUDf00KGbmqGyzEg=",
+        "owner": "pmfleming",
+        "repo": "scratchpad",
+        "rev": "754b00b7b37d1f10243d710132af2e0388075db5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "pmfleming",
+        "repo": "scratchpad",
+        "type": "github"
+      }
+    },
     "shelllist": {
       "inputs": {
         "nixpkgs": [
@@ -582,14 +606,17 @@
         ]
       },
       "locked": {
-        "lastModified": 1783945318,
-        "narHash": "sha256-/IwjX/2I4+ZCbiHN8OYR2GOp31c+hcMSHFknQew0h3g=",
-        "path": "/home/laufan/Projects/shelllist",
-        "type": "path"
+        "lastModified": 1784132575,
+        "narHash": "sha256-R5mCpltiPu3TfNNB5ND9Lk3qVMJtR/5QL/OwU9EaooE=",
+        "ref": "refs/heads/main",
+        "rev": "bd23714e1b55d5390cb88c81164d49b178c1d51c",
+        "revCount": 40,
+        "type": "git",
+        "url": "file:///home/laufan/Projects/shelllist"
       },
       "original": {
-        "path": "/home/laufan/Projects/shelllist",
-        "type": "path"
+        "type": "git",
+        "url": "file:///home/laufan/Projects/shelllist"
       }
     },
     "systems": {

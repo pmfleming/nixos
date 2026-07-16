@@ -1,5 +1,5 @@
 theme = dark:Adwaita Dark,light:Adwaita
-font-family = @FONT_MONO@
+font-family = @FONT_TERMINAL@
 font-size = @FONT_SIZE@
 background = @BG_BARE@
 foreground = @TEXT_BARE@

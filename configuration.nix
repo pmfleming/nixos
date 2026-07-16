@@ -225,8 +225,8 @@ in
       noto-fonts-color-emoji
     ];
     fontconfig.defaultFonts = {
-      monospace = [ theme.fonts.mono ];
-      sansSerif = [ theme.fonts.sans ];
+      monospace = [ theme.fonts.code ];
+      sansSerif = [ theme.fonts.ui ];
       serif = [ theme.fonts.serif ];
     };
   };
@@ -387,7 +387,7 @@ in
     slurp
     spotify
     swaynotificationcenter
-    swappy
+    satty
     tree
     unzip
     vscode

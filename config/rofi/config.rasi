@@ -1,6 +1,6 @@
 configuration {
   modi: "drun,run,window";
-  font: "@FONT_MONO_NERD@ @FONT_SIZE@";
+  font: "@FONT_UI@, @FONT_ICONS@ @FONT_SIZE@";
   show-icons: true;
   display-drun: "apps";
   display-run: "run";

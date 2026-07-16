@@ -42,7 +42,7 @@
 @define-color shade_color rgba(0, 0, 0, 0.36);
 
 * {
-  font-family: "@FONT_MONO@";
+  font-family: "@FONT_UI@";
   font-size: @FONT_SIZE@px;
   caret-color: @accent_color;
   outline-color: alpha(@accent_color, 0.55);

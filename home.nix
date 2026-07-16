@@ -5,6 +5,8 @@ let
   hyprlandGuiutils = inputs.hyprland-guiutils.packages.${system}.default;
   nmDaemon = inputs.nm-daemon.packages.${system}.default;
   shelllistWifi = inputs.shelllist.packages.${system}.default;
+  shelllistPortalBrowser = inputs.shelllist.packages.${system}.captivePortalBrowser;
+  scratchpad = inputs.scratchpad.packages.${system}.scratchpad-hyprland;
   tsReactQualityLens = inputs.ts-react-quality-lens.packages.${system}.default;
   zenBrowser = inputs.zen-browser.packages.${system}.default;
 
@@ -65,6 +67,7 @@ let
   hyprlandConfig = themeText (scriptWith {
     "@HYPRLAND_ENV@" = hyprlandEnvConfig;
     "@HYPRPOLKITAGENT@" = "${pkgs.hyprpolkitagent}";
+    "@SCRATCHPAD@" = "${scratchpad}/bin/scratchpad";
     "@DBUS_UPDATE_ACTIVATION_ENVIRONMENT@" = "${pkgs.dbus}/bin/dbus-update-activation-environment";
     "@SYSTEMCTL@" = "${pkgs.systemd}/bin/systemctl";
   } ./config/hypr/hyprland.conf);
@@ -80,15 +83,6 @@ let
     ];
     replacements."@WAYBAR@" = "${pkgs.waybar}/bin/waybar";
     path = ./config/scripts/hypr-monitor-auto.sh;
-  };
-
-  captivePortalBrowser = mkScript {
-    name = "captive-portal-browser";
-    runtimeInputs = with pkgs; [
-      coreutils
-      google-chrome
-    ];
-    path = ./config/scripts/captive-portal-browser.sh;
   };
 
   rofiScriptHelpers = pkgs.writeText "rofi-helpers.sh" (scriptWith {} ./config/scripts/rofi-helpers.sh);
@@ -151,7 +145,7 @@ let
       hyprland
       libnotify
       rofi
-      swappy
+      satty
       wl-clipboard
     ];
     path = ./config/scripts/rofi-clipboard-menu.sh;
@@ -164,7 +158,7 @@ let
       grim
       libnotify
       slurp
-      swappy
+      satty
       wl-clipboard
     ];
     path = ./config/scripts/screenshot-annotate.sh;
@@ -192,26 +186,12 @@ let
     path = ./config/scripts/rofi-app-menu.sh;
   };
 
-  captivePortalMonitor = mkScript {
-    name = "captive-portal-monitor";
-    runtimeInputs = with pkgs; [
-      coreutils
-      gnugrep
-      hyprland
-      libnotify
-      networkmanager
-    ];
-    replacements."@CAPTIVE_PORTAL_BROWSER@" = "${captivePortalBrowser}/bin/captive-portal-browser";
-    path = ./config/scripts/captive-portal-monitor.sh;
-  };
-
   binShims = {
     rofi-app-menu = rofiAppMenu;
     shelllist-wifi = shelllistWifi;
     rofi-bluetooth-menu = rofiBluetoothMenu;
     rofi-clipboard-menu = rofiClipboardMenu;
     screenshot-annotate = screenshotAnnotate;
-    captive-portal-browser = captivePortalBrowser;
     nm-daemon = nmDaemon;
   };
 in
@@ -223,6 +203,8 @@ in
   # Everything in binShims is also a package; register each script once there.
   home.packages = lib.attrValues binShims ++ [
     hyprMonitorAuto
+    shelllistPortalBrowser
+    scratchpad
     tsReactQualityLens
     zenBrowser
     pkgs.affinity-v3
@@ -266,7 +248,7 @@ in
       size = theme.appearance.cursorSize;
     };
     font = {
-      name = fonts.mono;
+      name = fonts.ui;
       size = theme.ui.fontSizeInt;
     };
   };
@@ -281,6 +263,9 @@ in
     "org/gnome/desktop/interface" = {
       color-scheme = theme.appearance.gtkColorScheme;
       gtk-theme = theme.appearance.gtkTheme;
+      font-name = "${fonts.ui} ${theme.ui.fontSize}";
+      document-font-name = "${fonts.ui} ${theme.ui.fontSize}";
+      monospace-font-name = "${fonts.code} ${theme.ui.fontSize}";
     };
   };
 
@@ -334,6 +319,13 @@ in
       "waybar/scratchpad-workspace.svg".source = ./config/waybar/scratchpad-workspace.svg;
       "rofi/config.rasi".text = themeText (builtins.readFile ./config/rofi/config.rasi);
       "ghostty/config".text = themeText (builtins.readFile ./config/ghostty/config);
+      "Code/User/settings.json".text = builtins.toJSON {
+        "editor.fontFamily" = "'${fonts.code}', monospace";
+        "editor.fontSize" = 18;
+        "terminal.integrated.fontFamily" = "'${fonts.terminal}'";
+        "window.zoomLevel" = 0.5;
+        "chat.viewSessions.orientation" = "stacked";
+      };
       "gtk-3.0/gtk.css".text = themeText (builtins.readFile ./config/gtk/gtk.css);
       "gtk-4.0/gtk.css".text = themeText (builtins.readFile ./config/gtk/gtk.css);
       "scratchpad/system-appearance.toml".text = themeText (builtins.readFile ./config/scratchpad/system-appearance.toml);
@@ -358,7 +350,9 @@ in
       name = "Yazi";
       genericName = "Terminal File Manager";
       comment = "Browse files in Yazi";
-      exec = "ghostty -e yazi %f";
+      # Keep Yazi on the active workspace instead of matching the regular
+      # Ghostty-to-workspace-1 window rule.
+      exec = "ghostty --class=com.laufan.yazi -e yazi %f";
       icon = "${pkgs.adwaita-icon-theme}/share/icons/Adwaita/symbolic/legacy/system-file-manager-symbolic.svg";
       terminal = false;
       mimeType = [
@@ -386,8 +380,8 @@ in
     desktopEntries.captive-portal-browser = {
       name = "Captive Portal Browser";
       genericName = "Captive Portal Browser";
-      comment = "Open a clean Chrome profile on plain-HTTP captive portal check pages";
-      exec = "captive-portal-browser";
+      comment = "Open Shelllist's temporary captive-portal browser with a fallback HTTP probe";
+      exec = "shelllist-captive-portal --manual --fallback";
       terminal = false;
       categories = [
         "Network"
@@ -491,39 +485,12 @@ in
       "${hyprMonitorAuto}/bin/hypr-monitor-auto"
       "2s";
 
-    captive-portal-monitor = mkUserService
-      "Notify and open a browser when NetworkManager detects a captive portal"
-      "${captivePortalMonitor}/bin/captive-portal-monitor"
-      "5s";
-
-    nm-daemon-cache-refresh = {
-      Unit = {
-        Description = "Refresh nm-daemon Wi-Fi scan cache";
-        After = [ "graphical-session.target" ];
-      };
-
-      Service = {
-        Type = "oneshot";
-        ExecStart = "${nmDaemon}/bin/nm-daemon wifi scan --cache --quiet --timeout 12";
-      };
-    };
-
     wl-clip-persist = mkUserService
       "Keep the regular Wayland clipboard available after source apps exit"
       "${pkgs.wl-clip-persist}/bin/wl-clip-persist --clipboard regular"
       "2s";
   } // lib.mapAttrs (_: mkCliphistWatcher) cliphistWatchers;
 
-  systemd.user.timers.nm-daemon-cache-refresh = {
-    Unit.Description = "Periodically refresh nm-daemon Wi-Fi scan cache";
-    Timer = {
-      OnStartupSec = "15s";
-      OnUnitActiveSec = "2min";
-      AccuracySec = "15s";
-      Persistent = true;
-    };
-    Install.WantedBy = [ "timers.target" ];
-  };
 
   programs.bash.enable = true;
 
@@ -550,9 +517,31 @@ in
             orphan = true;
           }
         ];
+        # Satty replaced Swappy for screenshot, clipboard, and Yazi image
+        # editing because Swappy does not provide post-capture cropping.
+        satty = [
+          {
+            run = ''
+              input="$1"
+              case "$input" in
+                *.png) output="$input" ;;
+                *) output="''${input%.*}.edited.png" ;;
+              esac
+              exec satty \
+                --filename "$input" \
+                --output-filename "$output" \
+                --resize smart \
+                --early-exit \
+                --actions-on-enter save-to-file
+            '';
+            orphan = true;
+            desc = "Crop or annotate image in Satty";
+          }
+        ];
       };
       open = {
         prepend_rules = [
+          { mime = "image/*"; use = "satty"; }
           { url = "*.html"; use = "open"; }
           { url = "*.htm"; use = "open"; }
           { mime = "text/html"; use = "open"; }

@@ -58,10 +58,10 @@
     "format-wifi": "",
     "format-ethernet": "󰈀",
     "format-disconnected": "󰤮",
-    "tooltip-format-wifi": "{essid} {signalStrength}%\nLeft: Wi-Fi popover\nRight: captive portal browser",
-    "tooltip-format-ethernet": "{ifname}\nLeft: Wi-Fi popover\nRight: captive portal browser",
+    "tooltip-format-wifi": "{essid} {signalStrength}%\nLeft: Wi-Fi popover\nRight: manual portal fallback",
+    "tooltip-format-ethernet": "{ifname}\nLeft: Wi-Fi popover\nRight: manual portal fallback",
     "on-click": "shelllist-wifi toggle",
-    "on-click-right": "captive-portal-browser"
+    "on-click-right": "shelllist-captive-portal --manual --fallback"
   },
   "bluetooth": {
     "format": "",

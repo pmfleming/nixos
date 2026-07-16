@@ -1,7 +1,7 @@
 * {
   border: none;
   border-radius: 0;
-  font-family: "@FONT_MONO@", monospace;
+  font-family: "@FONT_UI@", "@FONT_ICONS@";
   font-size: @FONT_SIZE@px;
   min-height: 0;
 }
