@@ -51,9 +51,11 @@
 
     shelllist = {
       url = "git+file:///home/laufan/Projects/shelllist?ref=main";
-      inputs.nixpkgs.follows = "nixpkgs";
-      inputs.nm-daemon.follows = "nm-daemon";
-      inputs.bt-daemon.follows = "bt-daemon";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        nm-daemon.follows = "nm-daemon";
+        bt-daemon.follows = "bt-daemon";
+      };
     };
 
     scratchpad = {
@@ -75,35 +77,52 @@
       ...
     }:
     let
-      system = "x86_64-linux";
+      machine = {
+        system = "x86_64-linux";
+        hostName = "thinkpad";
+        username = "laufan";
+        homeDirectory = "/home/laufan";
+      };
+      inherit (machine) system;
       pkgs = nixpkgs.legacyPackages.${system};
       unstablePkgs = import inputs.nixpkgs-unstable {
         inherit system;
         config.allowUnfree = true;
       };
       homeManagerModule = {
-        home-manager.useGlobalPkgs = true;
-        home-manager.useUserPackages = true;
-        home-manager.backupFileExtension = "hm-backup";
-        home-manager.extraSpecialArgs = { inherit inputs unstablePkgs; };
-        home-manager.users.laufan = import ./home.nix;
+        home-manager = {
+          useGlobalPkgs = true;
+          useUserPackages = true;
+          backupFileExtension = "hm-backup";
+          extraSpecialArgs = {
+            inherit inputs machine unstablePkgs;
+          };
+          users.${machine.username} = import ./home.nix;
+        };
       };
     in
     {
-      formatter.${system} = pkgs.nixfmt;
+      formatter.${system} = pkgs.nixfmt-tree;
 
-      checks.${system}.nixfmt =
-        pkgs.runCommand "nixfmt-check"
-          {
-            nativeBuildInputs = [
-              pkgs.findutils
-              pkgs.nixfmt
-            ];
-          }
-          ''
-            find ${self} -type f -name '*.nix' -exec nixfmt --check {} +
-            touch $out
-          '';
+      checks.${system} = {
+        nixfmt =
+          pkgs.runCommand "nixfmt-check"
+            {
+              nativeBuildInputs = [
+                pkgs.findutils
+                pkgs.nixfmt
+              ];
+            }
+            ''
+              find ${self} -type f -name '*.nix' -exec nixfmt --check {} +
+              touch $out
+            '';
+
+        shellcheck = pkgs.runCommand "shellcheck" { nativeBuildInputs = [ pkgs.shellcheck ]; } ''
+          shellcheck -s bash -x -e SC1091 ${self}/config/scripts/*.sh
+          touch $out
+        '';
+      };
 
       packages.${system}.connectParityProbe = inputs.nm-daemon.packages.${system}.connectParityProbe;
 
@@ -115,11 +134,13 @@
         meta.description = "Compare nm-daemon and nmcli Wi-Fi connection behavior";
       };
 
-      nixosConfigurations.thinkpad = nixpkgs.lib.nixosSystem {
+      nixosConfigurations.${machine.hostName} = nixpkgs.lib.nixosSystem {
         inherit system;
-        specialArgs = { inherit inputs unstablePkgs; };
+        specialArgs = {
+          inherit inputs machine unstablePkgs;
+        };
         modules = [
-          ({ ... }: {
+          (_: {
             nixpkgs.overlays = [ inputs.affinity-nix.overlays.default ];
           })
           ./configuration.nix

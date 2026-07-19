@@ -1,36 +1,11 @@
+{ lib }:
+
 let
   inherit (import ./lib/scripts.nix) substitute;
 
   colorBare = color: builtins.substring 1 6 color;
 
-  hexDigits = {
-    "0" = 0;
-    "1" = 1;
-    "2" = 2;
-    "3" = 3;
-    "4" = 4;
-    "5" = 5;
-    "6" = 6;
-    "7" = 7;
-    "8" = 8;
-    "9" = 9;
-    "a" = 10;
-    "b" = 11;
-    "c" = 12;
-    "d" = 13;
-    "e" = 14;
-    "f" = 15;
-    "A" = 10;
-    "B" = 11;
-    "C" = 12;
-    "D" = 13;
-    "E" = 14;
-    "F" = 15;
-  };
-
-  hexPair =
-    hex: pos:
-    16 * hexDigits.${builtins.substring pos 1 hex} + hexDigits.${builtins.substring (pos + 1) 1 hex};
+  hexPair = hex: pos: lib.fromHexString (builtins.substring pos 2 hex);
 
   colorRgb =
     color:
@@ -61,19 +36,19 @@ let
     warning = "#f59e0b";
   };
 
-  fonts = {
+  fonts = rec {
     ui = "Noto Sans";
-    terminal = "JetBrainsMono Nerd Font";
+    terminal = code;
     code = "JetBrainsMono Nerd Font";
     icons = "JetBrainsMono Nerd Font Mono";
     serif = "Noto Serif";
   };
 
-  ui = {
+  ui = rec {
     radiusInt = 3;
-    radius = "3px";
+    radius = "${toString radiusInt}px";
     fontSizeInt = 12;
-    fontSize = "12";
+    fontSize = toString fontSizeInt;
     rofiWidth = "36%";
     rofiLines = "12";
     scrollbarWidth = "5px";

@@ -1,5 +1,15 @@
 { palette }:
 
+let
+  foreground = color: { fg = color; };
+  background = color: { bg = color; };
+  boldForeground = color: foreground color // { bold = true; };
+  colors = fg: bg: foreground fg // background bg;
+  boldColors = fg: bg: colors fg bg // { bold = true; };
+  underlinedColors = fg: bg: boldColors fg bg // { underline = true; };
+  foregroundRule = rule: rule // foreground palette.foreground;
+  boldForegroundRule = rule: rule // boldForeground palette.foreground;
+in
 {
   programs.yazi = {
     enable = true;
@@ -78,227 +88,87 @@
 
     theme = {
       mgr = {
-        cwd = {
-          fg = palette.accent;
-        };
+        cwd = foreground palette.accent;
         # Yazi is a terminal TUI, so it cannot draw real rounded outline boxes
         # around rows. Keep the selected row unfilled, white, and blue-underlined
         # to avoid the default pale-blue pill.
-        hovered = {
-          fg = palette.foreground;
-          bg = "reset";
-          bold = true;
-          underline = true;
-        };
-        preview_hovered = {
-          fg = palette.foreground;
-          bg = "reset";
-          bold = true;
-          underline = true;
-        };
-        find_keyword = {
-          fg = palette.accent;
-          bold = true;
-        };
-        find_position = {
-          fg = palette.subtext;
-        };
-        marker_copied = {
-          fg = palette.success;
-        };
-        marker_cut = {
-          fg = palette.danger;
-        };
-        marker_marked = {
-          fg = palette.warning;
-        };
-        marker_selected = {
-          fg = palette.accent;
-        };
-        tab_active = {
-          fg = palette.foreground;
-          bg = palette.bg;
-          bold = true;
-          underline = true;
-        };
-        tab_inactive = {
-          fg = palette.subtext;
-          bg = palette.bg;
-        };
+        hovered = underlinedColors palette.foreground "reset";
+        preview_hovered = underlinedColors palette.foreground "reset";
+        find_keyword = boldForeground palette.accent;
+        find_position = foreground palette.subtext;
+        marker_copied = foreground palette.success;
+        marker_cut = foreground palette.danger;
+        marker_marked = foreground palette.warning;
+        marker_selected = foreground palette.accent;
+        tab_active = underlinedColors palette.foreground palette.bg;
+        tab_inactive = colors palette.subtext palette.bg;
         border_symbol = "│";
-        border_style = {
-          fg = palette.borderDim;
-        };
+        border_style = foreground palette.borderDim;
       };
 
       status = {
         separator_open = " ";
         separator_close = " ";
-        separator_style = {
-          fg = palette.bg;
-          bg = palette.bg;
-        };
-        mode_normal = {
-          fg = palette.white;
-          bg = palette.accentDark;
-          bold = true;
-        };
-        mode_select = {
-          fg = palette.white;
-          bg = palette.accentDark;
-          bold = true;
-        };
-        mode_unset = {
-          fg = palette.white;
-          bg = palette.dangerDark;
-          bold = true;
-        };
-        progress_label = {
-          fg = palette.white;
-          bg = palette.accentDark;
-          bold = true;
-        };
-        progress_normal = {
-          fg = palette.accentDark;
-          bg = palette.bg;
-        };
-        progress_error = {
-          fg = palette.dangerDark;
-          bg = palette.bg;
-        };
-        permissions_t = {
-          fg = palette.foreground;
-          bold = true;
-        };
-        permissions_r = {
-          fg = palette.foreground;
-          bold = true;
-        };
-        permissions_w = {
-          fg = palette.foreground;
-          bold = true;
-        };
-        permissions_x = {
-          fg = palette.foreground;
-          bold = true;
-        };
-        permissions_s = {
-          fg = palette.muted;
-        };
+        separator_style = colors palette.bg palette.bg;
+        mode_normal = boldColors palette.white palette.accentDark;
+        mode_select = boldColors palette.white palette.accentDark;
+        mode_unset = boldColors palette.white palette.dangerDark;
+        progress_label = boldColors palette.white palette.accentDark;
+        progress_normal = colors palette.accentDark palette.bg;
+        progress_error = colors palette.dangerDark palette.bg;
+        permissions_t = boldForeground palette.foreground;
+        permissions_r = boldForeground palette.foreground;
+        permissions_w = boldForeground palette.foreground;
+        permissions_x = boldForeground palette.foreground;
+        permissions_s = foreground palette.muted;
       };
 
       input = {
-        border = {
-          fg = palette.accent;
-        };
-        title = {
-          fg = palette.text;
-        };
-        value = {
-          fg = palette.foreground;
-        };
-        selected = {
-          bg = palette.selectedBg;
-        };
+        border = foreground palette.accent;
+        title = foreground palette.text;
+        value = foreground palette.foreground;
+        selected = background palette.selectedBg;
       };
 
       select = {
-        border = {
-          fg = palette.accent;
-        };
-        active = {
-          fg = palette.accent;
-        };
-        inactive = {
-          fg = palette.subtext;
-        };
+        border = foreground palette.accent;
+        active = foreground palette.accent;
+        inactive = foreground palette.subtext;
       };
 
       tasks = {
-        border = {
-          fg = palette.accent;
-        };
-        title = {
-          fg = palette.text;
-        };
-        hovered = {
-          bg = palette.selectedBg;
-        };
+        border = foreground palette.accent;
+        title = foreground palette.text;
+        hovered = background palette.selectedBg;
       };
 
       which = {
         cols = 3;
-        mask = {
-          bg = palette.bg;
-        };
-        cand = {
-          fg = palette.accent;
-        };
-        desc = {
-          fg = palette.subtext;
-        };
+        mask = background palette.bg;
+        cand = foreground palette.accent;
+        desc = foreground palette.subtext;
         separator = "  ";
-        separator_style = {
-          fg = palette.muted;
-        };
+        separator_style = foreground palette.muted;
       };
 
       help = {
-        on = {
-          fg = palette.accent;
-        };
-        run = {
-          fg = palette.subtext;
-        };
-        desc = {
-          fg = palette.text;
-        };
-        hovered = {
-          bg = palette.selectedBg;
-        };
-        footer = {
-          fg = palette.bg;
-          bg = palette.text;
-        };
+        on = foreground palette.accent;
+        run = foreground palette.subtext;
+        desc = foreground palette.text;
+        hovered = background palette.selectedBg;
+        footer = colors palette.bg palette.text;
       };
 
-      filetype = {
-        rules = [
-          {
-            mime = "image/*";
-            fg = palette.foreground;
-          }
-          {
-            mime = "video/*";
-            fg = palette.foreground;
-          }
-          {
-            mime = "audio/*";
-            fg = palette.foreground;
-          }
-          {
-            mime = "application/zip";
-            fg = palette.foreground;
-          }
-          {
-            mime = "application/gzip";
-            fg = palette.foreground;
-          }
-          {
-            mime = "application/x-tar";
-            fg = palette.foreground;
-          }
-          {
-            url = "*/";
-            fg = palette.foreground;
-            bold = true;
-          }
-          {
-            url = "*";
-            fg = palette.foreground;
-          }
-        ];
-      };
+      filetype.rules = [
+        (foregroundRule { mime = "image/*"; })
+        (foregroundRule { mime = "video/*"; })
+        (foregroundRule { mime = "audio/*"; })
+        (foregroundRule { mime = "application/zip"; })
+        (foregroundRule { mime = "application/gzip"; })
+        (foregroundRule { mime = "application/x-tar"; })
+        (boldForegroundRule { url = "*/"; })
+        (foregroundRule { url = "*"; })
+      ];
     };
   };
 

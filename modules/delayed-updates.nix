@@ -1,4 +1,9 @@
-{ lib, pkgs, ... }:
+{
+  lib,
+  machine,
+  pkgs,
+  ...
+}:
 
 let
   mkScript = (import ../lib/scripts.nix).mkShellApplication pkgs;
@@ -15,6 +20,7 @@ let
       procps
       util-linux
     ];
+    replacements."@FLAKE_ATTR@" = machine.hostName;
     path = ../config/scripts/delayed-nixos-update.sh;
   };
 
@@ -48,58 +54,64 @@ let
     };
 in
 {
-  systemd.services.delayed-nixos-update = mkNixosUpdateCheckService {
-    description = "Check and build NixOS flake updates for manual approval";
-    mode = "catch-up";
-    scope = "all";
-    acOnly = true;
-  };
+  systemd = {
+    services = {
+      delayed-nixos-update = mkNixosUpdateCheckService {
+        description = "Check and build NixOS flake updates for manual approval";
+        mode = "catch-up";
+        scope = "all";
+        acOnly = true;
+      };
 
-  systemd.services.nixos-update-check-all = mkNixosUpdateCheckService {
-    description = "Check and build updates for all NixOS flake inputs";
-    scope = "all";
-  };
+      nixos-update-check-all = mkNixosUpdateCheckService {
+        description = "Check and build updates for all NixOS flake inputs";
+        scope = "all";
+      };
 
-  systemd.services.nixos-update-check-apps = mkNixosUpdateCheckService {
-    description = "Check and build nixpkgs-unstable updates for Codex, Pi, and Claude";
-    scope = "apps";
-  };
+      nixos-update-check-apps = mkNixosUpdateCheckService {
+        description = "Check and build nixpkgs-unstable updates for Codex, Pi, and Claude";
+        scope = "apps";
+      };
 
-  systemd.services.nixos-update-catchup = mkNixosUpdateCheckService {
-    description = "Catch up a missed overnight NixOS update check when on AC power";
-    mode = "catch-up";
-    scope = "all";
-    acOnly = true;
-  };
+      nixos-update-catchup = mkNixosUpdateCheckService {
+        description = "Catch up a missed overnight NixOS update check when on AC power";
+        mode = "catch-up";
+        scope = "all";
+        acOnly = true;
+      };
 
-  systemd.services.nixos-update-approve = {
-    description = "Apply a checked NixOS flake update after manual approval";
-    wants = [ "network-online.target" ];
-    after = [ "network-online.target" ];
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update approve";
+      nixos-update-approve = {
+        description = "Apply a checked NixOS flake update after manual approval";
+        wants = [ "network-online.target" ];
+        after = [ "network-online.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update approve";
+        };
+      };
     };
-  };
 
-  systemd.timers.delayed-nixos-update = {
-    description = "Run overnight NixOS update check";
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnCalendar = "*-*-* 03:00:00";
-      AccuracySec = "15m";
-      RandomizedDelaySec = "30m";
-      Persistent = true;
-    };
-  };
+    timers = {
+      delayed-nixos-update = {
+        description = "Run overnight NixOS update check";
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar = "*-*-* 03:00:00";
+          AccuracySec = "15m";
+          RandomizedDelaySec = "30m";
+          Persistent = true;
+        };
+      };
 
-  systemd.timers.nixos-update-catchup = {
-    description = "Retry missed overnight NixOS update checks when AC power is available";
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnCalendar = "*:0/15";
-      AccuracySec = "1m";
-      RandomizedDelaySec = "2m";
+      nixos-update-catchup = {
+        description = "Retry missed overnight NixOS update checks when AC power is available";
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar = "*:0/15";
+          AccuracySec = "1m";
+          RandomizedDelaySec = "2m";
+        };
+      };
     };
   };
 }

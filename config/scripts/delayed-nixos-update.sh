@@ -3,7 +3,7 @@ export GIT_OPTIONAL_LOCKS=0
 
 flake_dir=/etc/nixos
 flake_ref="git+file://$flake_dir"
-flake_attr=thinkpad
+flake_attr=@FLAKE_ATTR@
 state_dir=/var/lib/nixos-delayed-updates
 ready_lock="$state_dir/ready-flake.lock"
 ready_revision="$state_dir/ready-revision"
@@ -13,6 +13,29 @@ last_full_check="$state_dir/last-full-check"
 last_catchup_attempt="$state_dir/last-catchup-attempt"
 catchup_retry_seconds=$((60 * 60))
 
+git_at_flake() {
+  git -c safe.directory="$flake_dir" -C "$flake_dir" "$@"
+}
+
+configure_scope() {
+  scope="$1"
+  case "$scope" in
+    all)
+      update_inputs=()
+      scope_label="all flake inputs"
+      ;;
+    apps)
+      # Codex, Pi, and Claude are all sourced from nixpkgs-unstable.
+      update_inputs=(nixpkgs-unstable)
+      scope_label="Codex, Pi, and Claude"
+      ;;
+    *)
+      printf 'Unknown update scope: %s\n' "$scope" >&2
+      return 2
+      ;;
+  esac
+}
+
 notify_waybar_updates() {
   # The waybar custom/updates module is signal-driven (RTMIN+8) instead of
   # polling; tell it to re-check the persistent ready state.
@@ -21,10 +44,7 @@ notify_waybar_updates() {
 
 worktree_is_clean() {
   status="$({
-    git \
-      -c safe.directory="$flake_dir" \
-      -C "$flake_dir" \
-      status --porcelain=v1 --untracked-files=normal
+    git_at_flake status --porcelain=v1 --untracked-files=normal
   })"
 
   if [ -n "$status" ]; then
@@ -36,10 +56,7 @@ worktree_is_clean() {
 
 stage_committed_worktree() {
   mkdir -p "$staged_flake"
-  git \
-    -c safe.directory="$flake_dir" \
-    -C "$flake_dir" \
-    archive --format=tar "$revision" \
+  git_at_flake archive --format=tar "$revision" \
     | tar -xf - -C "$staged_flake"
 }
 
@@ -60,22 +77,7 @@ record_full_check_success() {
 }
 
 check_for_update() {
-  scope="$1"
-  case "$scope" in
-    all)
-      update_inputs=()
-      scope_label="all flake inputs"
-      ;;
-    apps)
-      # Codex, Pi, and Claude are all sourced from nixpkgs-unstable.
-      update_inputs=(nixpkgs-unstable)
-      scope_label="Codex, Pi, and Claude"
-      ;;
-    *)
-      printf 'Unknown update scope: %s\n' "$scope" >&2
-      return 2
-      ;;
-  esac
+  configure_scope "$1" || return
 
   # Checks always archive the committed HEAD, so uncommitted work can remain in
   # place without being evaluated or modified. Approval still requires a clean
@@ -83,7 +85,7 @@ check_for_update() {
   tmp_dir="$(mktemp -d)"
   staged_flake="$tmp_dir/flake"
   updated_lock="$tmp_dir/flake.lock"
-  revision="$(git -c safe.directory="$flake_dir" -C "$flake_dir" rev-parse --verify HEAD)"
+  revision="$(git_at_flake rev-parse --verify HEAD)"
   trap 'rm -rf "$tmp_dir"; notify_waybar_updates' EXIT
 
   stage_committed_worktree
@@ -171,21 +173,16 @@ approve_update() {
     return 1
   fi
 
-  revision="$(git -c safe.directory="$flake_dir" -C "$flake_dir" rev-parse --verify HEAD)"
+  revision="$(git_at_flake rev-parse --verify HEAD)"
   if [ "$(cat "$ready_revision")" != "$revision" ]; then
     printf 'The checked update was built for a different Git revision. Run the update check again.\n' >&2
     return 1
   fi
 
-  scope="$(cat "$ready_scope")"
-  case "$scope" in
-    all) scope_label="all flake inputs" ;;
-    apps) scope_label="Codex, Pi, and Claude" ;;
-    *)
-      printf 'The checked update has an invalid scope: %s\n' "$scope" >&2
-      return 1
-      ;;
-  esac
+  if ! configure_scope "$(cat "$ready_scope")"; then
+    printf 'The checked update has an invalid scope.\n' >&2
+    return 1
+  fi
 
   tmp_dir="$(mktemp -d)"
   original_lock="$tmp_dir/flake.lock"

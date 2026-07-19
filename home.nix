@@ -2,6 +2,7 @@
   config,
   inputs,
   lib,
+  machine,
   pkgs,
   unstablePkgs,
   ...
@@ -19,7 +20,7 @@ let
   tsReactQualityLens = inputs.ts-react-quality-lens.packages.${system}.default;
   zenBrowser = inputs.zen-browser.packages.${system}.default;
 
-  theme = import ./theme.nix;
+  theme = import ./theme.nix { inherit lib; };
   inherit (theme)
     palette
     fonts
@@ -230,8 +231,8 @@ in
     (import ./modules/home/yazi.nix { inherit palette; })
   ];
 
-  home.username = "laufan";
-  home.homeDirectory = "/home/laufan";
+  home.username = machine.username;
+  home.homeDirectory = machine.homeDirectory;
   home.stateVersion = "26.05";
 
   # Everything in binShims is also a package; register each script once there.
@@ -339,6 +340,12 @@ in
         Type=Application
         Hidden=true
       '';
+      # Enable the package-owned units instead of cloning their definitions.
+      # This keeps service behavior local to the daemon packages that implement it.
+      "systemd/user/default.target.wants/nm-daemon.service".source =
+        "${nmDaemon}/share/systemd/user/nm-daemon.service";
+      "systemd/user/default.target.wants/bt-daemon.service".source =
+        "${btDaemon}/share/systemd/user/bt-daemon.service";
       "hypr/hyprland.conf".text = hyprlandConfig;
       # Keep nwg-displays output version-controlled while allowing it to update
       # the files through Home Manager's out-of-store links.
@@ -392,47 +399,49 @@ in
       "swaync/style.css".text = themeText (builtins.readFile ./config/swaync/style.css);
     };
 
-    desktopEntries.yazi = {
-      name = "Yazi";
-      genericName = "Terminal File Manager";
-      comment = "Browse files in Yazi";
-      # Keep Yazi on the active workspace instead of matching the regular
-      # Ghostty-to-workspace-1 window rule.
-      exec = "ghostty --class=com.laufan.yazi -e yazi %f";
-      icon = "${pkgs.adwaita-icon-theme}/share/icons/Adwaita/symbolic/legacy/system-file-manager-symbolic.svg";
-      terminal = false;
-      mimeType = [
-        "inode/directory"
-      ];
-      categories = [
-        "System"
-        "FileManager"
-      ];
-    };
+    desktopEntries = {
+      yazi = {
+        name = "Yazi";
+        genericName = "Terminal File Manager";
+        comment = "Browse files in Yazi";
+        # Keep Yazi on the active workspace instead of matching the regular
+        # Ghostty-to-workspace-1 window rule.
+        exec = "ghostty --class=com.laufan.yazi -e yazi %f";
+        icon = "${pkgs.adwaita-icon-theme}/share/icons/Adwaita/symbolic/legacy/system-file-manager-symbolic.svg";
+        terminal = false;
+        mimeType = [
+          "inode/directory"
+        ];
+        categories = [
+          "System"
+          "FileManager"
+        ];
+      };
 
-    desktopEntries.pi = {
-      name = "Pi";
-      genericName = "AI Coding Assistant";
-      comment = "Open Pi coding assistant";
-      exec = "ghostty -e pi";
-      icon = "${./assets/pi-logo-on-dark.svg}";
-      terminal = false;
-      categories = [
-        "Development"
-        "Utility"
-      ];
-    };
+      pi = {
+        name = "Pi";
+        genericName = "AI Coding Assistant";
+        comment = "Open Pi coding assistant";
+        exec = "ghostty -e pi";
+        icon = "${./assets/pi-logo-on-dark.svg}";
+        terminal = false;
+        categories = [
+          "Development"
+          "Utility"
+        ];
+      };
 
-    desktopEntries.captive-portal-browser = {
-      name = "Captive Portal Browser";
-      genericName = "Captive Portal Browser";
-      comment = "Open Shelllist's temporary captive-portal browser with a fallback HTTP probe";
-      exec = "shelllist-captive-portal --manual --fallback";
-      terminal = false;
-      categories = [
-        "Network"
-        "WebBrowser"
-      ];
+      captive-portal-browser = {
+        name = "Captive Portal Browser";
+        genericName = "Captive Portal Browser";
+        comment = "Open Shelllist's temporary captive-portal browser with a fallback HTTP probe";
+        exec = "shelllist-captive-portal --manual --fallback";
+        terminal = false;
+        categories = [
+          "Network"
+          "WebBrowser"
+        ];
+      };
     };
   };
 
@@ -450,113 +459,82 @@ in
     ".pi/agent/extensions/thinking-level-picker.ts".source = ./config/pi/thinking-level-picker.ts;
   };
 
-  services.network-manager-applet.enable = false;
-  services.blueman-applet.enable = false;
-  services.poweralertd.enable = false;
+  services = {
+    network-manager-applet.enable = false;
+    blueman-applet.enable = false;
+    poweralertd.enable = false;
 
-  services.hypridle = {
-    enable = true;
-    settings = {
-      general = {
-        lock_cmd = "pidof hyprlock || hyprlock";
-        before_sleep_cmd = "loginctl lock-session";
-        after_sleep_cmd = "hyprctl dispatch dpms on";
+    hypridle = {
+      enable = true;
+      settings = {
+        general = {
+          lock_cmd = "pidof hyprlock || hyprlock";
+          before_sleep_cmd = "loginctl lock-session";
+          after_sleep_cmd = "hyprctl dispatch dpms on";
+        };
+        listener = [
+          {
+            timeout = 300;
+            on-timeout = "loginctl lock-session";
+          }
+          {
+            timeout = 420;
+            on-timeout = "hyprctl dispatch dpms off";
+            on-resume = "hyprctl dispatch dpms on";
+          }
+          {
+            timeout = 1800;
+            on-timeout = "systemctl suspend";
+          }
+        ];
       };
-      listener = [
-        {
-          timeout = 300;
-          on-timeout = "loginctl lock-session";
-        }
-        {
-          timeout = 420;
-          on-timeout = "hyprctl dispatch dpms off";
-          on-resume = "hyprctl dispatch dpms on";
-        }
-        {
-          timeout = 1800;
-          on-timeout = "systemctl suspend";
-        }
-      ];
     };
   };
 
-  systemd.user.targets.hyprland-session = {
-    Unit = {
-      Description = "Hyprland compositor session";
-      Documentation = [ "man:systemd.special(7)" ];
-      BindsTo = [ "graphical-session.target" ];
-      Wants = [ "graphical-session-pre.target" ];
-      After = [ "graphical-session-pre.target" ];
-      Before = [ "graphical-session.target" ];
-    };
-  };
-
-  systemd.user.services = {
-    # Mirror and enable the nm-daemon.service user unit installed by the package.
-    # D-Bus activation can be added later as a fallback startup path.
-    nm-daemon = {
+  systemd.user = {
+    targets.hyprland-session = {
       Unit = {
-        Description = "nm-daemon NetworkManager user service";
-        Documentation = [ "https://github.com/pmfleming/nm-daemon" ];
-        After = [ "graphical-session.target" ];
+        Description = "Hyprland compositor session";
+        Documentation = [ "man:systemd.special(7)" ];
+        BindsTo = [ "graphical-session.target" ];
+        Wants = [ "graphical-session-pre.target" ];
+        After = [ "graphical-session-pre.target" ];
+        Before = [ "graphical-session.target" ];
       };
-
-      Service = {
-        Type = "simple";
-        ExecStart = "${nmDaemon}/bin/nm-daemon daemon";
-        Restart = "on-failure";
-        RestartSec = "2s";
-      };
-
-      Install.WantedBy = [ "default.target" ];
     };
 
-    bt-daemon = {
-      Unit = {
-        Description = "Shelllist Bluetooth user service";
-        Documentation = [ "https://github.com/pmfleming/bt-daemon" ];
-        After = [ "graphical-session.target" ];
-      };
+    services = {
+      hypr-monitor-auto =
+        mkUserService "Hyprland monitor auto-switcher" "${hyprMonitorAuto}/bin/hypr-monitor-auto"
+          "2s";
 
-      Service = {
-        Type = "dbus";
-        BusName = "org.laufan.BluetoothDaemon";
-        ExecStart = "${btDaemon}/bin/bt-daemon daemon";
-        Restart = "on-failure";
-        RestartSec = "2s";
-      };
-
-      Install.WantedBy = [ "default.target" ];
-    };
-
-    hypr-monitor-auto =
-      mkUserService "Hyprland monitor auto-switcher" "${hyprMonitorAuto}/bin/hypr-monitor-auto"
-        "2s";
-
-    wl-clip-persist =
-      mkUserService "Keep the regular Wayland clipboard available after source apps exit"
-        "${pkgs.wl-clip-persist}/bin/wl-clip-persist --clipboard regular"
-        "2s";
-  }
-  // lib.mapAttrs (_: mkCliphistWatcher) cliphistWatchers;
-
-  programs.bash.enable = true;
-
-  programs.direnv = {
-    enable = true;
-    nix-direnv.enable = true;
+      wl-clip-persist =
+        mkUserService "Keep the regular Wayland clipboard available after source apps exit"
+          "${pkgs.wl-clip-persist}/bin/wl-clip-persist --clipboard regular"
+          "2s";
+    }
+    // lib.mapAttrs (_: mkCliphistWatcher) cliphistWatchers;
   };
 
-  programs.git = {
-    enable = true;
-    settings = {
-      user = {
-        name = "Paul Fleming";
-        email = "67100074+pmfleming@users.noreply.github.com";
-      };
-      core.editor = "code --wait";
-    };
-  };
+  programs = {
+    bash.enable = true;
 
-  programs.home-manager.enable = true;
+    direnv = {
+      enable = true;
+      nix-direnv.enable = true;
+    };
+
+    git = {
+      enable = true;
+      settings = {
+        user = {
+          name = "Paul Fleming";
+          email = "67100074+pmfleming@users.noreply.github.com";
+        };
+        core.editor = "code --wait";
+      };
+    };
+
+    home-manager.enable = true;
+  };
 }

@@ -1,5 +1,5 @@
 import { Key, matchesKey, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
-import { formatDate, sessionTitle } from "./sessions.ts";
+import { formatDate, projectIcon, sessionSummary } from "./sessions.ts";
 import type { SessionGroup, SessionRow } from "./types.ts";
 
 export type SidebarChoice =
@@ -47,65 +47,61 @@ export class RecentSessionsSidebar implements Component {
       return;
     }
 
+    const row = this.currentRow();
+    if (!this.handleRowAction(data, row)) this.handleNavigation(data);
+  }
+
+  private handleRowAction(data: string, row: VisibleRow | undefined): boolean {
     if (matchesKey(data, Key.enter)) {
-      const row = this.currentRow();
       if (row?.type === "group") this.toggleGroup(row.group.key);
       else if (row?.type === "new") this.done({ action: "new", group: row.group });
       else if (row?.type === "session") this.done({ action: "continue", group: row.group, session: row.session });
-      return;
+      return true;
     }
 
     if (matchesKey(data, Key.space)) {
-      const row = this.currentRow();
       if (row?.type === "group") this.toggleGroup(row.group.key);
-      return;
+      return true;
     }
 
     if (matchesKey(data, Key.right)) {
-      const row = this.currentRow();
       if (row?.type === "group") {
-        if (!this.expandedGroups.has(row.group.key)) this.toggleGroup(row.group.key);
-        else this.selectFirstSession(row.group.key);
+        if (this.expandedGroups.has(row.group.key)) this.selectFirstSession(row.group.key);
+        else this.toggleGroup(row.group.key);
       }
-      return;
+      return true;
     }
 
     if (matchesKey(data, Key.left)) {
-      const row = this.currentRow();
       if (row?.type === "group" && this.expandedGroups.has(row.group.key)) this.toggleGroup(row.group.key);
       else if (row?.type === "new" || row?.type === "session") this.selectGroup(row.group.key);
-      return;
+      return true;
     }
 
     if (matchesKey(data, "r") || matchesKey(data, "R")) {
-      const row = this.currentRow();
       if (row?.type === "session") this.done({ action: "rename", group: row.group, session: row.session });
-      return;
+      return true;
     }
 
     if (matchesKey(data, "n") || matchesKey(data, "N")) {
-      const row = this.currentRow();
       if (row) this.done({ action: "new", group: row.group });
-      return;
+      return true;
     }
 
-    if (matchesKey(data, Key.up)) {
-      this.move(-1);
-      return;
-    }
+    return false;
+  }
 
-    if (matchesKey(data, Key.down)) {
-      this.move(1);
-      return;
-    }
-
-    if (matchesKey(data, Key.pageUp)) {
-      this.move(-Math.max(1, this.visibleCount() - 1));
-      return;
-    }
-
-    if (matchesKey(data, Key.pageDown)) {
-      this.move(Math.max(1, this.visibleCount() - 1));
+  private handleNavigation(data: string): void {
+    const page = Math.max(1, this.visibleCount() - 1);
+    const movements: Array<[string, number]> = [
+      [Key.up, -1],
+      [Key.down, 1],
+      [Key.pageUp, -page],
+      [Key.pageDown, page],
+    ];
+    const movement = movements.find(([key]) => matchesKey(data, key));
+    if (movement) {
+      this.move(movement[1]);
       return;
     }
 
@@ -246,7 +242,7 @@ export class RecentSessionsSidebar implements Component {
       const marker = selected ? "›" : " ";
       const arrow = expanded ? "▾" : "▸";
       const active = row.group.hasCurrent ? "●" : " ";
-      const icon = row.group.kind === "git" ? "" : row.group.kind === "folder" ? "📁" : "💬";
+      const icon = projectIcon(row.group.kind);
       const latest = formatDate(new Date(row.group.latestMs));
       return this.contentLine(`${marker} ${arrow} ${active} ${icon} ${row.group.label} (${row.group.sessions.length}) · ${latest}`, width, selected);
     }
@@ -257,8 +253,7 @@ export class RecentSessionsSidebar implements Component {
     }
 
     const currentMarker = row.session.path === this.currentSessionPath ? "●" : " ";
-    const branch = row.session.branch ? `  ${row.session.branch} ·` : "";
-    return this.contentLine(`${marker}     ${currentMarker} Chat · ${formatDate(row.session.modified)} ·${branch} ${sessionTitle(row.session)}`, width, selected);
+    return this.contentLine(`${marker}     ${currentMarker} ${sessionSummary(row.session)}`, width, selected);
   }
 
   private pushBlankLines(lines: string[], width: number, count: number): void {

@@ -1,13 +1,14 @@
 {
   config,
   lib,
+  machine,
   pkgs,
   unstablePkgs,
   ...
 }:
 
 let
-  theme = import ./theme.nix;
+  theme = import ./theme.nix { inherit lib; };
   mkScript = (import ./lib/scripts.nix).mkShellApplication pkgs;
 
   cleanTuigreet = pkgs.tuigreet.overrideAttrs (oldAttrs: {
@@ -16,6 +17,26 @@ let
     ];
   });
 
+  rebuild = mkScript {
+    name = "rebuild";
+    runtimeInputs = with pkgs; [
+      git
+      nix
+      nixos-rebuild
+    ];
+    replacements."@FLAKE_ATTR@" = machine.hostName;
+    path = ./config/scripts/rebuild.sh;
+  };
+
+  update = mkScript {
+    name = "update";
+    runtimeInputs = [
+      pkgs.nix
+      rebuild
+    ];
+    replacements."@FLAKE_ATTR@" = machine.hostName;
+    path = ./config/scripts/update.sh;
+  };
 in
 {
   imports = [
@@ -44,34 +65,42 @@ in
 
   nixpkgs.config.allowUnfree = true;
 
-  boot.loader.systemd-boot.enable = true;
-  boot.loader.efi.canTouchEfiVariables = true;
-  # Show normal boot/startup status while diagnosing login/startup issues.
-  boot.consoleLogLevel = 4;
-  boot.initrd.verbose = true;
-  boot.kernelParams = [
-    "udev.log_level=info"
-    "rd.udev.log_level=info"
-    "systemd.show_status=true"
-    "rd.systemd.show_status=true"
-  ];
-  # Load the display driver in the initrd for an earlier, smoother framebuffer handoff.
-  boot.initrd.kernelModules = [ "amdgpu" ];
-  # Make the Qualcomm Wi-Fi device appear reliably after generation switches/reboots.
-  boot.kernelModules = [ "ath11k_pci" ];
-
-  networking.hostName = "thinkpad";
-  networking.networkmanager = {
-    enable = true;
-    settings.connectivity = {
-      enabled = true;
-      uri = "http://nmcheck.gnome.org/check_network_status.txt";
-      response = "NetworkManager is online";
-      interval = 300;
+  boot = {
+    loader = {
+      systemd-boot.enable = true;
+      efi.canTouchEfiVariables = true;
     };
+    # Show normal boot/startup status while diagnosing login/startup issues.
+    consoleLogLevel = 4;
+    initrd = {
+      verbose = true;
+      # Load the display driver in the initrd for an earlier, smoother framebuffer handoff.
+      kernelModules = [ "amdgpu" ];
+    };
+    kernelParams = [
+      "udev.log_level=info"
+      "rd.udev.log_level=info"
+      "systemd.show_status=true"
+      "rd.systemd.show_status=true"
+    ];
+    # Make the Qualcomm Wi-Fi device appear reliably after generation switches/reboots.
+    kernelModules = [ "ath11k_pci" ];
+  };
+
+  networking = {
+    inherit (machine) hostName;
+    networkmanager = {
+      enable = true;
+      settings.connectivity = {
+        enabled = true;
+        uri = "http://nmcheck.gnome.org/check_network_status.txt";
+        response = "NetworkManager is online";
+        interval = 300;
+      };
+    };
+    firewall.enable = true;
   };
   programs.nm-applet.enable = false;
-  networking.firewall.enable = true;
   # NetworkManager-wait-online can take ~10s on Wi-Fi while autoconnect/DHCP
   # settle. This does not block graphical login; it only gates units that
   # explicitly wait for network-online.target, such as the update timer service.
@@ -131,8 +160,6 @@ in
   # Fingerprint reader support for login and lock-screen biometric auth.
   # The patched tuigreet above filters PAM's instructional fingerprint text.
   services.fprintd.enable = true;
-  security.polkit.enable = true;
-  security.rtkit.enable = true;
 
   services.printing.enable = true;
   services.openssh.enable = false;
@@ -143,9 +170,16 @@ in
     libfido2
   ];
 
-  hardware.bluetooth = {
-    enable = true;
-    powerOnBoot = true;
+  hardware = {
+    bluetooth = {
+      enable = true;
+      powerOnBoot = true;
+    };
+    graphics = {
+      enable = true;
+      enable32Bit = true;
+    };
+    enableRedistributableFirmware = true;
   };
   services.blueman.enable = true;
 
@@ -157,11 +191,6 @@ in
     pulse.enable = true;
   };
 
-  hardware.graphics = {
-    enable = true;
-    enable32Bit = true;
-  };
-  hardware.enableRedistributableFirmware = true;
   zramSwap.enable = true;
 
   services.power-profiles-daemon.enable = true;
@@ -173,11 +202,19 @@ in
 
   # Enable fingerprint login for greetd/tuigreet. The patched tuigreet package
   # filters fprintd's instructional PAM info messages from the visible prompt.
-  security.pam.services.greetd.fprintAuth = true;
-  security.pam.services.greetd.enableGnomeKeyring = true;
-  # Hyprlock uses its native fingerprint support, so keep PAM fingerprint off
-  # there to avoid duplicate/serial fingerprint handling. Password stays fallback.
-  security.pam.services.hyprlock.fprintAuth = false;
+  security = {
+    polkit.enable = true;
+    rtkit.enable = true;
+    pam.services = {
+      greetd = {
+        fprintAuth = true;
+        enableGnomeKeyring = true;
+      };
+      # Hyprlock uses its native fingerprint support, so keep PAM fingerprint off
+      # there to avoid duplicate/serial fingerprint handling. Password stays fallback.
+      hyprlock.fprintAuth = false;
+    };
+  };
 
   fonts = {
     packages = with pkgs; [
@@ -201,22 +238,23 @@ in
 
   # Keep login credentials reproducible. Restore the Age identity before the
   # first rebuild of a fresh installation so sops-nix can create this user.
-  users.mutableUsers = false;
-  users.groups.plugdev = { };
-
-  users.users.laufan = {
-    isNormalUser = true;
-    description = "Paul Fleming";
-    hashedPasswordFile = config.sops.secrets."laufan-password".path;
-    extraGroups = [
-      "audio"
-      "input"
-      "kvm"
-      "networkmanager"
-      "plugdev"
-      "video"
-      "wheel"
-    ];
+  users = {
+    mutableUsers = false;
+    groups.plugdev = { };
+    users.${machine.username} = {
+      isNormalUser = true;
+      description = "Paul Fleming";
+      hashedPasswordFile = config.sops.secrets."laufan-password".path;
+      extraGroups = [
+        "audio"
+        "input"
+        "kvm"
+        "networkmanager"
+        "plugdev"
+        "video"
+        "wheel"
+      ];
+    };
   };
 
   programs.firefox.enable = false;
@@ -230,24 +268,8 @@ in
       path = ./config/scripts/google-chrome-fullscreen.sh;
     })
 
-    (mkScript {
-      name = "rebuild";
-      runtimeInputs = [
-        git
-        nix
-        nixos-rebuild
-      ];
-      path = ./config/scripts/rebuild.sh;
-    })
-
-    (mkScript {
-      name = "update";
-      runtimeInputs = [
-        nix
-        nixos-rebuild
-      ];
-      path = ./config/scripts/update.sh;
-    })
+    rebuild
+    update
 
     (mkScript {
       name = "rollback";

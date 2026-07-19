@@ -140,17 +140,25 @@ function compactPath(path?: string): string {
   return path?.replace(homedir(), "~") ?? "";
 }
 
+export function projectIcon(kind: ProjectInfo["kind"]): string {
+  return kind === "git" ? "" : kind === "folder" ? "📁" : "💬";
+}
+
 export function groupLabel(group: SessionGroup): string {
   const active = group.hasCurrent ? "●" : " ";
-  const icon = group.kind === "git" ? "" : group.kind === "folder" ? "📁" : "💬";
+  const icon = projectIcon(group.kind);
   const cwd = group.cwd ? ` — ${compactPath(group.cwd)}` : "";
   return `${active} ${icon} ${group.label} (${group.sessions.length}) · ${formatDate(new Date(group.latestMs))}${cwd}`;
 }
 
+export function sessionSummary(session: SessionRow): string {
+  const branch = session.branch ? `  ${session.branch} ·` : "";
+  return `Chat · ${formatDate(session.modified)} ·${branch} ${sessionTitle(session)}`;
+}
+
 export function sessionLabel(session: SessionRow, current?: string): string {
   const active = session.path === current ? "●" : " ";
-  const branch = session.branch ? `  ${session.branch} ·` : "";
-  return `${active} Chat · ${formatDate(session.modified)} ·${branch} ${sessionTitle(session)}`;
+  return `${active} ${sessionSummary(session)}`;
 }
 
 export function choiceMap<T>(items: T[], label: (item: T) => string): Map<string, T> {

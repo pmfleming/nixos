@@ -1,7 +1,7 @@
 set -euo pipefail
 
 flake_dir=/etc/nixos
-flake_attr=thinkpad
+flake_attr=@FLAKE_ATTR@
 
 if [ "$#" -gt 0 ] && [[ $1 != -* ]]; then
   flake_attr=$1
