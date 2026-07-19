@@ -340,8 +340,12 @@ in
         Type=Application
         Hidden=true
       '';
-      # Enable the package-owned units instead of cloning their definitions.
-      # This keeps service behavior local to the daemon packages that implement it.
+      # Install and enable the package-owned units instead of cloning their definitions.
+      # Direct unit links keep them discoverable by systemctl; wants links enable them.
+      "systemd/user/nm-daemon.service".source =
+        "${nmDaemon}/share/systemd/user/nm-daemon.service";
+      "systemd/user/bt-daemon.service".source =
+        "${btDaemon}/share/systemd/user/bt-daemon.service";
       "systemd/user/default.target.wants/nm-daemon.service".source =
         "${nmDaemon}/share/systemd/user/nm-daemon.service";
       "systemd/user/default.target.wants/bt-daemon.service".source =
