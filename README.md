@@ -18,6 +18,14 @@ sudo nixos-rebuild switch --flake /etc/nixos#thinkpad
 
 Home Manager is integrated as a NixOS module, so home changes in `home.nix` are applied by the same rebuild.
 
+After the preflight checks, `rebuild` prints a resource summary even if the flake check or rebuild fails. It reports Nix builds, copied and newly added store data, the largest new store paths, closure and disk-space changes, elapsed time, and system-wide CPU, peak RAM, network, and disk I/O. Resource warnings call out additions of at least 10 GiB, copied data or network receives of at least 5 GiB, disk writes of at least 20 GiB, RAM pressure of at least 90%, less than 20 GiB free, or a run lasting at least 30 minutes. System-wide figures can include unrelated work performed at the same time.
+
+Preview the visual summary without rebuilding:
+
+```sh
+rebuild --summary-preview
+```
+
 The `update` command is an intentional escape hatch that runs `nix flake update` and switches immediately, bypassing staged approval. It leaves `flake.lock` modified; review and commit or revert that change before approving any staged update.
 
 ## Validate Changes

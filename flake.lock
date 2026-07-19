@@ -68,11 +68,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784471053,
-        "narHash": "sha256-Wh7uXPJC8r7wsMiSMCdWXFbQpymcd4gavdB8Mm/0gYo=",
+        "lastModified": 1784478471,
+        "narHash": "sha256-pQmYYiZd+Y3npYxDcKCTEe7WkPr5URcEYQxUi4B6vtw=",
         "ref": "main",
-        "rev": "e3cb0c61916db07fdd39bdea452c9755b43b0bfb",
-        "revCount": 18,
+        "rev": "787df2f618ba78de5c32d6a7a0c286b8ae8b6d2a",
+        "revCount": 20,
         "type": "git",
         "url": "file:///home/laufan/Projects/bt-daemon"
       },
@@ -435,11 +435,11 @@
     },
     "nixpkgs-unstable": {
       "locked": {
-        "lastModified": 1783816212,
-        "narHash": "sha256-2aZisVTVGSFEk3MYcOiWQp3zvwyzbqpktB69Rcfp150=",
+        "lastModified": 1784453100,
+        "narHash": "sha256-zpGZb8FYui+i8KLtC0nlcmb0voR2zB80Qn8pe7lzIbk=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "3b32825de172d0bc85664f495edb096b10862524",
+        "rev": "b471514bed69eff5255c8e63c1f80e5fe56c616f",
         "type": "github"
       },
       "original": {
@@ -634,11 +634,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784470256,
-        "narHash": "sha256-6JdwPN2nu1N5cgx60GPiAkUld70s78JgjwQtYJ1DUqU=",
+        "lastModified": 1784478489,
+        "narHash": "sha256-NBe0wmq/DlkDMRq1084yw5EsQeHwwxmZ5AdKLqXLe6g=",
         "ref": "main",
-        "rev": "fdedea00e563fa0fd7ad2d5f57d36347a7de2769",
-        "revCount": 70,
+        "rev": "1184b035fb66090636914f0a4f3c67b604037f46",
+        "revCount": 74,
         "type": "git",
         "url": "file:///home/laufan/Projects/shelllist"
       },

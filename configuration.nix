@@ -20,9 +20,14 @@ let
   rebuild = mkScript {
     name = "rebuild";
     runtimeInputs = with pkgs; [
+      coreutils
+      gawk
       git
+      gnused
+      jq
       nix
       nixos-rebuild
+      util-linux
     ];
     replacements."@FLAKE_ATTR@" = machine.hostName;
     path = ./config/scripts/rebuild.sh;
