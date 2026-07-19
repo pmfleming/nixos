@@ -303,6 +303,9 @@ in
       document-font-name = "${fonts.ui} ${theme.ui.fontSize}";
       monospace-font-name = "${fonts.code} ${theme.ui.fontSize}";
     };
+    # bt-daemon owns the single BlueZ OBEX authorization-agent slot while
+    # Blueman remains available for its other stabilization workflows.
+    "org/blueman/general".plugin-list = [ "!TransferService" ];
   };
 
   home.pointerCursor = {
@@ -342,10 +345,8 @@ in
       '';
       # Install and enable the package-owned units instead of cloning their definitions.
       # Direct unit links keep them discoverable by systemctl; wants links enable them.
-      "systemd/user/nm-daemon.service".source =
-        "${nmDaemon}/share/systemd/user/nm-daemon.service";
-      "systemd/user/bt-daemon.service".source =
-        "${btDaemon}/share/systemd/user/bt-daemon.service";
+      "systemd/user/nm-daemon.service".source = "${nmDaemon}/share/systemd/user/nm-daemon.service";
+      "systemd/user/bt-daemon.service".source = "${btDaemon}/share/systemd/user/bt-daemon.service";
       "systemd/user/default.target.wants/nm-daemon.service".source =
         "${nmDaemon}/share/systemd/user/nm-daemon.service";
       "systemd/user/default.target.wants/bt-daemon.service".source =
@@ -516,6 +517,23 @@ in
         mkUserService "Keep the regular Wayland clipboard available after source apps exit"
           "${pkgs.wl-clip-persist}/bin/wl-clip-persist --clipboard regular"
           "2s";
+
+      shelllist-bluetooth = {
+        Unit = {
+          Description = "Shelllist Bluetooth prompt frontend";
+          After = [
+            "graphical-session.target"
+            "bt-daemon.service"
+          ];
+          PartOf = [ "graphical-session.target" ];
+        };
+        Service = {
+          ExecStart = "${shelllistBluetooth}/bin/shelllist-bluetooth foreground";
+          Restart = "on-failure";
+          RestartSec = "2s";
+        };
+        Install.WantedBy = [ "graphical-session.target" ];
+      };
     }
     // lib.mapAttrs (_: mkCliphistWatcher) cliphistWatchers;
   };
