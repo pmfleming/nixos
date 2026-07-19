@@ -61,6 +61,27 @@
         "type": "github"
       }
     },
+    "bt-daemon": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1784457850,
+        "narHash": "sha256-xzg+FqChZRFpgIkoEmEu05sTggaDuXq8l9+f58RqoqY=",
+        "ref": "main",
+        "rev": "2a4afb1dec91c774b261a0a1dd8608e228625e24",
+        "revCount": 3,
+        "type": "git",
+        "url": "file:///home/laufan/Projects/bt-daemon"
+      },
+      "original": {
+        "ref": "main",
+        "type": "git",
+        "url": "file:///home/laufan/Projects/bt-daemon"
+      }
+    },
     "corefonts": {
       "flake": false,
       "locked": {
@@ -499,11 +520,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784201090,
-        "narHash": "sha256-CCmdmV2JAQPGi2i179m1b6yKUFFO3UiWUht38KnAAtM=",
+        "lastModified": 1784322996,
+        "narHash": "sha256-H8NwfQ2DF8pp3ldQlevw+WYLPGAXVFqARCHkBFerMKk=",
         "ref": "main",
-        "rev": "323b0369f067d68945aa341fb274ed05501107df",
-        "revCount": 40,
+        "rev": "5ebfda1338eaa348c1aa60366a44c4d1c977c8c4",
+        "revCount": 42,
         "type": "git",
         "url": "file:///home/laufan/Projects/nm-daemon"
       },
@@ -549,6 +570,7 @@
     "root": {
       "inputs": {
         "affinity-nix": "affinity-nix",
+        "bt-daemon": "bt-daemon",
         "home-manager": "home-manager",
         "hyprland-guiutils": "hyprland-guiutils",
         "nixpkgs": "nixpkgs_4",
@@ -556,6 +578,7 @@
         "nm-daemon": "nm-daemon",
         "scratchpad": "scratchpad",
         "shelllist": "shelllist",
+        "sops-nix": "sops-nix",
         "ts-react-quality-lens": "ts-react-quality-lens",
         "zen-browser": "zen-browser"
       }
@@ -584,11 +607,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784236130,
-        "narHash": "sha256-ZNjHeXJWW755EwisRdBT9LyhEk9WQ9wQGuyn8/iZe00=",
+        "lastModified": 1784300132,
+        "narHash": "sha256-aeFuWQcoO/CTOOeHsrkJp+eDrXu/uUtYHBP5vTUvh34=",
         "ref": "master",
-        "rev": "05122df2f14cd027fe646953177b36a092ea34f7",
-        "revCount": 122,
+        "rev": "8aaf815c9efd96aa7889de8ff5a8b08f0f74c264",
+        "revCount": 124,
         "type": "git",
         "url": "file:///home/laufan/Projects/scratchpad"
       },
@@ -600,6 +623,9 @@
     },
     "shelllist": {
       "inputs": {
+        "bt-daemon": [
+          "bt-daemon"
+        ],
         "nixpkgs": [
           "nixpkgs"
         ],
@@ -608,11 +634,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784235896,
-        "narHash": "sha256-f/cleh5zMVHMGz2OM/uqbPGZiqItPb31h/lcH3axGLk=",
+        "lastModified": 1784458135,
+        "narHash": "sha256-qujq9D/BgGSHlAB8BzF2NblfYgosmuUnWbJgZJMt0/A=",
         "ref": "main",
-        "rev": "d808aad3747aa03d75d656cb017da53d9f36dd74",
-        "revCount": 43,
+        "rev": "ca5eceb0abc00c5465c95682bbc394ecc6559338",
+        "revCount": 57,
         "type": "git",
         "url": "file:///home/laufan/Projects/shelllist"
       },
@@ -620,6 +646,26 @@
         "ref": "main",
         "type": "git",
         "url": "file:///home/laufan/Projects/shelllist"
+      }
+    },
+    "sops-nix": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1783174389,
+        "narHash": "sha256-aCWC8ngycU7OdJrU2+Je3qf+1a2ykuBvpPhZT/9tXMc=",
+        "owner": "Mic92",
+        "repo": "sops-nix",
+        "rev": "f1406619a3884cd5c47992a70b8b35c9c0fcb4c9",
+        "type": "github"
+      },
+      "original": {
+        "owner": "Mic92",
+        "repo": "sops-nix",
+        "type": "github"
       }
     },
     "systems": {

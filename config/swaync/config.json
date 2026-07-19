@@ -34,6 +34,9 @@
     },
     "dnd": {
       "text": "Do not disturb"
+    },
+    "notifications": {
+      "vexpand": true
     }
   }
 }

@@ -47,7 +47,7 @@
     "exec": "test -e /run/nixos-updates-available && echo 󰚰 || true",
     "format": "{}",
     "tooltip": true,
-    "tooltip-format": "NixOS flake input updates have been available for 3+ days; automatic update may need attention",
+    "tooltip-format": "A checked and built NixOS flake input update is ready for manual review and approval",
     "on-click": "ghostty -e bash -lc 'journalctl -u delayed-nixos-update.service -n 80 --no-pager; read -r -p \"Press enter to close\"'"
   },
   "tray": {

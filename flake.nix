@@ -19,6 +19,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     hyprland-guiutils = {
       url = "github:hyprwm/hyprland-guiutils";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -31,8 +36,16 @@
 
     affinity-nix.url = "github:mrshmllow/affinity-nix";
 
+    # These development inputs are intentionally machine-local. Using git+file
+    # lets this host evaluate committed local changes without first pushing them
+    # to GitHub; the exact /home/laufan/Projects paths are therefore expected.
     nm-daemon = {
       url = "git+file:///home/laufan/Projects/nm-daemon?ref=main";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
+    bt-daemon = {
+      url = "git+file:///home/laufan/Projects/bt-daemon?ref=main";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
@@ -40,6 +53,7 @@
       url = "git+file:///home/laufan/Projects/shelllist?ref=main";
       inputs.nixpkgs.follows = "nixpkgs";
       inputs.nm-daemon.follows = "nm-daemon";
+      inputs.bt-daemon.follows = "bt-daemon";
     };
 
     scratchpad = {
@@ -85,6 +99,7 @@
             nixpkgs.overlays = [ inputs.affinity-nix.overlays.default ];
           })
           ./configuration.nix
+          inputs.sops-nix.nixosModules.sops
           home-manager.nixosModules.home-manager
           homeManagerModule
         ];

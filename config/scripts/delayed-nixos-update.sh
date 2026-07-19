@@ -29,7 +29,7 @@ worktree_is_clean() {
   })"
 
   if [ -n "$status" ]; then
-    printf 'Skipping NixOS update: %s has uncommitted changes.\n' "$flake_dir" >&2
+    printf '%s has uncommitted changes.\n' "$flake_dir" >&2
     printf '%s\n' "$status" >&2
     return 1
   fi
@@ -79,17 +79,13 @@ check_for_update() {
       ;;
   esac
 
-  # Preserve an existing notification when a developer has local work in
-  # progress. Scheduled updates must never evaluate or modify a dirty checkout.
+  # Checks always archive the committed HEAD, so uncommitted work can remain in
+  # place without being evaluated or modified. Approval still requires a clean
+  # checkout at this exact revision.
   if [ -f "$ready_lock" ] && [ -f "$ready_revision" ] && [ -f "$ready_scope" ]; then
     touch "$ready_file"
   else
     rm -f "$ready_file"
-  fi
-
-  if ! worktree_is_clean; then
-    notify_waybar_updates
-    return 0
   fi
 
   tmp_dir="$(mktemp -d)"

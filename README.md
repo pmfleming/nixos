@@ -28,9 +28,9 @@ nix flake check /etc/nixos --no-build
 
 ## Automatic Updates
 
-`delayed-nixos-update.service` runs overnight at approximately 03:00, only on AC power. The timer is persistent, so a missed run is attempted after the next boot. An AC-only catch-up timer also checks every 15 minutes whether the latest overnight run was missed, covering a laptop that booted on battery and was plugged in later. Successful full-input checks are recorded; expensive catch-up retries after failures or a dirty worktree are limited to once per hour.
+`delayed-nixos-update.service` runs overnight at approximately 03:00, only on AC power. The timer is persistent, so a missed run is attempted after the next boot. An AC-only catch-up timer also checks every 15 minutes whether the latest overnight run was missed, covering a laptop that booted on battery and was plugged in later. Successful full-input checks are recorded; expensive catch-up retries after failures are limited to once per hour.
 
-The updater skips dirty worktrees, stages the committed checkout outside `/etc/nixos`, updates the candidate lock, runs `nix flake check --no-build`, and builds the candidate with limited Nix parallelism and low CPU/I/O priority. It never changes the live lock file or switches generations.
+The updater stages the committed `HEAD` outside `/etc/nixos`, ignoring but never modifying uncommitted work, updates the candidate lock, runs `nix flake check --no-build`, and builds the candidate with limited Nix parallelism and low CPU/I/O priority. It never changes the live lock file or switches generations. Approval still requires a clean worktree at the same Git revision used to build the candidate.
 
 ### Manual command reference
 
@@ -75,6 +75,23 @@ The approval service requires a clean worktree at the same Git revision used for
 ## Generation Retention
 
 `prune-nixos-generations.service` runs daily and retains the newest five generations, the newest generation from each of the current and previous seven ISO weeks, and the newest generation from each of the current and previous eleven calendar months. These sets may overlap. The current, running, and booted systems are always protected. Older generation links are deleted before `nix-store --gc` runs.
+
+## Secrets and Login Recovery
+
+`sops-nix` decrypts the login password hash from `secrets.yaml`. The Age identity is intentionally kept outside Git at:
+
+```text
+~/.config/sops/age/keys.txt
+```
+
+Back up that identity in a password manager or other secure offline location. On a fresh installation, restore it with mode `0600` before the first rebuild. Fingerprint enrollment remains machine-local and can be restored by enrolling again after password login works.
+
+To edit encrypted secrets:
+
+```sh
+SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt" \
+  nix shell nixpkgs#sops -c sops secrets.yaml
+```
 
 ## Notes
 

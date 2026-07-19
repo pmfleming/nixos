@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { SessionManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { choiceMap, loadGroups, pickGroup, sessionLabel, sessionTitle } from "./sessions.ts";
+import { choiceMap, loadGroups, pickGroup, recordCurrentBranch, sessionLabel, sessionTitle } from "./sessions.ts";
 import { RecentSessionsSidebar, type SidebarChoice, type SidebarTheme } from "./sidebar.ts";
 import { launchNewChat, launchSession } from "./terminal.ts";
 import { BACK, CANCEL, CONTINUE, NEW_CHAT, RENAME, SESSION_ACTIONS, type RecentContext, type SessionGroup, type SessionRow } from "./types.ts";
@@ -119,6 +119,7 @@ async function openSidebar(pi: ExtensionAPI, ctx: CustomRecentContext): Promise<
 
 async function openRecentSessions(pi: ExtensionAPI, ctx: CustomRecentContext): Promise<void> {
   if (!ctx.hasUI) return;
+  recordCurrentBranch(pi, ctx.cwd, ctx.sessionManager.getSessionFile());
   if (hasCustomTui(ctx)) {
     await openSidebar(pi, ctx);
     return;
@@ -148,4 +149,14 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args, ctx) => openRecentSessions(pi, ctx),
   });
   pi.registerShortcut("ctrl+shift+r", { description: "Open recent chats sidebar", handler: async (ctx) => openRecentSessions(pi, ctx) });
+
+  // Store branch metadata in the session itself. SessionManager.listAll() does
+  // not expose historical Git state, so querying the repository while listing
+  // would incorrectly label every old session with today's branch.
+  pi.on("session_start", async (_event, ctx) => {
+    recordCurrentBranch(pi, ctx.cwd, ctx.sessionManager.getSessionFile());
+  });
+  pi.on("before_agent_start", async (_event, ctx) => {
+    recordCurrentBranch(pi, ctx.cwd, ctx.sessionManager.getSessionFile());
+  });
 }

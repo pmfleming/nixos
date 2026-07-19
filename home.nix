@@ -4,7 +4,9 @@ let
   system = pkgs.stdenv.hostPlatform.system;
   hyprlandGuiutils = inputs.hyprland-guiutils.packages.${system}.default;
   nmDaemon = inputs.nm-daemon.packages.${system}.default;
+  btDaemon = inputs.bt-daemon.packages.${system}.default;
   shelllistWifi = inputs.shelllist.packages.${system}.default;
+  shelllistBluetooth = inputs.shelllist.packages.${system}.bluetooth;
   shelllistPortalBrowser = inputs.shelllist.packages.${system}.captivePortalBrowser;
   scratchpad = inputs.scratchpad.packages.${system}.scratchpad-hyprland;
   tsReactQualityLens = inputs.ts-react-quality-lens.packages.${system}.default;
@@ -189,10 +191,12 @@ let
   binShims = {
     rofi-app-menu = rofiAppMenu;
     shelllist-wifi = shelllistWifi;
+    shelllist-bluetooth = shelllistBluetooth;
     rofi-bluetooth-menu = rofiBluetoothMenu;
     rofi-clipboard-menu = rofiClipboardMenu;
     screenshot-annotate = screenshotAnnotate;
     nm-daemon = nmDaemon;
+    bt-daemon = btDaemon;
   };
 in
 {
@@ -305,6 +309,16 @@ in
         Hidden=true
       '';
       "hypr/hyprland.conf".text = hyprlandConfig;
+      # Keep nwg-displays output version-controlled while allowing it to update
+      # the files through Home Manager's out-of-store links.
+      "hypr/monitors.conf" = {
+        source = config.lib.file.mkOutOfStoreSymlink "/etc/nixos/config/hypr/monitors.conf";
+        force = true;
+      };
+      "hypr/workspaces.conf" = {
+        source = config.lib.file.mkOutOfStoreSymlink "/etc/nixos/config/hypr/workspaces.conf";
+        force = true;
+      };
       "hypr/hyprlock.conf".text = themeText (scriptWith
         { "@WALLPAPER@" = "${wallpaper}"; }
         ./config/hypr/hyprlock.conf);
@@ -473,6 +487,24 @@ in
       Service = {
         Type = "simple";
         ExecStart = "${nmDaemon}/bin/nm-daemon daemon";
+        Restart = "on-failure";
+        RestartSec = "2s";
+      };
+
+      Install.WantedBy = [ "default.target" ];
+    };
+
+    bt-daemon = {
+      Unit = {
+        Description = "Shelllist Bluetooth user service";
+        Documentation = [ "https://github.com/pmfleming/bt-daemon" ];
+        After = [ "graphical-session.target" ];
+      };
+
+      Service = {
+        Type = "dbus";
+        BusName = "org.laufan.BluetoothDaemon";
+        ExecStart = "${btDaemon}/bin/bt-daemon daemon";
         Restart = "on-failure";
         RestartSec = "2s";
       };

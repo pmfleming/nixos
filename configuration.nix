@@ -69,6 +69,8 @@ in
         "flakes"
       ];
       auto-optimise-store = true;
+      # Garnix embeds two-hour signed URLs in narinfo; refresh within their lifetime.
+      narinfo-cache-positive-ttl = 3600;
       extra-substituters = [
         "https://cache.garnix.io"
       ];
@@ -231,11 +233,21 @@ in
     };
   };
 
+  sops = {
+    defaultSopsFile = ./secrets.yaml;
+    age.keyFile = "/home/laufan/.config/sops/age/keys.txt";
+    secrets."laufan-password".neededForUsers = true;
+  };
+
+  # Keep login credentials reproducible. Restore the Age identity before the
+  # first rebuild of a fresh installation so sops-nix can create this user.
+  users.mutableUsers = false;
   users.groups.plugdev = {};
 
   users.users.laufan = {
     isNormalUser = true;
     description = "Paul Fleming";
+    hashedPasswordFile = config.sops.secrets."laufan-password".path;
     extraGroups = [
       "audio"
       "input"

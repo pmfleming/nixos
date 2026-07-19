@@ -21,8 +21,11 @@ for ((offset = 0; offset < keep_weekly; offset++)); do
   allowed_weeks["$bucket"]=1
 done
 
+# Anchor at the first of the month before subtracting. Subtracting directly
+# from dates such as March 31 can roll into March instead of reaching February.
+month_anchor="$(date +%Y-%m-01)"
 for ((offset = 0; offset < keep_monthly; offset++)); do
-  bucket="$(date --date="$offset months ago" +%Y-%m)"
+  bucket="$(date --date="$month_anchor - $offset months" +%Y-%m)"
   allowed_months["$bucket"]=1
 done
 

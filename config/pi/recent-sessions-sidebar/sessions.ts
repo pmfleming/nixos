@@ -1,11 +1,53 @@
 import { homedir } from "node:os";
 import { basename } from "node:path";
-import { SessionManager } from "@earendil-works/pi-coding-agent";
+import { SessionManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { run } from "./shell.ts";
 import type { ProjectInfo, RecentContext, SessionGroup, SessionInfo, SessionRow } from "./types.ts";
 
+const BRANCH_ENTRY_TYPE = "recent-sessions-sidebar.branch";
+const recordedBranches = new Map<string, string>();
+
+type StoredBranchData = { branch?: unknown };
+
 function clean(value?: string): string {
   return (value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function storedBranch(sessionPath: string): string | undefined {
+  try {
+    const entries = SessionManager.open(sessionPath).getEntries();
+    for (let index = entries.length - 1; index >= 0; index--) {
+      const entry = entries[index];
+      if (entry?.type !== "custom" || entry.customType !== BRANCH_ENTRY_TYPE) continue;
+      const data = entry.data as StoredBranchData | undefined;
+      if (typeof data?.branch === "string" && data.branch) return data.branch;
+    }
+  } catch {
+    // A concurrently removed or malformed session should not break the sidebar.
+  }
+  return undefined;
+}
+
+function currentBranch(cwd: string): string | undefined {
+  const branch = run("git", ["branch", "--show-current"], cwd);
+  if (branch) return branch;
+  const commit = run("git", ["rev-parse", "--short", "HEAD"], cwd);
+  return commit ? `detached@${commit}` : undefined;
+}
+
+export function recordCurrentBranch(pi: ExtensionAPI, cwd: string, sessionPath?: string): void {
+  if (!sessionPath) return;
+  const branch = currentBranch(cwd);
+  if (!branch) return;
+
+  const previous = recordedBranches.get(sessionPath) ?? storedBranch(sessionPath);
+  if (previous === branch) {
+    recordedBranches.set(sessionPath, branch);
+    return;
+  }
+
+  pi.appendEntry(BRANCH_ENTRY_TYPE, { branch });
+  recordedBranches.set(sessionPath, branch);
 }
 
 export function sessionTitle(session: SessionInfo): string {
@@ -16,30 +58,35 @@ export function formatDate(date: Date): string {
   return date.toLocaleString(undefined, { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 }
 
-function gitProject(cwd?: string): { project: ProjectInfo; branch?: string } | undefined {
+function gitProject(cwd?: string): ProjectInfo | undefined {
   if (!cwd) return undefined;
   const topLevel = run("git", ["rev-parse", "--show-toplevel"], cwd);
   if (!topLevel) return undefined;
-  const branch = run("git", ["branch", "--show-current"], cwd) || undefined;
-  return {
-    project: { key: `git:${topLevel}`, label: basename(topLevel) || topLevel, cwd: topLevel, kind: "git" },
-    branch,
+  return { key: `git:${topLevel}`, label: basename(topLevel) || topLevel, cwd: topLevel, kind: "git" };
+}
+
+function projectFor(session: SessionInfo, cache: Map<string, ProjectInfo>): ProjectInfo {
+  if (!session.cwd) return { key: "__chats__", label: "Chats", kind: "chats" };
+
+  const cached = cache.get(session.cwd);
+  if (cached) return cached;
+
+  const project = gitProject(session.cwd) ?? {
+    key: `dir:${session.cwd}`,
+    label: basename(session.cwd) || session.cwd,
+    cwd: session.cwd,
+    kind: "folder" as const,
   };
+  cache.set(session.cwd, project);
+  return project;
 }
 
-function projectFor(session: SessionInfo): { project: ProjectInfo; branch?: string } {
-  const git = gitProject(session.cwd);
-  if (git) return git;
-  if (session.cwd) {
-    return {
-      project: { key: `dir:${session.cwd}`, label: basename(session.cwd) || session.cwd, cwd: session.cwd, kind: "folder" },
-    };
-  }
-  return { project: { key: "__chats__", label: "Chats", kind: "chats" } };
-}
-
-function enrich(session: SessionInfo): SessionRow {
-  return { ...session, ...projectFor(session) };
+function enrich(session: SessionInfo, projectCache: Map<string, ProjectInfo>): SessionRow {
+  return {
+    ...session,
+    project: projectFor(session, projectCache),
+    branch: storedBranch(session.path),
+  };
 }
 
 export function buildGroups(sessions: SessionRow[], current?: string): SessionGroup[] {
@@ -67,7 +114,10 @@ export function buildGroups(sessions: SessionRow[], current?: string): SessionGr
 }
 
 export async function loadGroups(current?: string): Promise<SessionGroup[]> {
-  const sessions = (await SessionManager.listAll()).map(enrich).sort((a, b) => b.modified.getTime() - a.modified.getTime());
+  const projectCache = new Map<string, ProjectInfo>();
+  const sessions = (await SessionManager.listAll())
+    .map((session) => enrich(session, projectCache))
+    .sort((a, b) => b.modified.getTime() - a.modified.getTime());
   return buildGroups(sessions, current);
 }
 
