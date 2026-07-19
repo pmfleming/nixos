@@ -2,11 +2,30 @@ set -euo pipefail
 export LC_ALL=C
 
 profile=/nix/var/nix/profiles/system
+refresh_boot=1
 keep_recent=5
 keep_weekly=8
 keep_monthly=12
 
+while (( $# )); do
+  case "$1" in
+    --profile)
+      profile="${2:?--profile requires a path}"
+      shift 2
+      ;;
+    --no-refresh-boot)
+      refresh_boot=0
+      shift
+      ;;
+    *)
+      printf 'Usage: %s [--profile PATH] [--no-refresh-boot]\n' "$0" >&2
+      exit 2
+      ;;
+  esac
+done
+
 refresh_boot_entries() {
+  (( refresh_boot )) || return 0
   echo "Refreshing systemd-boot entries"
   /run/current-system/bin/switch-to-configuration boot
 }
@@ -54,7 +73,7 @@ done
 
 total="${#gens[@]}"
 if (( total <= keep_recent )); then
-  echo "Keeping all $total NixOS generations"
+  echo "Keeping all $total generations in $profile"
   refresh_boot_entries
   exit 0
 fi
@@ -105,7 +124,7 @@ for gen in "${gens[@]}"; do
     keep_gen=1
   fi
 
-  # Never delete the current or booted system, even if it falls outside the policy.
+  # Never delete the active profile target or a running/booted system target.
   if [[ -n "$link" && -n "$profile_current" && "$link" == "$profile_current" ]]; then
     keep_gen=1
   fi
@@ -123,14 +142,13 @@ for gen in "${gens[@]}"; do
   fi
 done
 
-echo "Keeping NixOS generations: ${keep[*]}"
+echo "Keeping generations in $profile: ${keep[*]}"
 
 if (( ${#delete[@]} )); then
-  echo "Deleting NixOS generations: ${delete[*]}"
+  echo "Deleting generations in $profile: ${delete[*]}"
   nix-env --profile "$profile" --delete-generations "${delete[@]}"
-  nix-store --gc
 else
-  echo "No NixOS generations to delete"
+  echo "No generations to delete in $profile"
 fi
 
 refresh_boot_entries

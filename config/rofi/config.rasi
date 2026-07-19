@@ -115,4 +115,3 @@ element-icon selected.active {
 element-text {
   text-color: inherit;
 }
-/* git-hash-padding: 1 */

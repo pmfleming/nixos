@@ -44,7 +44,7 @@
   "custom/updates": {
     "interval": "once",
     "signal": 8,
-    "exec": "test -e /run/nixos-updates-available && echo 󰚰 || true",
+    "exec": "state=/var/lib/nixos-delayed-updates; test -f \"$state/ready-flake.lock\" && test -f \"$state/ready-revision\" && test -f \"$state/ready-scope\" && test -L \"$state/system\" && echo 󰚰 || true",
     "format": "{}",
     "tooltip": true,
     "tooltip-format": "A checked and built NixOS flake input update is ready for manual review and approval",

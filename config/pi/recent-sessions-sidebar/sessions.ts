@@ -1,3 +1,4 @@
+import { statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename } from "node:path";
 import { SessionManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -6,6 +7,7 @@ import type { ProjectInfo, RecentContext, SessionGroup, SessionInfo, SessionRow 
 
 const BRANCH_ENTRY_TYPE = "recent-sessions-sidebar.branch";
 const recordedBranches = new Map<string, string>();
+const storedBranchCache = new Map<string, { mtimeMs: number; size: number; branch?: string }>();
 
 type StoredBranchData = { branch?: unknown };
 
@@ -15,17 +17,29 @@ function clean(value?: string): string {
 
 function storedBranch(sessionPath: string): string | undefined {
   try {
+    const { mtimeMs, size } = statSync(sessionPath);
+    const cached = storedBranchCache.get(sessionPath);
+    if (cached?.mtimeMs === mtimeMs && cached.size === size) return cached.branch;
+
+    let branch: string | undefined;
     const entries = SessionManager.open(sessionPath).getEntries();
     for (let index = entries.length - 1; index >= 0; index--) {
       const entry = entries[index];
       if (entry?.type !== "custom" || entry.customType !== BRANCH_ENTRY_TYPE) continue;
       const data = entry.data as StoredBranchData | undefined;
-      if (typeof data?.branch === "string" && data.branch) return data.branch;
+      if (typeof data?.branch === "string" && data.branch) {
+        branch = data.branch;
+        break;
+      }
     }
+
+    storedBranchCache.set(sessionPath, { mtimeMs, size, branch });
+    return branch;
   } catch {
     // A concurrently removed or malformed session should not break the sidebar.
+    storedBranchCache.delete(sessionPath);
+    return undefined;
   }
-  return undefined;
 }
 
 function currentBranch(cwd: string): string | undefined {
@@ -48,6 +62,7 @@ export function recordCurrentBranch(pi: ExtensionAPI, cwd: string, sessionPath?:
 
   pi.appendEntry(BRANCH_ENTRY_TYPE, { branch });
   recordedBranches.set(sessionPath, branch);
+  storedBranchCache.delete(sessionPath);
 }
 
 export function sessionTitle(session: SessionInfo): string {

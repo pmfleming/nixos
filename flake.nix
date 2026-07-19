@@ -67,9 +67,16 @@
     };
   };
 
-  outputs = inputs@{ self, nixpkgs, home-manager, ... }:
+  outputs =
+    inputs@{
+      self,
+      nixpkgs,
+      home-manager,
+      ...
+    }:
     let
       system = "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages.${system};
       unstablePkgs = import inputs.nixpkgs-unstable {
         inherit system;
         config.allowUnfree = true;
@@ -83,11 +90,28 @@
       };
     in
     {
+      formatter.${system} = pkgs.nixfmt;
+
+      checks.${system}.nixfmt =
+        pkgs.runCommand "nixfmt-check"
+          {
+            nativeBuildInputs = [
+              pkgs.findutils
+              pkgs.nixfmt
+            ];
+          }
+          ''
+            find ${self} -type f -name '*.nix' -exec nixfmt --check {} +
+            touch $out
+          '';
+
       packages.${system}.connectParityProbe = inputs.nm-daemon.packages.${system}.connectParityProbe;
 
       apps.${system}.connectParityProbe = {
         type = "app";
-        program = "${inputs.nm-daemon.packages.${system}.connectParityProbe}/bin/nm-daemon-connect-parity-probe";
+        program = "${
+          inputs.nm-daemon.packages.${system}.connectParityProbe
+        }/bin/nm-daemon-connect-parity-probe";
         meta.description = "Compare nm-daemon and nmcli Wi-Fi connection behavior";
       };
 

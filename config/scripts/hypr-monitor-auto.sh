@@ -51,7 +51,7 @@ apply_state() {
   if external_connected; then
     state="external"
     if [ "$force" = "force" ] || [ "$state" != "$last_state" ]; then
-      hyprctl keyword monitor ",preferred,auto,1.25" >/dev/null || true
+      hyprctl keyword monitor ",preferred,auto,@MONITOR_SCALE@" >/dev/null || true
       hyprctl keyword monitor "eDP-1,disable" >/dev/null || true
       restart_waybar
       last_state="$state"
@@ -59,7 +59,7 @@ apply_state() {
   else
     state="internal"
     if [ "$force" = "force" ] || [ "$state" != "$last_state" ]; then
-      hyprctl keyword monitor "eDP-1,preferred,auto,1.25" >/dev/null || true
+      hyprctl keyword monitor "eDP-1,preferred,auto,@MONITOR_SCALE@" >/dev/null || true
       restart_waybar
       last_state="$state"
     fi

@@ -1,65 +1,27 @@
-{ config, lib, pkgs, unstablePkgs, ... }:
+{
+  config,
+  lib,
+  pkgs,
+  unstablePkgs,
+  ...
+}:
 
 let
   theme = import ./theme.nix;
   mkScript = (import ./lib/scripts.nix).mkShellApplication pkgs;
 
   cleanTuigreet = pkgs.tuigreet.overrideAttrs (oldAttrs: {
-    patches = (oldAttrs.patches or []) ++ [
+    patches = (oldAttrs.patches or [ ]) ++ [
       ./config/patches/tuigreet-filter-fingerprint-info.patch
     ];
   });
 
-  delayedNixosUpdate = mkScript {
-    name = "delayed-nixos-update";
-    runtimeInputs = with pkgs; [
-      coreutils
-      diffutils
-      git
-      gnutar
-      nix
-      nixos-rebuild
-      procps
-      util-linux
-    ];
-    path = ./config/scripts/delayed-nixos-update.sh;
-  };
-
-  mkNixosUpdateCheckService = { description, scope, mode ? "check", acOnly ? false }: {
-    inherit description;
-    wants = [ "network-online.target" ];
-    after = [ "network-online.target" ];
-    environment = {
-      NIX_CONFIG = ''
-        max-jobs = 1
-        cores = 2
-      '';
-    };
-    unitConfig = lib.optionalAttrs acOnly {
-      ConditionACPower = true;
-    };
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update ${mode}${lib.optionalString (mode == "check") " ${scope}"}";
-      Nice = 10;
-      CPUWeight = 20;
-      IOWeight = 20;
-    };
-  };
-
-  pruneNixosGenerations = mkScript {
-    name = "prune-nixos-generations";
-    runtimeInputs = [
-      config.nix.package
-      pkgs.coreutils
-      pkgs.gawk
-    ];
-    path = ./config/scripts/prune-nixos-generations.sh;
-  };
 in
 {
   imports = [
     ./hardware-configuration.nix
+    ./modules/delayed-updates.nix
+    ./modules/generation-retention.nix
   ];
 
   nix = {
@@ -78,8 +40,6 @@ in
         "cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g="
       ];
     };
-    # The bounded generation-pruning policy below handles system-profile GC.
-    gc.automatic = false;
   };
 
   nixpkgs.config.allowUnfree = true;
@@ -235,14 +195,14 @@ in
 
   sops = {
     defaultSopsFile = ./secrets.yaml;
-    age.keyFile = "/home/laufan/.config/sops/age/keys.txt";
+    age.keyFile = "/var/lib/sops-nix/key.txt";
     secrets."laufan-password".neededForUsers = true;
   };
 
   # Keep login credentials reproducible. Restore the Age identity before the
   # first rebuild of a fresh installation so sops-nix can create this user.
   users.mutableUsers = false;
-  users.groups.plugdev = {};
+  users.groups.plugdev = { };
 
   users.users.laufan = {
     isNormalUser = true;
@@ -259,87 +219,9 @@ in
     ];
   };
 
-  environment.sessionVariables = {
-    NIXOS_OZONE_WL = "1";
-    GTK_THEME = theme.appearance.gtkThemeEnv;
-  };
-
   programs.firefox.enable = false;
   programs.command-not-found.enable = false;
   programs.nix-index.enable = true;
-
-  systemd.services.delayed-nixos-update = mkNixosUpdateCheckService {
-    description = "Check and build NixOS flake updates for manual approval";
-    mode = "catch-up";
-    scope = "all";
-    acOnly = true;
-  };
-
-  systemd.services.nixos-update-check-all = mkNixosUpdateCheckService {
-    description = "Check and build updates for all NixOS flake inputs";
-    scope = "all";
-  };
-
-  systemd.services.nixos-update-check-apps = mkNixosUpdateCheckService {
-    description = "Check and build nixpkgs-unstable updates for Codex, Pi, and Claude";
-    scope = "apps";
-  };
-
-  systemd.services.nixos-update-catchup = mkNixosUpdateCheckService {
-    description = "Catch up a missed overnight NixOS update check when on AC power";
-    mode = "catch-up";
-    scope = "all";
-    acOnly = true;
-  };
-
-  systemd.services.nixos-update-approve = {
-    description = "Apply a checked NixOS flake update after manual approval";
-    wants = [ "network-online.target" ];
-    after = [ "network-online.target" ];
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update approve";
-    };
-  };
-
-  systemd.timers.delayed-nixos-update = {
-    description = "Run overnight NixOS update check";
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnCalendar = "*-*-* 03:00:00";
-      AccuracySec = "15m";
-      RandomizedDelaySec = "30m";
-      Persistent = true;
-    };
-  };
-
-  systemd.timers.nixos-update-catchup = {
-    description = "Retry missed overnight NixOS update checks when AC power is available";
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnCalendar = "*:0/15";
-      AccuracySec = "1m";
-      RandomizedDelaySec = "2m";
-    };
-  };
-
-  systemd.services.prune-nixos-generations = {
-    description = "Prune NixOS generations with bounded recent, weekly, and monthly retention";
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = "${pruneNixosGenerations}/bin/prune-nixos-generations";
-    };
-  };
-
-  systemd.timers.prune-nixos-generations = {
-    description = "Run NixOS generation pruning once per day";
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnCalendar = "daily";
-      Persistent = true;
-      RandomizedDelaySec = "1h";
-    };
-  };
 
   environment.systemPackages = with pkgs; [
     (mkScript {
@@ -350,13 +232,20 @@ in
 
     (mkScript {
       name = "rebuild";
-      runtimeInputs = [ git nix nixos-rebuild ];
+      runtimeInputs = [
+        git
+        nix
+        nixos-rebuild
+      ];
       path = ./config/scripts/rebuild.sh;
     })
 
     (mkScript {
       name = "update";
-      runtimeInputs = [ nix nixos-rebuild ];
+      runtimeInputs = [
+        nix
+        nixos-rebuild
+      ];
       path = ./config/scripts/update.sh;
     })
 
@@ -410,4 +299,3 @@ in
 
   system.stateVersion = "26.05";
 }
-# git-hash-padding: 1

@@ -18,19 +18,21 @@ sudo nixos-rebuild switch --flake /etc/nixos#thinkpad
 
 Home Manager is integrated as a NixOS module, so home changes in `home.nix` are applied by the same rebuild.
 
+The `update` command is an intentional escape hatch that runs `nix flake update` and switches immediately, bypassing staged approval. It leaves `flake.lock` modified; review and commit or revert that change before approving any staged update.
+
 ## Validate Changes
 
 Check the flake before applying it:
 
 ```sh
-nix flake check /etc/nixos --no-build
+nix flake check /etc/nixos
 ```
 
 ## Automatic Updates
 
 `delayed-nixos-update.service` runs overnight at approximately 03:00, only on AC power. The timer is persistent, so a missed run is attempted after the next boot. An AC-only catch-up timer also checks every 15 minutes whether the latest overnight run was missed, covering a laptop that booted on battery and was plugged in later. Successful full-input checks are recorded; expensive catch-up retries after failures are limited to once per hour.
 
-The updater stages the committed `HEAD` outside `/etc/nixos`, ignoring but never modifying uncommitted work, updates the candidate lock, runs `nix flake check --no-build`, and builds the candidate with limited Nix parallelism and low CPU/I/O priority. It never changes the live lock file or switches generations. Approval still requires a clean worktree at the same Git revision used to build the candidate.
+The updater stages the committed `HEAD` outside `/etc/nixos`, ignoring but never modifying uncommitted work, updates the candidate lock, runs `nix flake check` (including formatter checks), and builds the candidate with limited Nix parallelism and low CPU/I/O priority. It never changes the live lock file or switches generations. Approval still requires a clean worktree at the same Git revision used to build the candidate.
 
 ### Manual command reference
 
@@ -46,7 +48,7 @@ sudo systemctl start nixos-update-check-apps.service
 
 Both commands only check and build a candidate; neither switches the running system. There is one candidate slot, so a successful later staging command replaces the earlier candidate.
 
-When `/run/nixos-updates-available` exists, review the candidate:
+When the Waybar update indicator appears, review the persistent candidate state:
 
 ```sh
 sudo cat /var/lib/nixos-delayed-updates/ready-scope
@@ -74,22 +76,30 @@ The approval service requires a clean worktree at the same Git revision used for
 
 ## Generation Retention
 
-`prune-nixos-generations.service` runs daily and retains the newest five generations, the newest generation from each of the current and previous seven ISO weeks, and the newest generation from each of the current and previous eleven calendar months. These sets may overlap. The current, running, and booted systems are always protected. Older generation links are deleted before `nix-store --gc` runs.
+`prune-nixos-generations.service` runs daily for both the system and Home Manager profiles. It retains the newest five generations, the newest generation from each of the current and previous seven ISO weeks, and the newest generation from each of the current and previous eleven calendar months. These sets may overlap, and active system/profile targets are always protected. `nix-store-gc.timer` separately removes unreferenced store paths once per week.
 
 ## Secrets and Login Recovery
 
-`sops-nix` decrypts the login password hash from `secrets.yaml`. The Age identity is intentionally kept outside Git at:
+`sops-nix` decrypts the login password hash from `secrets.yaml`. The root-owned Age identity is intentionally kept outside Git at:
 
 ```text
-~/.config/sops/age/keys.txt
+/var/lib/sops-nix/key.txt
 ```
 
-Back up that identity in a password manager or other secure offline location. On a fresh installation, restore it with mode `0600` before the first rebuild. Fingerprint enrollment remains machine-local and can be restored by enrolling again after password login works.
+Back up that identity in a password manager or other secure offline location. On a fresh installation, restore it as `root:root` with mode `0600` before the first rebuild. To migrate an existing user-owned identity:
+
+```sh
+sudo install -d -m 0700 -o root -g root /var/lib/sops-nix
+sudo install -m 0600 -o root -g root \
+  "$HOME/.config/sops/age/keys.txt" /var/lib/sops-nix/key.txt
+```
+
+After a successful rebuild and decryption test, remove the old user-owned copy. Fingerprint enrollment remains machine-local and can be restored by enrolling again after password login works.
 
 To edit encrypted secrets:
 
 ```sh
-SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt" \
+sudo SOPS_AGE_KEY_FILE=/var/lib/sops-nix/key.txt \
   nix shell nixpkgs#sops -c sops secrets.yaml
 ```
 

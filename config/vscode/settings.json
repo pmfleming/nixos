@@ -1,0 +1,7 @@
+{
+  "chat.viewSessions.orientation": "stacked",
+  "editor.fontFamily": "'JetBrainsMono Nerd Font', monospace",
+  "editor.fontSize": 18,
+  "terminal.integrated.fontFamily": "'JetBrainsMono Nerd Font'",
+  "window.zoomLevel": 0.5
+}

@@ -2,21 +2,20 @@ set -euo pipefail
 export GIT_OPTIONAL_LOCKS=0
 
 flake_dir=/etc/nixos
-flake_ref="path:$flake_dir"
+flake_ref="git+file://$flake_dir"
 flake_attr=thinkpad
 state_dir=/var/lib/nixos-delayed-updates
 ready_lock="$state_dir/ready-flake.lock"
 ready_revision="$state_dir/ready-revision"
 ready_scope="$state_dir/ready-scope"
 result_link="$state_dir/system"
-ready_file=/run/nixos-updates-available
 last_full_check="$state_dir/last-full-check"
 last_catchup_attempt="$state_dir/last-catchup-attempt"
 catchup_retry_seconds=$((60 * 60))
 
 notify_waybar_updates() {
   # The waybar custom/updates module is signal-driven (RTMIN+8) instead of
-  # polling; tell it to re-check the ready file.
+  # polling; tell it to re-check the persistent ready state.
   pkill "-RTMIN+8" -x '\.waybar-wrapped|waybar' >/dev/null 2>&1 || true
 }
 
@@ -49,8 +48,7 @@ clear_ready_update() {
     "$ready_lock" "$ready_lock.new" \
     "$ready_revision" "$ready_revision.new" \
     "$ready_scope" "$ready_scope.new" \
-    "$result_link" "$result_link.new" \
-    "$ready_file"
+    "$result_link" "$result_link.new"
 }
 
 record_full_check_success() {
@@ -82,12 +80,6 @@ check_for_update() {
   # Checks always archive the committed HEAD, so uncommitted work can remain in
   # place without being evaluated or modified. Approval still requires a clean
   # checkout at this exact revision.
-  if [ -f "$ready_lock" ] && [ -f "$ready_revision" ] && [ -f "$ready_scope" ]; then
-    touch "$ready_file"
-  else
-    rm -f "$ready_file"
-  fi
-
   tmp_dir="$(mktemp -d)"
   staged_flake="$tmp_dir/flake"
   updated_lock="$tmp_dir/flake.lock"
@@ -113,14 +105,13 @@ check_for_update() {
     && [ "$(cat "$ready_revision")" = "$revision" ] \
     && cmp -s "$ready_lock" "$updated_lock"; then
     printf '%s\n' "$scope" > "$ready_scope"
-    touch "$ready_file"
     record_full_check_success
     printf 'The previously built %s update is still awaiting approval.\n' "$scope_label"
     return 0
   fi
 
   cp "$updated_lock" "$staged_flake/flake.lock"
-  nix flake check "path:$staged_flake" --no-build --no-update-lock-file
+  nix flake check "path:$staged_flake" --no-update-lock-file
 
   rm -f "$result_link.new"
   nix build \
@@ -137,7 +128,6 @@ check_for_update() {
   mv -f "$ready_lock.new" "$ready_lock"
   mv -f "$ready_revision.new" "$ready_revision"
   mv -f "$ready_scope.new" "$ready_scope"
-  touch "$ready_file"
   record_full_check_success
 
   printf 'A checked and built %s update is ready for manual approval.\n' "$scope_label"
@@ -221,7 +211,7 @@ approve_update() {
 
   # Recheck the exact live configuration and candidate lock immediately before
   # the explicitly approved deployment.
-  nix flake check "$flake_ref" --no-build --no-update-lock-file
+  nix flake check "$flake_ref" --no-update-lock-file
   nixos-rebuild switch --flake "$flake_ref#$flake_attr"
 
   lock_installed=false

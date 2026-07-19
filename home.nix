@@ -1,4 +1,11 @@
-{ config, inputs, lib, pkgs, unstablePkgs, ... }:
+{
+  config,
+  inputs,
+  lib,
+  pkgs,
+  unstablePkgs,
+  ...
+}:
 
 let
   system = pkgs.stdenv.hostPlatform.system;
@@ -13,12 +20,17 @@ let
   zenBrowser = inputs.zen-browser.packages.${system}.default;
 
   theme = import ./theme.nix;
-  inherit (theme) palette fonts themeText wallpaper;
+  inherit (theme)
+    palette
+    fonts
+    themeText
+    wallpaper
+    ;
 
-  sharedSessionVariables = {
+  hyprlandSessionVariables = {
     GTK_THEME = theme.appearance.gtkThemeEnv;
     QT_QPA_PLATFORM = "wayland;xcb";
-    QT_QPA_PLATFORMTHEME = theme.appearance.qtPlatformThemeEnv;
+    QT_QPA_PLATFORMTHEME = theme.appearance.qtPlatformTheme;
     SHELLLIST_WIFI_MODE = "popover";
     SHELLLIST_BG = palette.bg;
     SHELLLIST_SURFACE = palette.borderDim;
@@ -32,7 +44,7 @@ let
     SHELLLIST_RADIUS = builtins.toString theme.ui.radiusInt;
   };
 
-  hyprlandEnvVariables = sharedSessionVariables // {
+  hyprlandEnvVariables = hyprlandSessionVariables // {
     XCURSOR_SIZE = builtins.toString theme.appearance.cursorSize;
     HYPRCURSOR_SIZE = builtins.toString theme.appearance.cursorSize;
     NIXOS_OZONE_WL = "1";
@@ -58,21 +70,25 @@ let
     Install.WantedBy = [ "graphical-session.target" ];
   };
 
-  binShim = drv: name: lib.nameValuePair ".local/bin/${name}" {
-    source = "${drv}/bin/${name}";
-  };
+  binShim =
+    drv: name:
+    lib.nameValuePair ".local/bin/${name}" {
+      source = "${drv}/bin/${name}";
+    };
 
   scriptLib = import ./lib/scripts.nix;
   scriptWith = scriptLib.withPlaceholders;
   mkScript = scriptLib.mkShellApplication pkgs;
 
-  hyprlandConfig = themeText (scriptWith {
-    "@HYPRLAND_ENV@" = hyprlandEnvConfig;
-    "@HYPRPOLKITAGENT@" = "${pkgs.hyprpolkitagent}";
-    "@SCRATCHPAD@" = "${scratchpad}/bin/scratchpad";
-    "@DBUS_UPDATE_ACTIVATION_ENVIRONMENT@" = "${pkgs.dbus}/bin/dbus-update-activation-environment";
-    "@SYSTEMCTL@" = "${pkgs.systemd}/bin/systemctl";
-  } ./config/hypr/hyprland.conf);
+  hyprlandConfig = themeText (
+    scriptWith {
+      "@HYPRLAND_ENV@" = hyprlandEnvConfig;
+      "@HYPRPOLKITAGENT@" = "${pkgs.hyprpolkitagent}";
+      "@SCRATCHPAD@" = "${scratchpad}/bin/scratchpad";
+      "@DBUS_UPDATE_ACTIVATION_ENVIRONMENT@" = "${pkgs.dbus}/bin/dbus-update-activation-environment";
+      "@SYSTEMCTL@" = "${pkgs.systemd}/bin/systemctl";
+    } ./config/hypr/hyprland.conf
+  );
 
   hyprMonitorAuto = mkScript {
     name = "hypr-monitor-auto";
@@ -83,17 +99,27 @@ let
       procps
       socat
     ];
-    replacements."@WAYBAR@" = "${pkgs.waybar}/bin/waybar";
+    replacements = {
+      "@WAYBAR@" = "${pkgs.waybar}/bin/waybar";
+      "@MONITOR_SCALE@" = theme.appearance.monitorScale;
+    };
     path = ./config/scripts/hypr-monitor-auto.sh;
   };
 
-  rofiScriptHelpers = pkgs.writeText "rofi-helpers.sh" (scriptWith {} ./config/scripts/rofi-helpers.sh);
+  rofiScriptHelpers = pkgs.writeText "rofi-helpers.sh" (
+    scriptWith { } ./config/scripts/rofi-helpers.sh
+  );
   rofiHelperReplacement = {
     "@ROFI_SCRIPT_HELPERS@" = "${rofiScriptHelpers}";
   };
-  mkRofiScript = attrs: mkScript (attrs // {
-    replacements = rofiHelperReplacement // (attrs.replacements or {});
-  });
+  mkRofiScript =
+    attrs:
+    mkScript (
+      attrs
+      // {
+        replacements = rofiHelperReplacement // (attrs.replacements or { });
+      }
+    );
 
   cliphistStore = mkScript {
     name = "cliphist-store";
@@ -120,9 +146,9 @@ let
     };
   };
 
-  mkCliphistWatcher = { description, mime }:
-    mkUserService
-      description
+  mkCliphistWatcher =
+    { description, mime }:
+    mkUserService description
       "${pkgs.wl-clipboard}/bin/wl-paste --type ${mime} --watch ${cliphistStore}/bin/cliphist-store"
       "2s";
 
@@ -200,33 +226,40 @@ let
   };
 in
 {
+  imports = [
+    (import ./modules/home/yazi.nix { inherit palette; })
+  ];
+
   home.username = "laufan";
   home.homeDirectory = "/home/laufan";
   home.stateVersion = "26.05";
 
   # Everything in binShims is also a package; register each script once there.
-  home.packages = lib.attrValues binShims ++ [
-    hyprMonitorAuto
-    shelllistPortalBrowser
-    scratchpad
-    tsReactQualityLens
-    zenBrowser
-    pkgs.affinity-v3
-    # Track the latest nixpkgs-unstable build; the system startup updater keeps
-    # this input current for Codex, Pi, and Claude.
-    unstablePkgs.codex
-  ] ++ (with pkgs; [
-    ghostty
-    hyprlandGuiutils
-    waybar
-    hyprlock
-    hyprpaper
-    swayosd
-    qt5.qtwayland
-    qt6.qtwayland
-    wlogout
-    btop
-  ]);
+  home.packages =
+    lib.attrValues binShims
+    ++ [
+      hyprMonitorAuto
+      shelllistPortalBrowser
+      scratchpad
+      tsReactQualityLens
+      zenBrowser
+      pkgs.affinity-v3
+      # Track the latest nixpkgs-unstable build; the system startup updater keeps
+      # this input current for Codex, Pi, and Claude.
+      unstablePkgs.codex
+    ]
+    ++ (with pkgs; [
+      ghostty
+      hyprlandGuiutils
+      waybar
+      hyprlock
+      hyprpaper
+      swayosd
+      qt5.qtwayland
+      qt6.qtwayland
+      wlogout
+      btop
+    ]);
 
   home.sessionVariables = {
     BROWSER = "zen";
@@ -234,8 +267,6 @@ in
     # to use VS Code for commit messages and interactive operations.
     EDITOR = "nvim";
     VISUAL = "code --wait";
-  } // sharedSessionVariables // {
-    QT_QPA_PLATFORMTHEME = lib.mkForce sharedSessionVariables.QT_QPA_PLATFORMTHEME;
   };
 
   home.sessionPath = [
@@ -259,7 +290,7 @@ in
 
   qt = {
     enable = true;
-    platformTheme.name = theme.appearance.qtPlatformThemeName;
+    platformTheme.name = theme.appearance.qtPlatformTheme;
     style.name = theme.appearance.qtStyle;
   };
 
@@ -319,12 +350,12 @@ in
         source = config.lib.file.mkOutOfStoreSymlink "/etc/nixos/config/hypr/workspaces.conf";
         force = true;
       };
-      "hypr/hyprlock.conf".text = themeText (scriptWith
-        { "@WALLPAPER@" = "${wallpaper}"; }
-        ./config/hypr/hyprlock.conf);
-      "hypr/hyprpaper.conf".text = scriptWith
-        { "@WALLPAPER@" = "${wallpaper}"; }
-        ./config/hypr/hyprpaper.conf;
+      "hypr/hyprlock.conf".text = themeText (
+        scriptWith { "@WALLPAPER@" = "${wallpaper}"; } ./config/hypr/hyprlock.conf
+      );
+      "hypr/hyprpaper.conf".text = scriptWith {
+        "@WALLPAPER@" = "${wallpaper}";
+      } ./config/hypr/hyprpaper.conf;
       "waybar/config".text = builtins.readFile ./config/waybar/config.jsonc;
       "waybar/style.css".text = themeText (builtins.readFile ./config/waybar/style.css);
       "waybar/zen-workspace.svg".source = ./config/waybar/zen-workspace.svg;
@@ -333,16 +364,17 @@ in
       "waybar/scratchpad-workspace.svg".source = ./config/waybar/scratchpad-workspace.svg;
       "rofi/config.rasi".text = themeText (builtins.readFile ./config/rofi/config.rasi);
       "ghostty/config".text = themeText (builtins.readFile ./config/ghostty/config);
-      "Code/User/settings.json".text = builtins.toJSON {
-        "editor.fontFamily" = "'${fonts.code}', monospace";
-        "editor.fontSize" = 18;
-        "terminal.integrated.fontFamily" = "'${fonts.terminal}'";
-        "window.zoomLevel" = 0.5;
-        "chat.viewSessions.orientation" = "stacked";
+      # VS Code writes settings from its UI, so keep this as a writable,
+      # version-controlled out-of-store file rather than a Nix store symlink.
+      "Code/User/settings.json" = {
+        source = config.lib.file.mkOutOfStoreSymlink "/etc/nixos/config/vscode/settings.json";
+        force = true;
       };
       "gtk-3.0/gtk.css".text = themeText (builtins.readFile ./config/gtk/gtk.css);
       "gtk-4.0/gtk.css".text = themeText (builtins.readFile ./config/gtk/gtk.css);
-      "scratchpad/system-appearance.toml".text = themeText (builtins.readFile ./config/scratchpad/system-appearance.toml);
+      "scratchpad/system-appearance.toml".text = themeText (
+        builtins.readFile ./config/scratchpad/system-appearance.toml
+      );
       "xfce4/helpers.rc".text = ''
         TerminalEmulator=ghostty
       '';
@@ -407,8 +439,6 @@ in
   # User-level shims keep interactive launchers current even before the next
   # root-level NixOS profile switch updates /etc/profiles/per-user.
   home.file = lib.mapAttrs' (name: drv: binShim drv name) binShims // {
-    # Temporary compatibility shim while Shelllist migrates its command name.
-    ".local/bin/nm-api".source = "${nmDaemon}/bin/nm-daemon";
     ".local/bin/pi" = {
       source = "${unstablePkgs.pi-coding-agent}/bin/pi";
       force = true;
@@ -419,19 +449,6 @@ in
     };
     ".pi/agent/extensions/thinking-level-picker.ts".source = ./config/pi/thinking-level-picker.ts;
   };
-
-  home.activation.retireLegacyHyprlandLua = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
-    legacy="$HOME/.config/hypr/hyprland.lua"
-    backup="$legacy.hm-backup"
-
-    if [ -e "$legacy" ] && [ ! -L "$legacy" ]; then
-      if [ ! -e "$backup" ]; then
-        mv "$legacy" "$backup"
-      else
-        rm "$legacy"
-      fi
-    fi
-  '';
 
   services.network-manager-applet.enable = false;
   services.blueman-applet.enable = false;
@@ -512,209 +529,18 @@ in
       Install.WantedBy = [ "default.target" ];
     };
 
-    hypr-monitor-auto = mkUserService
-      "Hyprland monitor auto-switcher"
-      "${hyprMonitorAuto}/bin/hypr-monitor-auto"
-      "2s";
+    hypr-monitor-auto =
+      mkUserService "Hyprland monitor auto-switcher" "${hyprMonitorAuto}/bin/hypr-monitor-auto"
+        "2s";
 
-    wl-clip-persist = mkUserService
-      "Keep the regular Wayland clipboard available after source apps exit"
-      "${pkgs.wl-clip-persist}/bin/wl-clip-persist --clipboard regular"
-      "2s";
-  } // lib.mapAttrs (_: mkCliphistWatcher) cliphistWatchers;
-
+    wl-clip-persist =
+      mkUserService "Keep the regular Wayland clipboard available after source apps exit"
+        "${pkgs.wl-clip-persist}/bin/wl-clip-persist --clipboard regular"
+        "2s";
+  }
+  // lib.mapAttrs (_: mkCliphistWatcher) cliphistWatchers;
 
   programs.bash.enable = true;
-
-  programs.yazi = {
-    enable = true;
-    enableBashIntegration = true;
-
-    settings = {
-      mgr = {
-        ratio = [ 1 3 4 ];
-        show_hidden = true;
-        sort_dir_first = true;
-      };
-      opener = {
-        edit = [
-          {
-            run = "\${EDITOR:-nvim} \"$@\"";
-            block = true;
-          }
-        ];
-        open = [
-          {
-            run = ''xdg-open "$1"'';
-            orphan = true;
-          }
-        ];
-        # Satty replaced Swappy for screenshot, clipboard, and Yazi image
-        # editing because Swappy does not provide post-capture cropping.
-        satty = [
-          {
-            run = ''
-              input="$1"
-              case "$input" in
-                *.png) output="$input" ;;
-                *) output="''${input%.*}.edited.png" ;;
-              esac
-              exec satty \
-                --filename "$input" \
-                --output-filename "$output" \
-                --resize smart \
-                --early-exit \
-                --actions-on-enter save-to-file
-            '';
-            orphan = true;
-            desc = "Crop or annotate image in Satty";
-          }
-        ];
-      };
-      open = {
-        prepend_rules = [
-          { mime = "image/*"; use = "satty"; }
-          { url = "*.html"; use = "open"; }
-          { url = "*.htm"; use = "open"; }
-          { mime = "text/html"; use = "open"; }
-          { mime = "application/xhtml+xml"; use = "open"; }
-        ];
-      };
-    };
-
-    theme = {
-      mgr = {
-        cwd = { fg = palette.accent; };
-        # Yazi is a terminal TUI, so it cannot draw real rounded outline boxes
-        # around rows. Keep the selected row unfilled, white, and blue-underlined
-        # to avoid the default pale-blue pill.
-        hovered = {
-          fg = palette.foreground;
-          bg = "reset";
-          bold = true;
-          underline = true;
-        };
-        preview_hovered = {
-          fg = palette.foreground;
-          bg = "reset";
-          bold = true;
-          underline = true;
-        };
-        find_keyword = {
-          fg = palette.accent;
-          bold = true;
-        };
-        find_position = { fg = palette.subtext; };
-        marker_copied = { fg = palette.success; };
-        marker_cut = { fg = palette.danger; };
-        marker_marked = { fg = palette.warning; };
-        marker_selected = { fg = palette.accent; };
-        tab_active = {
-          fg = palette.foreground;
-          bg = palette.bg;
-          bold = true;
-          underline = true;
-        };
-        tab_inactive = {
-          fg = palette.subtext;
-          bg = palette.bg;
-        };
-        border_symbol = "│";
-        border_style = { fg = palette.borderDim; };
-      };
-
-      status = {
-        separator_open = " ";
-        separator_close = " ";
-        separator_style = {
-          fg = palette.bg;
-          bg = palette.bg;
-        };
-        mode_normal = {
-          fg = palette.white;
-          bg = palette.accentDark;
-          bold = true;
-        };
-        mode_select = {
-          fg = palette.white;
-          bg = palette.accentDark;
-          bold = true;
-        };
-        mode_unset = {
-          fg = palette.white;
-          bg = palette.dangerDark;
-          bold = true;
-        };
-        progress_label = {
-          fg = palette.white;
-          bg = palette.accentDark;
-          bold = true;
-        };
-        progress_normal = {
-          fg = palette.accentDark;
-          bg = palette.bg;
-        };
-        progress_error = {
-          fg = palette.dangerDark;
-          bg = palette.bg;
-        };
-        permissions_t = { fg = palette.foreground; bold = true; };
-        permissions_r = { fg = palette.foreground; bold = true; };
-        permissions_w = { fg = palette.foreground; bold = true; };
-        permissions_x = { fg = palette.foreground; bold = true; };
-        permissions_s = { fg = palette.muted; };
-      };
-
-      input = {
-        border = { fg = palette.accent; };
-        title = { fg = palette.text; };
-        value = { fg = palette.foreground; };
-        selected = { bg = palette.selectedBg; };
-      };
-
-      select = {
-        border = { fg = palette.accent; };
-        active = { fg = palette.accent; };
-        inactive = { fg = palette.subtext; };
-      };
-
-      tasks = {
-        border = { fg = palette.accent; };
-        title = { fg = palette.text; };
-        hovered = { bg = palette.selectedBg; };
-      };
-
-      which = {
-        cols = 3;
-        mask = { bg = palette.bg; };
-        cand = { fg = palette.accent; };
-        desc = { fg = palette.subtext; };
-        separator = "  ";
-        separator_style = { fg = palette.muted; };
-      };
-
-      help = {
-        on = { fg = palette.accent; };
-        run = { fg = palette.subtext; };
-        desc = { fg = palette.text; };
-        hovered = { bg = palette.selectedBg; };
-        footer = { fg = palette.bg; bg = palette.text; };
-      };
-
-      filetype = {
-        rules = [
-          { mime = "image/*"; fg = palette.foreground; }
-          { mime = "video/*"; fg = palette.foreground; }
-          { mime = "audio/*"; fg = palette.foreground; }
-          { mime = "application/zip"; fg = palette.foreground; }
-          { mime = "application/gzip"; fg = palette.foreground; }
-          { mime = "application/x-tar"; fg = palette.foreground; }
-          { url = "*/"; fg = palette.foreground; bold = true; }
-          { url = "*"; fg = palette.foreground; }
-        ];
-      };
-    };
-  };
 
   programs.direnv = {
     enable = true;

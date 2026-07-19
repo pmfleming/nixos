@@ -4,19 +4,40 @@ let
   colorBare = color: builtins.substring 1 6 color;
 
   hexDigits = {
-    "0" = 0; "1" = 1; "2" = 2; "3" = 3; "4" = 4;
-    "5" = 5; "6" = 6; "7" = 7; "8" = 8; "9" = 9;
-    "a" = 10; "b" = 11; "c" = 12; "d" = 13; "e" = 14; "f" = 15;
-    "A" = 10; "B" = 11; "C" = 12; "D" = 13; "E" = 14; "F" = 15;
+    "0" = 0;
+    "1" = 1;
+    "2" = 2;
+    "3" = 3;
+    "4" = 4;
+    "5" = 5;
+    "6" = 6;
+    "7" = 7;
+    "8" = 8;
+    "9" = 9;
+    "a" = 10;
+    "b" = 11;
+    "c" = 12;
+    "d" = 13;
+    "e" = 14;
+    "f" = 15;
+    "A" = 10;
+    "B" = 11;
+    "C" = 12;
+    "D" = 13;
+    "E" = 14;
+    "F" = 15;
   };
 
-  hexPair = hex: pos:
-    16 * hexDigits.${builtins.substring pos 1 hex}
-    + hexDigits.${builtins.substring (pos + 1) 1 hex};
+  hexPair =
+    hex: pos:
+    16 * hexDigits.${builtins.substring pos 1 hex} + hexDigits.${builtins.substring (pos + 1) 1 hex};
 
-  colorRgb = color:
-    let hex = colorBare color;
-    in "${toString (hexPair hex 0)}, ${toString (hexPair hex 2)}, ${toString (hexPair hex 4)}";
+  colorRgb =
+    color:
+    let
+      hex = colorBare color;
+    in
+    "${toString (hexPair hex 0)}, ${toString (hexPair hex 2)}, ${toString (hexPair hex 4)}";
 
   palette = rec {
     black = "#000000";
@@ -67,9 +88,9 @@ let
     iconTheme = "Adwaita";
     cursorTheme = "Bibata-Modern-Ice";
     cursorSize = 24;
-    qtPlatformThemeName = "gtk";
-    qtPlatformThemeEnv = "gtk3";
+    qtPlatformTheme = "gtk3";
     qtStyle = "adwaita-dark";
+    monitorScale = "1.25";
   };
 
   themeTokens = {
@@ -105,11 +126,19 @@ let
     "@ROFI_WIDTH@" = ui.rofiWidth;
     "@ROFI_LINES@" = ui.rofiLines;
     "@SCROLLBAR_WIDTH@" = ui.scrollbarWidth;
+    "@MONITOR_SCALE@" = appearance.monitorScale;
   };
 
   themeText = substitute themeTokens;
 in
 {
-  inherit palette fonts ui appearance wallpaper themeTokens themeText;
+  inherit
+    palette
+    fonts
+    ui
+    appearance
+    wallpaper
+    themeTokens
+    themeText
+    ;
 }
-# hash-padding: 1
