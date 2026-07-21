@@ -34,8 +34,6 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    affinity-nix.url = "github:mrshmllow/affinity-nix";
-
     # These development inputs are intentionally machine-local. Using git+file
     # lets this host evaluate committed local changes without first pushing them
     # to GitHub; the exact /home/laufan/Projects paths are therefore expected.
@@ -140,9 +138,6 @@
           inherit inputs machine unstablePkgs;
         };
         modules = [
-          (_: {
-            nixpkgs.overlays = [ inputs.affinity-nix.overlays.default ];
-          })
           ./configuration.nix
           inputs.sops-nix.nixosModules.sops
           home-manager.nixosModules.home-manager

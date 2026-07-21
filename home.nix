@@ -244,7 +244,7 @@ in
       scratchpad
       tsReactQualityLens
       zenBrowser
-      pkgs.affinity-v3
+      pkgs.inkscape
       # Track the latest nixpkgs-unstable build; the system startup updater keeps
       # this input current for Codex, Pi, and Claude.
       unstablePkgs.codex
