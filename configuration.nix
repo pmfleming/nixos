@@ -9,7 +9,19 @@
 
 let
   theme = import ./theme.nix { inherit lib; };
-  mkScript = (import ./lib/scripts.nix).mkShellApplication pkgs;
+  mkScript = (import ./lib/scripts.nix).mkScriptFrom pkgs ./config/scripts;
+  locale = "en_IE.UTF-8";
+  localeCategories = [
+    "LC_ADDRESS"
+    "LC_IDENTIFICATION"
+    "LC_MEASUREMENT"
+    "LC_MONETARY"
+    "LC_NAME"
+    "LC_NUMERIC"
+    "LC_PAPER"
+    "LC_TELEPHONE"
+    "LC_TIME"
+  ];
 
   cleanTuigreet = pkgs.tuigreet.overrideAttrs (oldAttrs: {
     patches = (oldAttrs.patches or [ ]) ++ [
@@ -30,7 +42,6 @@ let
       util-linux
     ];
     replacements."@FLAKE_ATTR@" = machine.hostName;
-    path = ./config/scripts/rebuild.sh;
   };
 
   update = mkScript {
@@ -40,7 +51,6 @@ let
       rebuild
     ];
     replacements."@FLAKE_ATTR@" = machine.hostName;
-    path = ./config/scripts/update.sh;
   };
 in
 {
@@ -97,47 +107,59 @@ in
     };
     firewall.enable = true;
   };
-  programs.nm-applet.enable = false;
   # NetworkManager-wait-online can take ~10s on Wi-Fi while autoconnect/DHCP
   # settle. This does not block graphical login; it only gates units that
   # explicitly wait for network-online.target, such as the update timer service.
   # Keep it enabled so those jobs start with a real network when available.
 
   time.timeZone = lib.mkDefault "Europe/Amsterdam";
-  services.automatic-timezoned.enable = true;
-
-  i18n.defaultLocale = "en_IE.UTF-8";
-  i18n.extraLocaleSettings = {
-    LC_ADDRESS = "en_IE.UTF-8";
-    LC_IDENTIFICATION = "en_IE.UTF-8";
-    LC_MEASUREMENT = "en_IE.UTF-8";
-    LC_MONETARY = "en_IE.UTF-8";
-    LC_NAME = "en_IE.UTF-8";
-    LC_NUMERIC = "en_IE.UTF-8";
-    LC_PAPER = "en_IE.UTF-8";
-    LC_TELEPHONE = "en_IE.UTF-8";
-    LC_TIME = "en_IE.UTF-8";
+  i18n = {
+    defaultLocale = locale;
+    extraLocaleSettings = lib.genAttrs localeCategories (_: locale);
   };
-
   console.keyMap = "us";
 
-  services.displayManager.gdm.enable = false;
-  services.desktopManager.gnome.enable = false;
-
-  services.greetd = {
-    enable = true;
-    useTextGreeter = true;
-    settings = {
-      default_session = {
+  services = {
+    automatic-timezoned.enable = true;
+    greetd = {
+      enable = true;
+      useTextGreeter = true;
+      settings.default_session = {
         command = "${cleanTuigreet}/bin/tuigreet --time --remember --prompt-padding 0 --cmd ${config.programs.hyprland.package}/bin/start-hyprland";
         user = "greeter";
       };
     };
+    gnome.gnome-keyring.enable = true;
+    # Fingerprint reader support for login and lock-screen biometric auth.
+    # The patched tuigreet above filters PAM's instructional fingerprint text.
+    fprintd.enable = true;
+    printing.enable = true;
+    flatpak.enable = true;
+    # FIDO2/WebAuthn security key support for browser passkeys.
+    udev.packages = [ pkgs.libfido2 ];
+    blueman.enable = true;
+    pipewire = {
+      enable = true;
+      alsa.enable = true;
+      alsa.support32Bit = true;
+      pulse.enable = true;
+    };
+    power-profiles-daemon.enable = true;
+    logind.settings.Login = {
+      HandlePowerKey = "suspend";
+      HandleLidSwitch = "suspend";
+      HandleLidSwitchDocked = "ignore";
+    };
   };
 
-  programs.hyprland = {
-    enable = true;
-    xwayland.enable = true;
+  programs = {
+    hyprland = {
+      enable = true;
+      xwayland.enable = true;
+    };
+    dconf.enable = true;
+    command-not-found.enable = false;
+    nix-index.enable = true;
   };
 
   xdg.portal = {
@@ -152,21 +174,6 @@ in
     ];
   };
 
-  programs.dconf.enable = true;
-  services.gnome.gnome-keyring.enable = true;
-  # Fingerprint reader support for login and lock-screen biometric auth.
-  # The patched tuigreet above filters PAM's instructional fingerprint text.
-  services.fprintd.enable = true;
-
-  services.printing.enable = true;
-  services.openssh.enable = false;
-  services.flatpak.enable = true;
-
-  # FIDO2/WebAuthn security key support for browser passkeys.
-  services.udev.packages = with pkgs; [
-    libfido2
-  ];
-
   hardware = {
     bluetooth = {
       enable = true;
@@ -178,24 +185,8 @@ in
     };
     enableRedistributableFirmware = true;
   };
-  services.blueman.enable = true;
-
-  services.pulseaudio.enable = false;
-  services.pipewire = {
-    enable = true;
-    alsa.enable = true;
-    alsa.support32Bit = true;
-    pulse.enable = true;
-  };
 
   zramSwap.enable = true;
-
-  services.power-profiles-daemon.enable = true;
-  services.logind.settings.Login = {
-    HandlePowerKey = "suspend";
-    HandleLidSwitch = "suspend";
-    HandleLidSwitchDocked = "ignore";
-  };
 
   # Enable fingerprint login for greetd/tuigreet. The patched tuigreet package
   # filters fprintd's instructional PAM info messages from the visible prompt.
@@ -254,15 +245,10 @@ in
     };
   };
 
-  programs.firefox.enable = false;
-  programs.command-not-found.enable = false;
-  programs.nix-index.enable = true;
-
   environment.systemPackages = with pkgs; [
     (mkScript {
       name = "google-chrome-fullscreen";
       runtimeInputs = [ google-chrome ];
-      path = ./config/scripts/google-chrome-fullscreen.sh;
     })
 
     rebuild
@@ -271,7 +257,6 @@ in
     (mkScript {
       name = "rollback";
       runtimeInputs = [ nixos-rebuild ];
-      path = ./config/scripts/rollback.sh;
     })
 
     adwaita-icon-theme

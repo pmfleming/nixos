@@ -74,8 +74,8 @@ Inspect the timer and recent updater output when troubleshooting:
 ```sh
 systemctl list-timers delayed-nixos-update.timer
 systemctl list-timers nixos-update-catchup.timer
+# Both timers invoke the same catch-up service.
 journalctl -u delayed-nixos-update.service -n 100 --no-pager
-journalctl -u nixos-update-catchup.service -n 100 --no-pager
 journalctl -u nixos-update-check-all.service -u nixos-update-check-apps.service -n 100 --no-pager
 journalctl -u nixos-update-approve.service -n 100 --no-pager
 ```

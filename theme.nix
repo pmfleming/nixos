@@ -76,7 +76,6 @@ let
     "@TEXT@" = palette.text;
     "@TEXT_BARE@" = colorBare palette.text;
     "@SUBTEXT@" = palette.subtext;
-    "@SUBTEXT_BARE@" = colorBare palette.subtext;
     "@ACCENT@" = palette.accent;
     "@ACCENT_BARE@" = palette.accentBare;
     "@ACCENT_RGB@" = palette.accentRgb;

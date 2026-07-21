@@ -6,7 +6,7 @@
 }:
 
 let
-  mkScript = (import ../lib/scripts.nix).mkShellApplication pkgs;
+  mkScript = (import ../lib/scripts.nix).mkScriptFrom pkgs ../config/scripts;
 
   delayedNixosUpdate = mkScript {
     name = "delayed-nixos-update";
@@ -21,7 +21,6 @@ let
       util-linux
     ];
     replacements."@FLAKE_ATTR@" = machine.hostName;
-    path = ../config/scripts/delayed-nixos-update.sh;
   };
 
   mkNixosUpdateCheckService =
@@ -73,13 +72,6 @@ in
         scope = "apps";
       };
 
-      nixos-update-catchup = mkNixosUpdateCheckService {
-        description = "Catch up a missed overnight NixOS update check when on AC power";
-        mode = "catch-up";
-        scope = "all";
-        acOnly = true;
-      };
-
       nixos-update-approve = {
         description = "Apply a checked NixOS flake update after manual approval";
         wants = [ "network-online.target" ];
@@ -107,6 +99,7 @@ in
         description = "Retry missed overnight NixOS update checks when AC power is available";
         wantedBy = [ "timers.target" ];
         timerConfig = {
+          Unit = "delayed-nixos-update.service";
           OnCalendar = "*:0/15";
           AccuracySec = "1m";
           RandomizedDelaySec = "2m";

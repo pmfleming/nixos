@@ -7,7 +7,7 @@
 }:
 
 let
-  mkScript = (import ../lib/scripts.nix).mkShellApplication pkgs;
+  mkScript = (import ../lib/scripts.nix).mkScriptFrom pkgs ../config/scripts;
   pruneNixosGenerations = mkScript {
     name = "prune-nixos-generations";
     runtimeInputs = [
@@ -15,12 +15,20 @@ let
       pkgs.coreutils
       pkgs.gawk
     ];
-    path = ../config/scripts/prune-nixos-generations.sh;
   };
   userProfiles = map (name: "${machine.homeDirectory}/.local/state/nix/profiles/${name}") [
     "home-manager"
     "profile"
   ];
+  mkTimer = description: OnCalendar: {
+    inherit description;
+    wantedBy = [ "timers.target" ];
+    timerConfig = {
+      inherit OnCalendar;
+      Persistent = true;
+      RandomizedDelaySec = "1h";
+    };
+  };
 in
 {
   # This bounded policy handles system-profile garbage collection.
@@ -57,25 +65,8 @@ in
     };
 
     timers = {
-      prune-nixos-generations = {
-        description = "Run system and Home Manager generation pruning once per day";
-        wantedBy = [ "timers.target" ];
-        timerConfig = {
-          OnCalendar = "daily";
-          Persistent = true;
-          RandomizedDelaySec = "1h";
-        };
-      };
-
-      nix-store-gc = {
-        description = "Garbage collect the Nix store weekly";
-        wantedBy = [ "timers.target" ];
-        timerConfig = {
-          OnCalendar = "Sun 04:00";
-          Persistent = true;
-          RandomizedDelaySec = "1h";
-        };
-      };
+      prune-nixos-generations = mkTimer "Run system and Home Manager generation pruning once per day" "daily";
+      nix-store-gc = mkTimer "Garbage collect the Nix store weekly" "Sun 04:00";
     };
   };
 }

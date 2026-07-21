@@ -78,6 +78,7 @@
         inherit system;
         config.allowUnfree = true;
       };
+      connectParityProbe = inputs.nm-daemon.packages.${system}.connectParityProbe;
       homeManagerModule = {
         home-manager = {
           useGlobalPkgs = true;
@@ -94,16 +95,20 @@
       formatter.${system} = pkgs.nixfmt-tree;
 
       checks.${system} = {
-        nixfmt =
-          pkgs.runCommand "nixfmt-check"
+        nix =
+          pkgs.runCommand "nix-quality-check"
             {
-              nativeBuildInputs = [
-                pkgs.findutils
-                pkgs.nixfmt
+              nativeBuildInputs = with pkgs; [
+                deadnix
+                findutils
+                nixfmt
+                statix
               ];
             }
             ''
               find ${self} -type f -name '*.nix' -exec nixfmt --check {} +
+              deadnix --fail ${self}
+              statix check ${self}
               touch $out
             '';
 
@@ -113,13 +118,11 @@
         '';
       };
 
-      packages.${system}.connectParityProbe = inputs.nm-daemon.packages.${system}.connectParityProbe;
+      packages.${system} = { inherit connectParityProbe; };
 
       apps.${system}.connectParityProbe = {
         type = "app";
-        program = "${
-          inputs.nm-daemon.packages.${system}.connectParityProbe
-        }/bin/nm-daemon-connect-parity-probe";
+        program = "${connectParityProbe}/bin/nm-daemon-connect-parity-probe";
         meta.description = "Compare nm-daemon and nmcli Wi-Fi connection behavior";
       };
 
