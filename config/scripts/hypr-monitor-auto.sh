@@ -9,7 +9,9 @@ restart_waybar() {
     pgrep -u "$(id -u)" -f '(^|/)waybar( |$)' >/dev/null || break
     sleep 0.2
   done
-  hyprctl dispatch exec "@WAYBAR@ >/dev/null 2>&1" >/dev/null || true
+  # In a Lua-configured session, legacy `hyprctl dispatch exec ...` is parsed
+  # as Lua and fails. Evaluate the equivalent Lua API call explicitly.
+  hyprctl eval 'hl.exec_cmd("@WAYBAR@ >/dev/null 2>&1")' >/dev/null || true
 }
 
 external_connected() {
@@ -54,15 +56,17 @@ apply_state() {
   if external_connected; then
     state="external"
     if [ "$force" = "force" ] || [ "$state" != "$last_state" ]; then
-      hyprctl keyword monitor ",preferred,auto,@MONITOR_SCALE@" >/dev/null || true
-      hyprctl keyword monitor "eDP-1,disable" >/dev/null || true
+      # `hyprctl keyword` only supports the legacy config parser. Apply monitor
+      # rules through the Lua API used by the active Hyprland configuration.
+      hyprctl eval 'hl.monitor({ output = "", mode = "preferred", position = "auto", scale = @MONITOR_SCALE@ })' >/dev/null || true
+      hyprctl eval 'hl.monitor({ output = "eDP-1", disabled = true })' >/dev/null || true
       restart_waybar
       last_state="$state"
     fi
   else
     state="internal"
     if [ "$force" = "force" ] || [ "$state" != "$last_state" ]; then
-      hyprctl keyword monitor "eDP-1,preferred,auto,@MONITOR_SCALE@" >/dev/null || true
+      hyprctl eval 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = @MONITOR_SCALE@ })' >/dev/null || true
       restart_waybar
       last_state="$state"
     fi

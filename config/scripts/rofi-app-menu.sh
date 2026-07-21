@@ -313,7 +313,7 @@ emit_instances() {
 focus_window() {
   local addr="$1"
   [ -n "$addr" ] || exit 0
-  hyprctl dispatch focuswindow "address:$addr" >/dev/null 2>&1 || true
+  hyprctl dispatch "hl.dsp.focus({ window = [=[address:$addr]=] })" >/dev/null 2>&1 || true
 }
 
 launch_app() {

@@ -53,11 +53,12 @@ Display automation in `home.nix`:
 
 - Added `hypr-monitor-auto`.
 - It checks `/sys/class/drm/card*-DP-*/status` and `/sys/class/drm/card*-HDMI-A-*/status`.
-- When an external display is connected, it runs:
-  - `hyprctl keyword monitor ",preferred,auto,1.25"`
-  - `hyprctl keyword monitor "eDP-1,disable"`
-- When no external display is connected, it runs:
-  - `hyprctl keyword monitor "eDP-1,preferred,auto,1.25"`
+- When an external display is connected, it applies these rules with
+  `hyprctl eval` and the Lua API:
+  - `hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1.25 })`
+  - `hl.monitor({ output = "eDP-1", disabled = true })`
+- When no external display is connected, it applies:
+  - `hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 1.25 })`
 
 Hyprland config in `config/hypr/hyprland.lua`:
 

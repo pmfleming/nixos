@@ -135,10 +135,14 @@ delayed_paste() {
     if [ "$paste_backend" = hyprland ]; then
       case "$paste_target" in
         ""|activewindow) ;;
-        *) hyprctl dispatch focuswindow "$paste_target" >/dev/null 2>&1 || true ;;
+        *)
+          hyprctl dispatch "hl.dsp.focus({ window = [=[$paste_target]=] })" >/dev/null 2>&1 || true
+          ;;
       esac
 
-      if hyprctl dispatch sendshortcut "$shortcut,$paste_target" >/dev/null 2>&1; then
+      shortcut_mods="${shortcut%,*}"
+      shortcut_key="${shortcut##*,}"
+      if hyprctl dispatch "hl.dsp.send_shortcut({ mods = [=[$shortcut_mods]=], key = [=[$shortcut_key]=], window = [=[$paste_target]=] })" >/dev/null 2>&1; then
         notify "Pasted from history" "$preview"
       else
         notify "Paste shortcut failed" "Item is on the clipboard; press paste manually."
@@ -252,7 +256,7 @@ paste_image_file_entry() {
 
 focus_satty() {
   for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-    hyprctl dispatch focuswindow 'class:^(com\.gabm\.satty)$' >/dev/null 2>&1 && return 0
+    hyprctl dispatch 'hl.dsp.focus({ window = [=[class:^(com\.gabm\.satty)$]=] })' >/dev/null 2>&1 && return 0
     sleep 0.05
   done
 }
@@ -300,7 +304,7 @@ annotate_image_entry() {
   } > "$state"
 
   self="$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")"
-  if ! hyprctl dispatch exec "$self --annotate-state $state" >/dev/null 2>&1; then
+  if ! hyprctl dispatch "hl.dsp.exec_cmd([=[$self --annotate-state $state]=])" >/dev/null 2>&1; then
     "$self" --annotate-state "$state" >/dev/null 2>&1 &
   fi
 }
