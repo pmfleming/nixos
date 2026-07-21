@@ -1,15 +1,6 @@
 {
   description = "ThinkPad NixOS desktop configuration";
 
-  nixConfig = {
-    extra-substituters = [
-      "https://cache.garnix.io"
-    ];
-    extra-trusted-public-keys = [
-      "cache.garnix.io:CTFPyKSLcx5RMJKfLo5EEPUObbA78b0YQ2DTCJXqr9g="
-    ];
-  };
-
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
