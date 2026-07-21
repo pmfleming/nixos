@@ -59,14 +59,16 @@ Display automation in `home.nix`:
 - When no external display is connected, it runs:
   - `hyprctl keyword monitor "eDP-1,preferred,auto,1.25"`
 
-Hyprland config in `config/hypr/hyprland.conf`:
+Hyprland config in `config/hypr/hyprland.lua`:
 
 - Default monitor rule currently:
-  - `monitor = ,preferred,auto,1.25`
-- `hypr-monitor-auto` is started with:
-  - `exec-once = hypr-monitor-auto`
-- `nwg-displays` can be launched with:
+  - `hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1.25 })`
+- `hypr-monitor-auto` runs as a Home Manager systemd user service attached to
+  `graphical-session.target`.
+- The Lua-aware `nwg-displays-lua` wrapper can be launched with:
   - `SUPER+P`
+- It translates nwg-displays' legacy output into `monitors.lua` and
+  `workspaces.lua` before reloading Hyprland.
 - Hyprland color management/HDR settings currently include:
   - `cm_enabled = false`
   - `cm_auto_hdr = 0`

@@ -20,19 +20,22 @@ external_connected() {
   return 1
 }
 
-custom_monitors_file="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/monitors.conf"
+custom_monitors_file="${XDG_CONFIG_HOME:-$HOME/.config}/hypr/monitors.lua"
 
 custom_monitor_config_matches_state() {
   [ -f "$custom_monitors_file" ] || return 1
-  grep -Eq '^[[:space:]]*monitor[[:space:]]*=' "$custom_monitors_file" || return 1
+  grep -Eq '^[[:space:]]*hl\.monitor\(' "$custom_monitors_file" || return 1
 
   if external_connected; then
     # Respect saved nwg-displays external layouts; ignore stale internal-only configs.
-    # Match external connector names only at the start of the monitor field;
-    # otherwise eDP-1 is accidentally treated as a DP-* external output.
-    grep -Eq '^[[:space:]]*monitor[[:space:]]*=[[:space:]]*((DP-|HDMI-A-)|desc:)' "$custom_monitors_file"
+    # Match external connector names only in the output field; otherwise eDP-1
+    # is accidentally treated as a DP-* external output.
+    grep -Eq '^[[:space:]]*hl\.monitor\(\{.*output[[:space:]]*=[[:space:]]*"((DP-|HDMI-A-)|desc:)' "$custom_monitors_file"
   else
-    grep -Eq '^[[:space:]]*monitor[[:space:]]*=[[:space:]]*eDP-' "$custom_monitors_file"
+    # A saved external-only layout usually contains `eDP-1, disabled = true`;
+    # do not mistake that stale disabled rule for a usable internal layout.
+    grep -E '^[[:space:]]*hl\.monitor\(\{.*output[[:space:]]*=[[:space:]]*"eDP-' "$custom_monitors_file" \
+      | grep -Eqv 'disabled[[:space:]]*=[[:space:]]*true'
   fi
 }
 

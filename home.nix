@@ -52,7 +52,9 @@ let
   };
 
   hyprlandEnvConfig = lib.concatStringsSep "\n" (
-    lib.mapAttrsToList (name: value: "env = ${name},${builtins.toString value}") hyprlandEnvVariables
+    lib.mapAttrsToList (
+      name: value: "hl.env(${builtins.toJSON name}, ${builtins.toJSON (builtins.toString value)})"
+    ) hyprlandEnvVariables
   );
 
   mkUserService = description: execStart: restartSec: {
@@ -88,7 +90,7 @@ let
       "@SCRATCHPAD@" = "${scratchpad}/bin/scratchpad";
       "@DBUS_UPDATE_ACTIVATION_ENVIRONMENT@" = "${pkgs.dbus}/bin/dbus-update-activation-environment";
       "@SYSTEMCTL@" = "${pkgs.systemd}/bin/systemctl";
-    } ./config/hypr/hyprland.conf
+    } ./config/hypr/hyprland.lua
   );
 
   hyprMonitorAuto = mkScript {
@@ -105,6 +107,21 @@ let
       "@MONITOR_SCALE@" = theme.appearance.monitorScale;
     };
     path = ./config/scripts/hypr-monitor-auto.sh;
+  };
+
+  nwgDisplaysLua = mkScript {
+    name = "nwg-displays-lua";
+    runtimeInputs = with pkgs; [
+      coreutils
+      gawk
+      hyprland
+    ];
+    replacements = {
+      "@NWG_DISPLAYS@" = "${pkgs.nwg-displays}";
+      "@MONITORS_LUA@" = "/etc/nixos/config/hypr/monitors.lua";
+      "@WORKSPACES_LUA@" = "/etc/nixos/config/hypr/workspaces.lua";
+    };
+    path = ./config/scripts/nwg-displays-lua.sh;
   };
 
   rofiScriptHelpers = pkgs.writeText "rofi-helpers.sh" (
@@ -240,6 +257,7 @@ in
     lib.attrValues binShims
     ++ [
       hyprMonitorAuto
+      nwgDisplaysLua
       shelllistPortalBrowser
       scratchpad
       tsReactQualityLens
@@ -351,15 +369,17 @@ in
         "${nmDaemon}/share/systemd/user/nm-daemon.service";
       "systemd/user/default.target.wants/bt-daemon.service".source =
         "${btDaemon}/share/systemd/user/bt-daemon.service";
-      "hypr/hyprland.conf".text = hyprlandConfig;
-      # Keep nwg-displays output version-controlled while allowing it to update
-      # the files through Home Manager's out-of-store links.
-      "hypr/monitors.conf" = {
-        source = config.lib.file.mkOutOfStoreSymlink "/etc/nixos/config/hypr/monitors.conf";
+      # The dormant .conf sources remain in Git so the previous NixOS generation
+      # can still roll back; Hyprland 0.55 prefers this active Lua config.
+      "hypr/hyprland.lua".text = hyprlandConfig;
+      # Keep the Lua-aware nwg-displays output version-controlled while allowing
+      # the wrapper to update it through Home Manager's out-of-store links.
+      "hypr/monitors.lua" = {
+        source = config.lib.file.mkOutOfStoreSymlink "/etc/nixos/config/hypr/monitors.lua";
         force = true;
       };
-      "hypr/workspaces.conf" = {
-        source = config.lib.file.mkOutOfStoreSymlink "/etc/nixos/config/hypr/workspaces.conf";
+      "hypr/workspaces.lua" = {
+        source = config.lib.file.mkOutOfStoreSymlink "/etc/nixos/config/hypr/workspaces.lua";
         force = true;
       };
       "hypr/hyprlock.conf".text = themeText (
