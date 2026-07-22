@@ -9,20 +9,6 @@ lower() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
 }
 
-rofi_icon_row() {
-  local search="$1"
-  local info="$2"
-  local display="$3"
-  local icon="${4:-}"
-  local active="${5:-false}"
-
-  printf '%s\0display\x1f%s' "$search" "$display"
-  [ -z "$info" ] || printf '\x1finfo\x1f%s' "$info"
-  [ -z "$icon" ] || printf '\x1ficon\x1f%s' "$icon"
-  [ "$active" != "true" ] || printf '\x1factive\x1ftrue'
-  printf '\n'
-}
-
 desktop_app_dirs() {
   declare -A seen=()
   local dir
@@ -77,10 +63,7 @@ parse_desktops() {
 }
 
 DESKTOPS_LOADED=0
-declare -a DESKTOP_IDS=()
-declare -a DESKTOP_NAMES=()
-declare -a DESKTOP_ICONS=()
-declare -a DESKTOP_WMCLASSES=()
+declare -a DESKTOP_IDS=() DESKTOP_NAMES=() DESKTOP_ICONS=() DESKTOP_WMCLASSES=()
 declare -A DESKTOP_INDEX_BY_ID=()
 declare -A DESKTOP_BY_KEY=()
 
@@ -154,20 +137,11 @@ desktop_for_window() {
 }
 
 WINDOWS_LOADED=0
-declare -a GROUP_KEYS=()
-declare -a GROUP_NAMES=()
-declare -a GROUP_ICONS=()
-declare -a GROUP_DESKTOP_IDS=()
-declare -a GROUP_CLASSES=()
-declare -a GROUP_COUNTS=()
-declare -a GROUP_FIRST_ADDRS=()
+declare -a GROUP_KEYS=() GROUP_NAMES=() GROUP_ICONS=() GROUP_DESKTOP_IDS=()
+declare -a GROUP_CLASSES=() GROUP_COUNTS=() GROUP_FIRST_ADDRS=()
 declare -A GROUP_INDEX=()
 declare -A RUNNING_DESKTOP_IDS=()
-declare -a WINDOW_GROUP_KEYS=()
-declare -a WINDOW_ADDRS=()
-declare -a WINDOW_CLASSES=()
-declare -a WINDOW_TITLES=()
-declare -a WINDOW_WORKSPACES=()
+declare -a WINDOW_GROUP_KEYS=() WINDOW_ADDRS=() WINDOW_CLASSES=() WINDOW_TITLES=() WINDOW_WORKSPACES=()
 
 load_windows() {
   [ "$WINDOWS_LOADED" -eq 0 ] || return 0
@@ -252,7 +226,7 @@ emit_main_menu() {
 
     display="$(markup_escape "$name")<span foreground=\"$muted\">$(markup_escape "$count_text")</span>"
     search="$name $id $class running"
-    rofi_icon_row "$search" "app${tab}${GROUP_KEYS[$i]}${tab}$id${tab}$count${tab}$first_addr" "$display" "$icon" true
+    rofi_row "$search" "app${tab}${GROUP_KEYS[$i]}${tab}$first_addr" "$display" "$icon" true
   done
 
   # Emit non-running apps alphabetically by display name (not by file id).
@@ -273,7 +247,7 @@ emit_main_menu() {
     icon="${DESKTOP_ICONS[$i]}"
     display="$(markup_escape "$name")"
     search="$name $id ${DESKTOP_WMCLASSES[$i]}"
-    rofi_icon_row "$search" "launch${tab}$id" "$display" "$icon"
+    rofi_row "$search" "launch${tab}$id" "$display" "$icon"
   done
 }
 
@@ -293,7 +267,7 @@ emit_instances() {
 
   rofi_common_headers "$name" "Enter focuses an instance • ← returns to apps"
   rofi_header use-hot-keys true
-  rofi_icon_row "back apps" "back" "<span foreground=\"$muted\">← Apps</span>" ""
+  rofi_row "back apps" "back" "<span foreground=\"$muted\">← Apps</span>" ""
 
   for i in "${!WINDOW_ADDRS[@]}"; do
     [ "${WINDOW_GROUP_KEYS[$i]}" = "$key" ] || continue
@@ -306,7 +280,7 @@ emit_instances() {
     display="$(markup_escape "$title")"
     [ -z "$workspace" ] || display="$display<span foreground=\"$muted\"> · $(markup_escape "$workspace")</span>"
     search="$title $class $workspace"
-    rofi_icon_row "$search" "focus${tab}$addr" "$display" "$icon"
+    rofi_row "$search" "focus${tab}$addr" "$display" "$icon"
   done
 }
 
@@ -352,13 +326,11 @@ fi
 case "$info" in
   app"$tab"*)
     payload="${info#app"$tab"}"
-    IFS=$'\t' read -r key desktop_id count first_addr <<< "$payload"
+    IFS=$'\t' read -r key first_addr <<< "$payload"
     if [ "${ROFI_RETV:-}" = "10" ]; then
       emit_instances "$key"
-    elif [ -n "$first_addr" ]; then
-      focus_window "$first_addr"
     else
-      launch_app "$desktop_id"
+      focus_window "$first_addr"
     fi
     ;;
   launch"$tab"*)

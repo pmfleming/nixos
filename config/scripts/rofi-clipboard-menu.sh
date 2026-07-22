@@ -11,10 +11,7 @@ notify() {
 # selection centralized so copied JPEG/WebP/GIF/etc. are not mislabeled as
 # PNG screenshots.
 clip_is_binary() {
-  case "$1" in
-    "[[ binary data "*) return 0 ;;
-    *) return 1 ;;
-  esac
+  [[ "$1" == "[[ binary data "* ]]
 }
 
 clip_binary_meta() {
@@ -180,7 +177,7 @@ copy_file_uri() {
 copy_text_entry() {
   entry="$1"
   tmp="$(mktemp)"
-  printf '%s\n' "$entry" | cliphist decode > "$tmp"
+  decode_entry_to_file "$entry" "$tmp"
 
   first=""
   second=""
@@ -297,11 +294,7 @@ annotate_image_entry() {
   state="$tmp_dir/state"
 
   decode_entry_to_file "$entry" "$raw"
-  {
-    printf '%s\n' "$raw"
-    printf '%s\n' "$edited"
-    printf '%s\n' "$(clipboard_context)"
-  } > "$state"
+  printf '%s\n' "$raw" "$edited" "$(clipboard_context)" > "$state"
 
   self="$(readlink -f "$0" 2>/dev/null || printf '%s' "$0")"
   if ! hyprctl dispatch "hl.dsp.exec_cmd([=[$self --annotate-state $state]=])" >/dev/null 2>&1; then
@@ -322,14 +315,6 @@ fi
 
 tab=$'\t'
 info="${ROFI_INFO:-}"
-image_entry_action() {
-  case "$1" in
-    annotate) annotate_image_entry "$2" ;;
-    paste-file) paste_image_file_entry "$2" ;;
-    *) paste_entry "$2" ;;
-  esac
-}
-
 action="paste"
 [ "${ROFI_RETV:-}" = "10" ] && action="paste-file"
 [ "${ROFI_RETV:-}" = "11" ] && action="annotate"
@@ -345,7 +330,11 @@ case "$info" in
     preview="${entry#*"$tab"}"
     type="$(clip_binary_type "$preview" || true)"
     if [ -n "$type" ] && clip_is_image_type "$type"; then
-      image_entry_action "$action" "$entry"
+      case "$action" in
+        annotate) annotate_image_entry "$entry" ;;
+        paste-file) paste_image_file_entry "$entry" ;;
+        *) paste_entry "$entry" ;;
+      esac
     else
       paste_entry "$entry"
     fi

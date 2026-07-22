@@ -51,6 +51,12 @@ let
         IOWeight = 20;
       };
     };
+
+  mkTimer = description: timerConfig: {
+    inherit description timerConfig;
+    wantedBy = [ "timers.target" ];
+  };
+  catchupDescription = "Retry missed overnight NixOS update checks when AC power is available";
 in
 {
   systemd = {
@@ -84,26 +90,18 @@ in
     };
 
     timers = {
-      delayed-nixos-update = {
-        description = "Run overnight NixOS update check";
-        wantedBy = [ "timers.target" ];
-        timerConfig = {
-          OnCalendar = "*-*-* 03:00:00";
-          AccuracySec = "15m";
-          RandomizedDelaySec = "30m";
-          Persistent = true;
-        };
+      delayed-nixos-update = mkTimer "Run overnight NixOS update check" {
+        OnCalendar = "*-*-* 03:00:00";
+        AccuracySec = "15m";
+        RandomizedDelaySec = "30m";
+        Persistent = true;
       };
 
-      nixos-update-catchup = {
-        description = "Retry missed overnight NixOS update checks when AC power is available";
-        wantedBy = [ "timers.target" ];
-        timerConfig = {
-          Unit = "delayed-nixos-update.service";
-          OnCalendar = "*:0/15";
-          AccuracySec = "1m";
-          RandomizedDelaySec = "2m";
-        };
+      nixos-update-catchup = mkTimer catchupDescription {
+        Unit = "delayed-nixos-update.service";
+        OnCalendar = "*:0/15";
+        AccuracySec = "1m";
+        RandomizedDelaySec = "2m";
       };
     };
   };

@@ -17,13 +17,10 @@ let
   palette = rec {
     black = "#000000";
     bg = black;
-    bgRgb = colorRgb bg;
     muted = "#69727d";
     text = "#d7dee8";
     subtext = "#aeb8c4";
     accent = "#2f8cff";
-    accentBare = colorBare accent;
-    accentRgb = colorRgb accent;
 
     white = "#ffffff";
     foreground = "#f5f5f5";
@@ -71,14 +68,14 @@ let
   themeTokens = {
     "@BG@" = palette.bg;
     "@BG_BARE@" = colorBare palette.bg;
-    "@BG_RGB@" = palette.bgRgb;
+    "@BG_RGB@" = colorRgb palette.bg;
     "@MUTED@" = palette.muted;
     "@TEXT@" = palette.text;
     "@TEXT_BARE@" = colorBare palette.text;
     "@SUBTEXT@" = palette.subtext;
     "@ACCENT@" = palette.accent;
-    "@ACCENT_BARE@" = palette.accentBare;
-    "@ACCENT_RGB@" = palette.accentRgb;
+    "@ACCENT_BARE@" = colorBare palette.accent;
+    "@ACCENT_RGB@" = colorRgb palette.accent;
     "@FOREGROUND@" = palette.foreground;
     "@FOREGROUND_BARE@" = colorBare palette.foreground;
     "@BLACK@" = palette.black;
@@ -112,7 +109,6 @@ in
     ui
     appearance
     wallpaper
-    themeTokens
     themeText
     ;
 }

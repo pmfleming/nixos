@@ -36,13 +36,7 @@ human_duration() {
 }
 
 setup_terminal_styles() {
-  style_reset=''
-  style_bold=''
-  style_dim=''
-  style_green=''
-  style_yellow=''
-  style_red=''
-  style_cyan=''
+  declare -g style_reset='' style_bold='' style_dim='' style_green='' style_yellow='' style_red='' style_cyan=''
 
   if [[ -t 1 && -z ${NO_COLOR:-} ]]; then
     style_reset=$'\033[0m'
@@ -102,8 +96,7 @@ system_network_counters() {
 }
 
 system_disk_counters() {
-  local device_id
-  local read_sectors write_sectors
+  local device_id read_sectors write_sectors
 
   device_id=$(findmnt -no MAJ:MIN -T /nix/store | tr -d ' ')
   if [[ -z $device_id || ! -r /sys/dev/block/$device_id/stat ]]; then
@@ -451,16 +444,8 @@ memory_monitor_pid=$!
 trap report_rebuild EXIT
 
 status=0
-if run_logged nix flake check "$flake_dir"; then
-  :
-else
-  status=$?
-fi
+run_logged nix flake check "$flake_dir" || status=$?
 if (( status == 0 )); then
-  if run_logged sudo nixos-rebuild switch --flake "$flake_dir#$flake_attr" "$@"; then
-    :
-  else
-    status=$?
-  fi
+  run_logged sudo nixos-rebuild switch --flake "$flake_dir#$flake_attr" "$@" || status=$?
 fi
 exit "$status"

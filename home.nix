@@ -19,6 +19,11 @@ let
   scratchpad = inputs.scratchpad.packages.${system}.scratchpad-hyprland;
   tsReactQualityLens = inputs.ts-react-quality-lens.packages.${system}.default;
   zenBrowser = inputs.zen-browser.packages.${system}.default;
+  waybar = pkgs.waybar.overrideAttrs (oldAttrs: {
+    patches = (oldAttrs.patches or [ ]) ++ [
+      ./config/patches/waybar-hyprland-lua-workspaces.patch
+    ];
+  });
 
   theme = import ./theme.nix { inherit lib; };
   inherit (theme)
@@ -125,7 +130,7 @@ let
       socat
     ];
     replacements = {
-      "@WAYBAR@" = "${pkgs.waybar}/bin/waybar";
+      "@WAYBAR@" = "${waybar}/bin/waybar";
       "@MONITOR_SCALE@" = theme.appearance.monitorScale;
     };
   };
@@ -279,6 +284,7 @@ in
         tsReactQualityLens
         zenBrowser
         pkgs.inkscape
+        waybar
         # Track the latest nixpkgs-unstable build; the system startup updater keeps
         # this input current for Codex, Pi, and Claude.
         unstablePkgs.codex
@@ -286,7 +292,6 @@ in
       ++ (with pkgs; [
         ghostty
         hyprlandGuiutils
-        waybar
         hyprlock
         hyprpaper
         swayosd

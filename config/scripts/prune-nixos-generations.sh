@@ -48,17 +48,10 @@ for ((offset = 0; offset < keep_monthly; offset++)); do
   allowed_months["$bucket"]=1
 done
 
-mapfile -t generation_rows < <(
-  nix-env --profile "$profile" --list-generations \
-    | awk '$1 ~ /^[0-9]+$/ { print $1, $2, $3 }' \
-    | sort -n -k1,1
-)
-
 gens=()
 declare -A generation_epoch=()
 
-for row in "${generation_rows[@]}"; do
-  read -r gen created_date created_time <<< "$row"
+while read -r gen created_date created_time; do
   gens+=("$gen")
 
   if epoch="$(date --date="$created_date $created_time" +%s 2>/dev/null)"; then
@@ -69,7 +62,11 @@ for row in "${generation_rows[@]}"; do
     printf 'Keeping generation %s because its creation time could not be parsed: %s %s\n' \
       "$gen" "$created_date" "$created_time" >&2
   fi
-done
+done < <(
+  nix-env --profile "$profile" --list-generations \
+    | awk '$1 ~ /^[0-9]+$/ { print $1, $2, $3 }' \
+    | sort -n -k1,1
+)
 
 total="${#gens[@]}"
 if (( total <= keep_recent )); then
@@ -125,15 +122,12 @@ for gen in "${gens[@]}"; do
   fi
 
   # Never delete the active profile target or a running/booted system target.
-  if [[ -n "$link" && -n "$profile_current" && "$link" == "$profile_current" ]]; then
-    keep_gen=1
-  fi
-  if [[ -n "$link" && -n "$run_current" && "$link" == "$run_current" ]]; then
-    keep_gen=1
-  fi
-  if [[ -n "$link" && -n "$run_booted" && "$link" == "$run_booted" ]]; then
-    keep_gen=1
-  fi
+  for active_target in "$profile_current" "$run_current" "$run_booted"; do
+    if [[ -n "$link" && -n "$active_target" && "$link" == "$active_target" ]]; then
+      keep_gen=1
+      break
+    fi
+  done
 
   if (( keep_gen )); then
     keep+=("$gen")

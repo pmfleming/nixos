@@ -46,31 +46,26 @@ apply_state() {
 
   if custom_monitor_config_matches_state; then
     state="custom"
-    if [ "$force" = "force" ] || [ "$state" != "$last_state" ]; then
-      restart_waybar
-      last_state="$state"
-    fi
-    return 0
-  fi
-
-  if external_connected; then
+  elif external_connected; then
     state="external"
-    if [ "$force" = "force" ] || [ "$state" != "$last_state" ]; then
-      # `hyprctl keyword` only supports the legacy config parser. Apply monitor
-      # rules through the Lua API used by the active Hyprland configuration.
-      hyprctl eval 'hl.monitor({ output = "", mode = "preferred", position = "auto", scale = @MONITOR_SCALE@ })' >/dev/null || true
-      hyprctl eval 'hl.monitor({ output = "eDP-1", disabled = true })' >/dev/null || true
-      restart_waybar
-      last_state="$state"
-    fi
   else
     state="internal"
-    if [ "$force" = "force" ] || [ "$state" != "$last_state" ]; then
-      hyprctl eval 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = @MONITOR_SCALE@ })' >/dev/null || true
-      restart_waybar
-      last_state="$state"
-    fi
   fi
+  [ "$force" = force ] || [ "$state" != "$last_state" ] || return 0
+
+  # `hyprctl keyword` only supports the legacy config parser. Apply monitor
+  # rules through the Lua API used by the active Hyprland configuration.
+  case "$state" in
+    external)
+      hyprctl eval 'hl.monitor({ output = "", mode = "preferred", position = "auto", scale = @MONITOR_SCALE@ })' >/dev/null || true
+      hyprctl eval 'hl.monitor({ output = "eDP-1", disabled = true })' >/dev/null || true
+      ;;
+    internal)
+      hyprctl eval 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = @MONITOR_SCALE@ })' >/dev/null || true
+      ;;
+  esac
+  restart_waybar
+  last_state="$state"
 }
 
 runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"

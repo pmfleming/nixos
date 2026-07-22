@@ -20,12 +20,12 @@ rofi_common_headers() {
 }
 
 rofi_row() {
-  search="$1"
-  info="$2"
-  display="$3"
+  local search="$1" info="$2" display="$3" icon="${4:-}" active="${5:-false}"
 
   printf '%s\0display\x1f%s' "$search" "$display"
   [ -z "$info" ] || printf '\x1finfo\x1f%s' "$info"
+  [ -z "$icon" ] || printf '\x1ficon\x1f%s' "$icon"
+  [ "$active" != true ] || printf '\x1factive\x1ftrue'
   printf '\n'
 }
 

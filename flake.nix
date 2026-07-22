@@ -5,38 +5,22 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
 
-    home-manager = {
-      url = "github:nix-community/home-manager/release-26.05";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    sops-nix = {
-      url = "github:Mic92/sops-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    hyprland-guiutils = {
-      url = "github:hyprwm/hyprland-guiutils";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    zen-browser = {
-      url = "github:youwen5/zen-browser-flake";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    home-manager.url = "github:nix-community/home-manager/release-26.05";
+    home-manager.inputs.nixpkgs.follows = "nixpkgs";
+    sops-nix.url = "github:Mic92/sops-nix";
+    sops-nix.inputs.nixpkgs.follows = "nixpkgs";
+    hyprland-guiutils.url = "github:hyprwm/hyprland-guiutils";
+    hyprland-guiutils.inputs.nixpkgs.follows = "nixpkgs";
+    zen-browser.url = "github:youwen5/zen-browser-flake";
+    zen-browser.inputs.nixpkgs.follows = "nixpkgs";
 
     # These development inputs are intentionally machine-local. Using git+file
     # lets this host evaluate committed local changes without first pushing them
     # to GitHub; the exact /home/laufan/Projects paths are therefore expected.
-    nm-daemon = {
-      url = "git+file:///home/laufan/Projects/nm-daemon?ref=main";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    bt-daemon = {
-      url = "git+file:///home/laufan/Projects/bt-daemon?ref=main";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    nm-daemon.url = "git+file:///home/laufan/Projects/nm-daemon?ref=main";
+    nm-daemon.inputs.nixpkgs.follows = "nixpkgs";
+    bt-daemon.url = "git+file:///home/laufan/Projects/bt-daemon?ref=main";
+    bt-daemon.inputs.nixpkgs.follows = "nixpkgs";
 
     shelllist = {
       url = "git+file:///home/laufan/Projects/shelllist?ref=main";
@@ -47,15 +31,10 @@
       };
     };
 
-    scratchpad = {
-      url = "git+file:///home/laufan/Projects/scratchpad?ref=master";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
-    ts-react-quality-lens = {
-      url = "git+file:///home/laufan/Projects/ts-react-quality-lens?ref=main";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    scratchpad.url = "git+file:///home/laufan/Projects/scratchpad?ref=master";
+    scratchpad.inputs.nixpkgs.follows = "nixpkgs";
+    ts-react-quality-lens.url = "git+file:///home/laufan/Projects/ts-react-quality-lens?ref=main";
+    ts-react-quality-lens.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
@@ -79,14 +58,13 @@
         config.allowUnfree = true;
       };
       connectParityProbe = inputs.nm-daemon.packages.${system}.connectParityProbe;
+      specialArgs = { inherit inputs machine unstablePkgs; };
       homeManagerModule = {
         home-manager = {
           useGlobalPkgs = true;
           useUserPackages = true;
           backupFileExtension = "hm-backup";
-          extraSpecialArgs = {
-            inherit inputs machine unstablePkgs;
-          };
+          extraSpecialArgs = specialArgs;
           users.${machine.username} = import ./home.nix;
         };
       };
@@ -128,9 +106,7 @@
 
       nixosConfigurations.${machine.hostName} = nixpkgs.lib.nixosSystem {
         inherit system;
-        specialArgs = {
-          inherit inputs machine unstablePkgs;
-        };
+        inherit specialArgs;
         modules = [
           ./configuration.nix
           inputs.sops-nix.nixosModules.sops
