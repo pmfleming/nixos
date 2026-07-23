@@ -70,6 +70,8 @@ let
       description,
       execStart,
       after ? [ ],
+      requires ? [ ],
+      partOf ? [ ],
       environment ? [ ],
       restart ? "always",
       restartSec ? "2s",
@@ -78,7 +80,8 @@ let
       Unit = {
         Description = description;
         After = [ "graphical-session.target" ] ++ after;
-        PartOf = [ "graphical-session.target" ];
+        Requires = requires;
+        PartOf = [ "graphical-session.target" ] ++ partOf;
       };
       Service = {
         ExecStart = execStart;
@@ -517,12 +520,22 @@ in
         description = "Ringboard Wayland clipboard watcher";
         execStart = "${pkgs.ringboard-wayland}/bin/ringboard-wayland";
         after = [ "ringboard-server.service" ];
+        requires = [ "ringboard-server.service" ];
+        partOf = [ "ringboard-server.service" ];
       };
 
       clip-daemon = mkUserService {
         description = "Shelllist clipboard policy service";
         execStart = "${clipDaemon}/bin/clip-daemon daemon";
         after = [
+          "ringboard-server.service"
+          "ringboard-wayland.service"
+        ];
+        requires = [
+          "ringboard-server.service"
+          "ringboard-wayland.service"
+        ];
+        partOf = [
           "ringboard-server.service"
           "ringboard-wayland.service"
         ];
