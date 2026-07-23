@@ -40,11 +40,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784671742,
-        "narHash": "sha256-bS0RZF63sjYWRv9GIi1kxgVNe4sjlunMUBH5sewdgas=",
+        "lastModified": 1784725508,
+        "narHash": "sha256-9IBdtytTGYNqRbSj6Uo7ugtC0F4ScHLuUNeISWlTPYU=",
         "ref": "main",
-        "rev": "f2d093155fffbf469aa9021a8a8018bd8e1c8899",
-        "revCount": 34,
+        "rev": "12a24310cc9f2401ef4e691299b38804fd817ccc",
+        "revCount": 35,
         "type": "git",
         "url": "file:///home/laufan/Projects/bt-daemon"
       },
@@ -52,6 +52,27 @@
         "ref": "main",
         "type": "git",
         "url": "file:///home/laufan/Projects/bt-daemon"
+      }
+    },
+    "clip-daemon": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1784827469,
+        "narHash": "sha256-lxzU5LHkIZ9lRWPgA3llh4DP/kn9T+k/W17clXy7Iig=",
+        "ref": "main",
+        "rev": "71e6522f497564d917dc1183a918bd29c0d2a9b8",
+        "revCount": 12,
+        "type": "git",
+        "url": "file:///home/laufan/Projects/clip-daemon"
+      },
+      "original": {
+        "ref": "main",
+        "type": "git",
+        "url": "file:///home/laufan/Projects/clip-daemon"
       }
     },
     "home-manager": {
@@ -294,11 +315,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784554927,
-        "narHash": "sha256-F2oCmoexOAzDGURX8VT08HTSAm8hSnsktfmalTSRf5s=",
+        "lastModified": 1784816813,
+        "narHash": "sha256-7aHqqTpISXQOMURPkmmQOAKszkmSwLFqCvW2PgXNiwM=",
         "ref": "main",
-        "rev": "f626de272d24414fecf13e634ead727ea96d6be1",
-        "revCount": 46,
+        "rev": "508b5836bafeb8644a5cdf8f065d961b4435b7a4",
+        "revCount": 49,
         "type": "git",
         "url": "file:///home/laufan/Projects/nm-daemon"
       },
@@ -311,6 +332,7 @@
     "root": {
       "inputs": {
         "bt-daemon": "bt-daemon",
+        "clip-daemon": "clip-daemon",
         "home-manager": "home-manager",
         "hyprland-guiutils": "hyprland-guiutils",
         "nixpkgs": "nixpkgs",
@@ -330,11 +352,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784722547,
-        "narHash": "sha256-KUyGiJPqzq2R8aqRcJ2Ivk84QEiwK954OnErHwQdXM8=",
+        "lastModified": 1784727007,
+        "narHash": "sha256-lVtGUfeIEBbRN/Q3+tij3GqG5AxYZbeIl9QpN2SbV38=",
         "ref": "master",
-        "rev": "d4033f12b35c865ede240e722441e63165eec132",
-        "revCount": 129,
+        "rev": "058691072bcc14579d6a4fb143436d56304c285f",
+        "revCount": 131,
         "type": "git",
         "url": "file:///home/laufan/Projects/scratchpad"
       },
@@ -349,6 +371,9 @@
         "bt-daemon": [
           "bt-daemon"
         ],
+        "clip-daemon": [
+          "clip-daemon"
+        ],
         "nixpkgs": [
           "nixpkgs"
         ],
@@ -357,11 +382,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784672782,
-        "narHash": "sha256-DUitWWar1bVn7CP3+6EWu1GBDnEQhHrcxGhSELMS4sw=",
+        "lastModified": 1784827539,
+        "narHash": "sha256-CzW1YFoVqtQGFnToCbrsqKtY1Iqq6O0bX0bW5wIx2LY=",
         "ref": "main",
-        "rev": "31c929102901a101b8fdfef116bae0d305aabf9e",
-        "revCount": 95,
+        "rev": "6877e3e30ce535d015adce4be265db625cc781de",
+        "revCount": 107,
         "type": "git",
         "url": "file:///home/laufan/Projects/shelllist"
       },

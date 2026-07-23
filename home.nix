@@ -13,8 +13,10 @@ let
   hyprlandGuiutils = inputs.hyprland-guiutils.packages.${system}.default;
   nmDaemon = inputs.nm-daemon.packages.${system}.default;
   btDaemon = inputs.bt-daemon.packages.${system}.default;
+  clipDaemon = inputs.clip-daemon.packages.${system}.default;
   shelllistWifi = inputs.shelllist.packages.${system}.default;
   shelllistBluetooth = inputs.shelllist.packages.${system}.bluetooth;
+  shelllistClipboard = inputs.shelllist.packages.${system}.clipboard;
   shelllistPortalBrowser = inputs.shelllist.packages.${system}.captivePortalBrowser;
   scratchpad = inputs.scratchpad.packages.${system}.scratchpad-hyprland;
   tsReactQualityLens = inputs.ts-react-quality-lens.packages.${system}.default;
@@ -38,6 +40,7 @@ let
     QT_QPA_PLATFORM = "wayland;xcb";
     QT_QPA_PLATFORMTHEME = theme.appearance.qtPlatformTheme;
     SHELLLIST_WIFI_MODE = "popover";
+    SHELLLIST_CLIPBOARD_MODE = "popover";
     SHELLLIST_BG = palette.bg;
     SHELLLIST_SURFACE = palette.borderDim;
     SHELLLIST_TEXT = palette.text;
@@ -164,37 +167,6 @@ let
       }
     );
 
-  cliphistStore = mkScript {
-    name = "cliphist-store";
-    runtimeInputs = with pkgs; [ cliphist ];
-  };
-
-  cliphistWatchers = {
-    cliphist-text = {
-      description = "Store text clipboard history with cliphist";
-      mime = "text";
-    };
-    cliphist-image = {
-      description = "Store image clipboard history with cliphist";
-      mime = "image";
-    };
-    cliphist-uri-list = {
-      description = "Store copied file URI clipboard history with cliphist";
-      mime = "text/uri-list";
-    };
-    cliphist-gnome-copied-files = {
-      description = "Store GNOME-style copied file clipboard history with cliphist";
-      mime = "x-special/gnome-copied-files";
-    };
-  };
-
-  mkCliphistWatcher =
-    { description, mime }:
-    mkUserService {
-      inherit description;
-      execStart = "${pkgs.wl-clipboard}/bin/wl-paste --type ${mime} --watch ${cliphistStore}/bin/cliphist-store";
-    };
-
   rofiBluetoothMenu = mkRofiScript {
     name = "rofi-bluetooth-menu";
     runtimeInputs = with pkgs; [
@@ -257,11 +229,13 @@ let
     rofi-app-menu = rofiAppMenu;
     shelllist-wifi = shelllistWifi;
     shelllist-bluetooth = shelllistBluetooth;
+    shelllist-clipboard = shelllistClipboard;
     rofi-bluetooth-menu = rofiBluetoothMenu;
     rofi-clipboard-menu = rofiClipboardMenu;
     screenshot-annotate = screenshotAnnotate;
     nm-daemon = nmDaemon;
     bt-daemon = btDaemon;
+    clip-daemon = clipDaemon;
   };
 in
 {
@@ -521,11 +495,6 @@ in
         execStart = "${hyprMonitorAuto}/bin/hypr-monitor-auto";
       };
 
-      wl-clip-persist = mkUserService {
-        description = "Keep the regular Wayland clipboard available after source apps exit";
-        execStart = "${pkgs.wl-clip-persist}/bin/wl-clip-persist --clipboard regular";
-      };
-
       shelllist-bluetooth = mkUserService {
         description = "Shelllist Bluetooth prompt frontend";
         execStart = "${shelllistBluetooth}/bin/shelllist-bluetooth foreground";
@@ -538,8 +507,27 @@ in
         );
         restart = "on-failure";
       };
-    }
-    // lib.mapAttrs (_: mkCliphistWatcher) cliphistWatchers;
+
+      ringboard-server = mkUserService {
+        description = "Ringboard clipboard history server";
+        execStart = "${pkgs.ringboard-wayland}/bin/ringboard-server";
+      };
+
+      ringboard-wayland = mkUserService {
+        description = "Ringboard Wayland clipboard watcher";
+        execStart = "${pkgs.ringboard-wayland}/bin/ringboard-wayland";
+        after = [ "ringboard-server.service" ];
+      };
+
+      clip-daemon = mkUserService {
+        description = "Shelllist clipboard policy service";
+        execStart = "${clipDaemon}/bin/clip-daemon daemon";
+        after = [
+          "ringboard-server.service"
+          "ringboard-wayland.service"
+        ];
+      };
+    };
   };
 
   programs = {
