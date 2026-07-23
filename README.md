@@ -113,7 +113,7 @@ sudo SOPS_AGE_KEY_FILE=/var/lib/sops-nix/key.txt \
 
 ## Clipboard cutover
 
-Ringboard and `clip-daemon` are the only clipboard-history capture stack. `Super+V` opens Shelllist; `Super+Shift+V` retains the old read-only `cliphist` picker as a one-release rollback shortcut. Existing `cliphist` history was intentionally not imported.
+Ringboard and `clip-daemon` are the only clipboard-history capture stack. `Super+V` opens Shelllist; `Super+Shift+V` retains the previous `cliphist` picker as a one-release rollback shortcut. Existing `cliphist` history was intentionally not imported.
 
 `wl-clip-persist` is intentionally disabled. Ringboard captures clipboard content before a source exits, so it remains selectable from Shelllist, but the live Wayland selection can be empty until that item is copied again.
 
