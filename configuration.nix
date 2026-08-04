@@ -279,6 +279,7 @@ in
     edid-decode
     grim
     jq
+    kdePackages.okular
     libdrm
     libnotify
     neovim
