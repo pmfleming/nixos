@@ -68,8 +68,8 @@
     "format-disabled": "",
     "format-off": "",
     "format-connected": "",
-    "tooltip-format": "{status}\nLeft: Bluetooth menu",
-    "on-click": "rofi-bluetooth-menu"
+    "tooltip-format": "{status}\nLeft: Bluetooth popover",
+    "on-click": "shelllist-bluetooth toggle"
   },
   "pulseaudio": {
     "format": "{icon}",

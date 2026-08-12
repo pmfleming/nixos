@@ -1,4 +1,8 @@
-{ palette }:
+{
+  palette,
+  scratchpad,
+  clipDaemon,
+}:
 
 let
   foreground = color: { fg = color; };
@@ -14,6 +18,11 @@ in
   programs.yazi = {
     enable = true;
     enableBashIntegration = true;
+
+    plugins.yank-to-clip-daemon = {
+      package = clipDaemon + "/share/yazi/plugins/yank-to-clip-daemon.yazi";
+      setup = true;
+    };
 
     settings = {
       mgr = {
@@ -36,6 +45,13 @@ in
           {
             run = ''xdg-open "$1"'';
             orphan = true;
+          }
+        ];
+        scratchpad = [
+          {
+            run = ''${scratchpad}/bin/scratchpad "$@"'';
+            orphan = true;
+            desc = "Edit Markdown in Scratchpad";
           }
         ];
         # Satty replaced Swappy for screenshot, clipboard, and Yazi image
@@ -62,6 +78,18 @@ in
       };
       open = {
         prepend_rules = [
+          {
+            url = "*.md";
+            use = "scratchpad";
+          }
+          {
+            url = "*.markdown";
+            use = "scratchpad";
+          }
+          {
+            mime = "text/markdown";
+            use = "scratchpad";
+          }
           {
             mime = "image/*";
             use = "satty";

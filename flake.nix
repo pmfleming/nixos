@@ -23,6 +23,8 @@
     bt-daemon.inputs.nixpkgs.follows = "nixpkgs";
     clip-daemon.url = "git+file:///home/laufan/Projects/clip-daemon?ref=main";
     clip-daemon.inputs.nixpkgs.follows = "nixpkgs";
+    app-daemon.url = "git+file:///home/laufan/Projects/app-daemon?ref=main";
+    app-daemon.inputs.nixpkgs.follows = "nixpkgs";
 
     shelllist = {
       url = "git+file:///home/laufan/Projects/shelllist?ref=main";
@@ -31,6 +33,7 @@
         nm-daemon.follows = "nm-daemon";
         bt-daemon.follows = "bt-daemon";
         clip-daemon.follows = "clip-daemon";
+        app-daemon.follows = "app-daemon";
       };
     };
 

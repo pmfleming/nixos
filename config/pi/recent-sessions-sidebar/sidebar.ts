@@ -1,11 +1,12 @@
-import { Key, matchesKey, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
-import { formatDate, projectIcon, sessionSummary } from "./sessions.ts";
+import { Key, matchesKey, truncateToWidth, visibleWidth, type Component, type KeyId } from "@earendil-works/pi-tui";
+import { DISPLAY_LIMIT, formatDate, projectIcon, sessionSummary } from "./sessions.ts";
 import type { SessionGroup, SessionRow } from "./types.ts";
 
 export type SidebarChoice =
   | { action: "continue"; group: SessionGroup; session: SessionRow }
   | { action: "new"; group: SessionGroup }
   | { action: "rename"; group: SessionGroup; session: SessionRow }
+  | { action: "pin"; group: SessionGroup; session: SessionRow }
   | null;
 
 export type SidebarTheme = {
@@ -16,12 +17,14 @@ export type SidebarTheme = {
 type VisibleRow =
   | { type: "group"; group: SessionGroup }
   | { type: "new"; group: SessionGroup }
-  | { type: "session"; group: SessionGroup; session: SessionRow };
+  | { type: "session"; group: SessionGroup; session: SessionRow }
+  | { type: "more"; group: SessionGroup; hidden: number };
 
 export class RecentSessionsSidebar implements Component {
   private selected = 0;
   private offset = 0;
   private expandedGroups = new Set<string>();
+  private showAllGroups = new Set<string>();
   private cachedWidth?: number;
   private cachedRowsSignature?: string;
   private cachedLines?: string[];
@@ -56,6 +59,7 @@ export class RecentSessionsSidebar implements Component {
       if (row?.type === "group") this.toggleGroup(row.group.key);
       else if (row?.type === "new") this.done({ action: "new", group: row.group });
       else if (row?.type === "session") this.done({ action: "continue", group: row.group, session: row.session });
+      else if (row?.type === "more") this.showOlder(row.group.key);
       return true;
     }
 
@@ -68,22 +72,29 @@ export class RecentSessionsSidebar implements Component {
       if (row?.type === "group") {
         if (this.expandedGroups.has(row.group.key)) this.selectFirstSession(row.group.key);
         else this.toggleGroup(row.group.key);
+      } else if (row?.type === "more") {
+        this.showOlder(row.group.key);
       }
       return true;
     }
 
     if (matchesKey(data, Key.left)) {
       if (row?.type === "group" && this.expandedGroups.has(row.group.key)) this.toggleGroup(row.group.key);
-      else if (row?.type === "new" || row?.type === "session") this.selectGroup(row.group.key);
+      else if (row?.type === "new" || row?.type === "session" || row?.type === "more") this.selectGroup(row.group.key);
       return true;
     }
 
-    if (matchesKey(data, "r") || matchesKey(data, "R")) {
+    if (matchesKey(data, "r") || matchesKey(data, "shift+r")) {
       if (row?.type === "session") this.done({ action: "rename", group: row.group, session: row.session });
       return true;
     }
 
-    if (matchesKey(data, "n") || matchesKey(data, "N")) {
+    if (matchesKey(data, "p") || matchesKey(data, "shift+p")) {
+      if (row?.type === "session") this.done({ action: "pin", group: row.group, session: row.session });
+      return true;
+    }
+
+    if (matchesKey(data, "n") || matchesKey(data, "shift+n")) {
       if (row) this.done({ action: "new", group: row.group });
       return true;
     }
@@ -93,7 +104,7 @@ export class RecentSessionsSidebar implements Component {
 
   private handleNavigation(data: string): void {
     const page = Math.max(1, this.visibleCount() - 1);
-    const movements: Array<[string, number]> = [
+    const movements: Array<[KeyId, number]> = [
       [Key.up, -1],
       [Key.down, 1],
       [Key.pageUp, -page],
@@ -123,7 +134,7 @@ export class RecentSessionsSidebar implements Component {
   render(width: number): string[] {
     const rows = this.visibleRows();
     const visibleCount = this.visibleCount();
-    const signature = `${rows.length}:${visibleCount}:${this.selected}:${this.offset}:${[...this.expandedGroups].sort().join(",")}`;
+    const signature = `${rows.length}:${visibleCount}:${this.selected}:${this.offset}:${[...this.expandedGroups].sort().join(",")}:${[...this.showAllGroups].sort().join(",")}`;
     if (this.cachedLines && this.cachedWidth === width && this.cachedRowsSignature === signature) return this.cachedLines;
 
     if (rows.length > 0) this.selected = Math.max(0, Math.min(this.selected, rows.length - 1));
@@ -136,7 +147,7 @@ export class RecentSessionsSidebar implements Component {
 
     lines.push(this.frameLine("┌", "─", "┐", width));
     lines.push(this.contentLine(this.accent(this.bold("Recent chats by project")), width));
-    lines.push(this.contentLine(this.dim("↑/↓ select · ←/→ collapse/expand · Enter open · N new · R rename · Esc close"), width));
+    lines.push(this.contentLine(this.dim("↑/↓ select · ←/→ collapse/expand · Enter open · N new · R rename · P pin · Esc close"), width));
     lines.push(this.frameLine("├", "─", "┤", width));
 
     if (totalSessions === 0) {
@@ -169,13 +180,27 @@ export class RecentSessionsSidebar implements Component {
     this.cachedLines = undefined;
   }
 
+  private displayedSessions(group: SessionGroup): SessionRow[] {
+    if (this.showAllGroups.has(group.key) || group.sessions.length <= DISPLAY_LIMIT) return group.sessions;
+    const displayed = group.sessions.slice(0, DISPLAY_LIMIT);
+    const current = group.sessions.find((session) => session.path === this.currentSessionPath);
+    if (current && !displayed.some((session) => session.path === current.path)) {
+      displayed[displayed.length - 1] = current;
+      displayed.sort((a, b) => b.modified.getTime() - a.modified.getTime());
+    }
+    return displayed;
+  }
+
   private visibleRows(): VisibleRow[] {
     const rows: VisibleRow[] = [];
     for (const group of this.groups) {
       rows.push({ type: "group", group });
       if (this.expandedGroups.has(group.key)) {
         rows.push({ type: "new", group });
-        for (const session of group.sessions) rows.push({ type: "session", group, session });
+        const displayed = this.displayedSessions(group);
+        for (const session of displayed) rows.push({ type: "session", group, session });
+        const hidden = group.sessions.length - displayed.length;
+        if (hidden > 0) rows.push({ type: "more", group, hidden });
       }
     }
     return rows;
@@ -191,6 +216,11 @@ export class RecentSessionsSidebar implements Component {
     const rows = this.visibleRows();
     this.selected = Math.max(0, Math.min(this.selected, rows.length - 1));
     this.ensureVisible(this.visibleCount(), rows.length);
+    this.invalidate();
+  }
+
+  private showOlder(key: string): void {
+    this.showAllGroups.add(key);
     this.invalidate();
   }
 
@@ -251,8 +281,11 @@ export class RecentSessionsSidebar implements Component {
     if (row.type === "new") {
       return this.contentLine(`${marker}     ＋ New chat in this project`, width, selected);
     }
+    if (row.type === "more") {
+      return this.contentLine(`${marker}     … Show ${row.hidden} older chat${row.hidden === 1 ? "" : "s"}`, width, selected);
+    }
 
-    const currentMarker = row.session.path === this.currentSessionPath ? "●" : " ";
+    const currentMarker = row.session.path === this.currentSessionPath ? "●" : row.session.pinned ? "◆" : " ";
     return this.contentLine(`${marker}     ${currentMarker} ${sessionSummary(row.session)}`, width, selected);
   }
 

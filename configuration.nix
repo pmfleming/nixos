@@ -277,6 +277,7 @@ in
     google-chrome
     drm_info
     edid-decode
+    electrum
     grim
     jq
     kdePackages.okular
@@ -289,7 +290,6 @@ in
     unstablePkgs.pi-coding-agent
     playerctl
     ripgrep
-    rofi
     slurp
     spotify
     swaynotificationcenter

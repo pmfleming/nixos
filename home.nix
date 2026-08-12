@@ -14,9 +14,11 @@ let
   nmDaemon = inputs.nm-daemon.packages.${system}.default;
   btDaemon = inputs.bt-daemon.packages.${system}.default;
   clipDaemon = inputs.clip-daemon.packages.${system}.default;
+  appDaemon = inputs.app-daemon.packages.${system}.default;
   shelllistWifi = inputs.shelllist.packages.${system}.default;
   shelllistBluetooth = inputs.shelllist.packages.${system}.bluetooth;
   shelllistClipboard = inputs.shelllist.packages.${system}.clipboard;
+  shelllistLauncher = inputs.shelllist.packages.${system}.launcher;
   shelllistPortalBrowser = inputs.shelllist.packages.${system}.captivePortalBrowser;
   scratchpad = inputs.scratchpad.packages.${system}.scratchpad-hyprland;
   tsReactQualityLens = inputs.ts-react-quality-lens.packages.${system}.default;
@@ -41,6 +43,7 @@ let
     QT_QPA_PLATFORMTHEME = theme.appearance.qtPlatformTheme;
     SHELLLIST_WIFI_MODE = "popover";
     SHELLLIST_CLIPBOARD_MODE = "popover";
+    SHELLLIST_LAUNCHER_MODE = "popover";
     SHELLLIST_BG = palette.bg;
     SHELLLIST_SURFACE = palette.borderDim;
     SHELLLIST_TEXT = palette.text;
@@ -155,46 +158,6 @@ let
     };
   };
 
-  rofiScriptHelpers = pkgs.writeText "rofi-helpers.sh" (
-    scriptWith { } ./config/scripts/rofi-helpers.sh
-  );
-  rofiHelperReplacement = {
-    "@ROFI_SCRIPT_HELPERS@" = "${rofiScriptHelpers}";
-  };
-  mkRofiScript =
-    attrs:
-    mkScript (
-      attrs
-      // {
-        replacements = rofiHelperReplacement // (attrs.replacements or { });
-      }
-    );
-
-  rofiBluetoothMenu = mkRofiScript {
-    name = "rofi-bluetooth-menu";
-    runtimeInputs = with pkgs; [
-      bluez
-      coreutils
-      gawk
-      gnused
-      libnotify
-      rofi
-    ];
-  };
-
-  rofiClipboardMenu = mkRofiScript {
-    name = "rofi-clipboard-menu";
-    runtimeInputs = with pkgs; [
-      cliphist
-      coreutils
-      hyprland
-      libnotify
-      rofi
-      satty
-      wl-clipboard
-    ];
-  };
-
   screenshotAnnotate = mkScript {
     name = "screenshot-annotate";
     runtimeInputs = with pkgs; [
@@ -207,43 +170,21 @@ let
     ];
   };
 
-  rofiAppMenu = mkRofiScript {
-    name = "rofi-app-menu";
-    runtimeInputs = with pkgs; [
-      coreutils
-      findutils
-      gawk
-      gnused
-      gtk3
-      hyprland
-      jq
-      rofi
-      util-linux
-      rofiBluetoothMenu
-      rofiClipboardMenu
-    ];
-    replacements = {
-      "@PALETTE_SUCCESS@" = palette.success;
-      "@PALETTE_MUTED@" = palette.muted;
-    };
-  };
-
   binShims = {
-    rofi-app-menu = rofiAppMenu;
     shelllist-wifi = shelllistWifi;
     shelllist-bluetooth = shelllistBluetooth;
     shelllist-clipboard = shelllistClipboard;
-    rofi-bluetooth-menu = rofiBluetoothMenu;
-    rofi-clipboard-menu = rofiClipboardMenu;
+    shelllist-launcher = shelllistLauncher;
     screenshot-annotate = screenshotAnnotate;
     nm-daemon = nmDaemon;
     bt-daemon = btDaemon;
     clip-daemon = clipDaemon;
+    app-daemon = appDaemon;
   };
 in
 {
   imports = [
-    (import ./modules/home/yazi.nix { inherit palette; })
+    (import ./modules/home/yazi.nix { inherit palette scratchpad clipDaemon; })
   ];
 
   home = {
@@ -386,7 +327,6 @@ in
       "waybar/vscode-workspace.svg".source = ./config/waybar/vscode-workspace.svg;
       "waybar/spotify-workspace.svg".source = ./config/waybar/spotify-workspace.svg;
       "waybar/scratchpad-workspace.svg".source = ./config/waybar/scratchpad-workspace.svg;
-      "rofi/config.rasi".text = themedConfig "rofi/config.rasi";
       "ghostty/config".text = themedConfig "ghostty/config";
       # VS Code writes settings from its UI, so keep this as a writable,
       # version-controlled out-of-store file rather than a Nix store symlink.
@@ -427,18 +367,20 @@ in
           "System"
           "FileManager"
         ];
+        settings.StartupWMClass = "com.laufan.yazi";
       };
 
       pi = {
         name = "Pi";
         genericName = "AI Coding Assistant";
         comment = "Open Pi coding assistant";
-        exec = "ghostty -e pi";
+        exec = "ghostty --class=com.laufan.pi -e pi";
         icon = "${./assets/pi-logo-on-dark.svg}";
         categories = [
           "Development"
           "Utility"
         ];
+        settings.StartupWMClass = "com.laufan.pi";
       };
 
       captive-portal-browser = {
@@ -496,6 +438,23 @@ in
       hypr-monitor-auto = mkUserService {
         description = "Hyprland monitor auto-switcher";
         execStart = "${hyprMonitorAuto}/bin/hypr-monitor-auto";
+      };
+
+      app-daemon = mkUserService {
+        description = "Shelllist application catalog and activation service";
+        execStart = "${appDaemon}/bin/app-daemon daemon";
+        restart = "on-failure";
+      };
+
+      shelllist-launcher = mkUserService {
+        description = "Shelllist application launcher frontend";
+        execStart = "${shelllistLauncher}/bin/shelllist-launcher foreground";
+        after = [ "app-daemon.service" ];
+        requires = [ "app-daemon.service" ];
+        environment = lib.mapAttrsToList (
+          name: value: "${name}=${builtins.toString value}"
+        ) hyprlandSessionVariables;
+        restart = "on-failure";
       };
 
       shelllist-bluetooth = mkUserService {

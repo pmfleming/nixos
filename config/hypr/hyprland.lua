@@ -1,6 +1,5 @@
 local terminal = "ghostty"
 local browser = "zen"
-local menu = "rofi-app-menu"
 
 -- Fallback for outputs without a more specific rule. The generated monitors
 -- module below contains the version-controlled nwg-displays layout.
@@ -142,16 +141,13 @@ hl.window_rule({
 
 -- Applications and session actions
 hl.bind("SUPER + RETURN", hl.dsp.exec_cmd(terminal))
-hl.bind("SUPER + SPACE", hl.dsp.exec_cmd(menu))
+hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("shelllist-launcher toggle"))
 hl.bind("SUPER + W", hl.dsp.exec_cmd(browser))
-hl.bind("SUPER + B", hl.dsp.exec_cmd("rofi-bluetooth-menu"))
-hl.bind("SUPER + M", hl.dsp.exec_cmd("~/.local/bin/shelllist-bluetooth toggle"))
+hl.bind("SUPER + B", hl.dsp.exec_cmd("shelllist-bluetooth toggle"))
 hl.bind("SUPER + E", hl.dsp.exec_cmd("ghostty --class=com.laufan.yazi -e yazi"))
 hl.bind("SUPER + P", hl.dsp.exec_cmd("nwg-displays-lua"))
 hl.bind("SUPER + N", hl.dsp.exec_cmd("shelllist-wifi toggle"))
 hl.bind("SUPER + V", hl.dsp.exec_cmd("shelllist-clipboard toggle"))
--- Keep the previous picker available as an explicit one-release rollback path.
-hl.bind("SUPER + SHIFT + V", hl.dsp.exec_cmd("rofi-clipboard-menu"))
 hl.bind("SUPER + L", hl.dsp.exec_cmd("hyprlock"))
 hl.bind("SUPER + Q", hl.dsp.window.close())
 hl.bind("SUPER + F", hl.dsp.window.float())

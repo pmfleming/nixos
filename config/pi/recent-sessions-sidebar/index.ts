@@ -1,9 +1,20 @@
 import { homedir } from "node:os";
-import { SessionManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { choiceMap, loadGroups, pickGroup, recordCurrentBranch, sessionLabel, sessionTitle } from "./sessions.ts";
+import { SessionManager, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import {
+  PIN_ENTRY_TYPE,
+  choiceMap,
+  enforceRetention,
+  invalidateSessionMetadata,
+  loadGroups,
+  pickGroup,
+  recordCurrentBranch,
+  sessionLabel,
+  sessionTitle,
+  type RetentionResult,
+} from "./sessions.ts";
 import { RecentSessionsSidebar, type SidebarChoice, type SidebarTheme } from "./sidebar.ts";
 import { launchNewChat, launchSession } from "./terminal.ts";
-import { BACK, CANCEL, CONTINUE, NEW_CHAT, RENAME, SESSION_ACTIONS, type RecentContext, type SessionGroup, type SessionRow } from "./types.ts";
+import { BACK, CANCEL, CONTINUE, NEW_CHAT, PIN, RENAME, UNPIN, type RecentContext, type SessionGroup, type SessionRow } from "./types.ts";
 
 const NEW_CHAT_CHOICE = `＋ ${NEW_CHAT}`;
 const BACK_CHOICE = `← ${BACK}`;
@@ -24,6 +35,28 @@ function notifyLaunch(ctx: RecentContext, error: string | undefined, what: strin
   else ctx.ui.notify(`Opened ${what} in a new pi window`, "info");
 }
 
+function formatMib(bytes: number): string {
+  return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
+}
+
+function notifyRetention(ctx: RecentContext, result: RetentionResult | undefined): void {
+  if (!result) return;
+  if (result.archived > 0) {
+    ctx.ui.notify(`Archived ${result.archived} old chats (${formatMib(result.archivedBytes)}); ${result.remaining} remain`, "info");
+  }
+  if (result.purged > 0) ctx.ui.notify(`Permanently removed ${result.purged} expired chats from retention trash`, "info");
+  if (result.errors > 0) ctx.ui.notify(`Could not archive ${result.errors} chats`, "warning");
+  if (result.limitedByProtection) ctx.ui.notify("Retention limits remain exceeded by current, recent, named, or pinned chats", "warning");
+}
+
+async function togglePin(pi: ExtensionAPI, ctx: RecentContext, session: SessionRow): Promise<void> {
+  const pinned = !session.pinned;
+  if (session.path === ctx.sessionManager.getSessionFile()) pi.appendEntry(PIN_ENTRY_TYPE, { pinned });
+  else SessionManager.open(session.path).appendCustomEntry(PIN_ENTRY_TYPE, { pinned });
+  invalidateSessionMetadata(session.path);
+  ctx.ui.notify(`${pinned ? "Pinned" : "Unpinned"} chat: ${sessionTitle(session)}`, "info");
+}
+
 async function chooseSession(ctx: RecentContext, group: SessionGroup): Promise<SessionRow | typeof NEW_CHAT_CHOICE | typeof BACK_CHOICE | undefined> {
   const current = ctx.sessionManager.getSessionFile();
   const sessions = choiceMap(group.sessions, (session) => sessionLabel(session, current));
@@ -34,10 +67,15 @@ async function chooseSession(ctx: RecentContext, group: SessionGroup): Promise<S
 }
 
 async function actOnSession(pi: ExtensionAPI, ctx: RecentContext, group: SessionGroup, session: SessionRow): Promise<"back" | "done"> {
-  const action = await ctx.ui.select(sessionTitle(session), SESSION_ACTIONS);
+  const pinAction = session.pinned ? UNPIN : PIN;
+  const action = await ctx.ui.select(sessionTitle(session), [CONTINUE, NEW_CHAT, RENAME, pinAction, BACK, CANCEL]);
   if (action === BACK) return "back";
   if (action === RENAME) {
     await rename(pi, ctx, session);
+    return "back";
+  }
+  if (action === pinAction) {
+    await togglePin(pi, ctx, session);
     return "back";
   }
   if (action === NEW_CHAT) {
@@ -51,20 +89,10 @@ async function actOnSession(pi: ExtensionAPI, ctx: RecentContext, group: Session
   return "done";
 }
 
-type CustomUiHandle = { requestRender: () => void; terminal?: { rows?: number } };
-type OverlayHandle = { focus?: () => void };
-type CustomRecentContext = RecentContext & {
-  mode?: string;
-  ui: RecentContext["ui"] & {
-    custom?: <T>(
-      factory: (tui: CustomUiHandle, theme: unknown, keybindings: unknown, done: (value: T) => void) => unknown,
-      options?: unknown,
-    ) => Promise<T | undefined>;
-  };
-};
+type CustomRecentContext = ExtensionContext;
 
 function hasCustomTui(ctx: CustomRecentContext): boolean {
-  return ctx.mode === "tui" && typeof ctx.ui.custom === "function";
+  return ctx.mode === "tui";
 }
 
 async function openSidebar(pi: ExtensionAPI, ctx: CustomRecentContext): Promise<void> {
@@ -75,7 +103,7 @@ async function openSidebar(pi: ExtensionAPI, ctx: CustomRecentContext): Promise<
     return;
   }
 
-  const choice = await ctx.ui.custom?.<SidebarChoice>(
+  const choice = await ctx.ui.custom<SidebarChoice>(
     (tui, theme, _keybindings, done) => {
       const sidebar = new RecentSessionsSidebar(
         groups,
@@ -101,13 +129,18 @@ async function openSidebar(pi: ExtensionAPI, ctx: CustomRecentContext): Promise<
         maxHeight: "100%",
         margin: { right: 1, top: 0, bottom: 0 },
       },
-      onHandle: (handle: OverlayHandle) => handle.focus?.(),
+      onHandle: (handle) => handle.focus(),
     },
   );
 
   if (!choice) return;
   if (choice.action === "rename") {
     if (await rename(pi, ctx, choice.session)) await openSidebar(pi, ctx);
+    return;
+  }
+  if (choice.action === "pin") {
+    await togglePin(pi, ctx, choice.session);
+    await openSidebar(pi, ctx);
     return;
   }
   if (choice.action === "new") {
@@ -149,12 +182,18 @@ export default function (pi: ExtensionAPI) {
     handler: async (_args, ctx) => openRecentSessions(pi, ctx),
   });
   pi.registerShortcut("ctrl+shift+r", { description: "Open recent chats sidebar", handler: async (ctx) => openRecentSessions(pi, ctx) });
+  pi.registerCommand("recent-sessions-cleanup", {
+    description: "Enforce recent-chat count, project, disk, and trash limits now",
+    handler: async (_args, ctx) => notifyRetention(ctx, await enforceRetention(ctx.sessionManager.getSessionFile(), true)),
+  });
 
   // Store branch metadata in the session itself. SessionManager.listAll() does
   // not expose historical Git state, so querying the repository while listing
   // would incorrectly label every old session with today's branch.
   pi.on("session_start", async (_event, ctx) => {
-    recordCurrentBranch(pi, ctx.cwd, ctx.sessionManager.getSessionFile());
+    const current = ctx.sessionManager.getSessionFile();
+    recordCurrentBranch(pi, ctx.cwd, current);
+    notifyRetention(ctx, await enforceRetention(current));
   });
   pi.on("before_agent_start", async (_event, ctx) => {
     recordCurrentBranch(pi, ctx.cwd, ctx.sessionManager.getSessionFile());

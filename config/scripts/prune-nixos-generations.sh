@@ -25,9 +25,25 @@ while (( $# )); do
 done
 
 refresh_boot_entries() {
+  local status
+
   (( refresh_boot )) || return 0
   echo "Refreshing systemd-boot entries"
-  /run/current-system/bin/switch-to-configuration boot
+  if /run/current-system/bin/switch-to-configuration boot; then
+    return 0
+  else
+    status=$?
+  fi
+
+  # A rebuild and this timer share switch-to-configuration's non-blocking
+  # lock. The rebuild already owns boot-entry refresh in that case, so do not
+  # turn transient lock contention into a failed system activation.
+  if (( status == 11 )); then
+    echo "Skipping systemd-boot refresh: another configuration switch holds the lock"
+    return 0
+  fi
+
+  return "$status"
 }
 
 # Keep exactly bounded calendar buckets: the current week plus seven previous
