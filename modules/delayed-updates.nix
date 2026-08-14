@@ -32,6 +32,12 @@ let
     '';
   };
 
+  stateConfig = {
+    StateDirectory = "nixos-delayed-updates-v2";
+    StateDirectoryMode = "0755";
+    UMask = "0022";
+  };
+
   prepareService =
     {
       description,
@@ -49,12 +55,8 @@ let
         // lib.optionalAttrs (autoApply != null) {
           OnSuccess = autoApply;
         };
-      serviceConfig = {
+      serviceConfig = stateConfig // {
         Type = "oneshot";
-        User = machine.username;
-        StateDirectory = "nixos-delayed-updates";
-        StateDirectoryMode = "0755";
-        UMask = "0022";
         ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update ${command}";
         Nice = 10;
         CPUWeight = 20;
@@ -67,7 +69,7 @@ let
     commonUnit
     // {
       inherit description;
-      serviceConfig = {
+      serviceConfig = stateConfig // {
         Type = "oneshot";
         ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update ${command}";
       };
@@ -86,36 +88,39 @@ in
     services = {
       nixos-update-fast = prepareService {
         description = "Check and build immediate updates for Codex, Pi, and Claude";
-        command = "check-fast";
-        autoApply = "nixos-update-apply-fast.service";
+        command = "check-fast auto";
+        autoApply = "nixos-update-auto-apply-fast.service";
         acOnly = true;
       };
 
       nixos-update-delayed = prepareService {
         description = "Discover, quarantine, and build other NixOS flake updates";
-        command = "check-delayed";
-        autoApply = "nixos-update-apply-delayed.service";
+        command = "check-delayed auto";
+        autoApply = "nixos-update-auto-apply-delayed.service";
         acOnly = true;
       };
 
       delayed-nixos-update = prepareService {
         description = "Catch up overdue immediate and delayed NixOS update checks";
         command = "catch-up";
-        autoApply = "nixos-update-apply-ready.service";
+        autoApply = "nixos-update-auto-apply-ready.service";
         acOnly = true;
       };
 
       # Manual staging commands intentionally omit OnSuccess.
       nixos-update-check-apps = prepareService {
         description = "Stage nixpkgs-unstable updates for Codex, Pi, and Claude";
-        command = "check-fast";
+        command = "check-fast manual";
       };
 
       nixos-update-check-all = prepareService {
         description = "Stage matured updates for all inputs except nixpkgs-unstable";
-        command = "check-delayed";
+        command = "check-delayed manual";
       };
 
+      nixos-update-auto-apply-fast = applyService "Automatically apply a checked immediate AI-tools update" "apply-auto-fast";
+      nixos-update-auto-apply-delayed = applyService "Automatically apply a checked quarantined NixOS update" "apply-auto-delayed";
+      nixos-update-auto-apply-ready = applyService "Automatically apply checked NixOS update candidates" "apply-auto";
       nixos-update-apply-fast = applyService "Apply a checked immediate AI-tools update" "apply-fast";
       nixos-update-apply-delayed = applyService "Apply a checked quarantined NixOS update" "apply-delayed";
       nixos-update-apply-ready = applyService "Apply any checked NixOS update candidates" "apply-ready";
