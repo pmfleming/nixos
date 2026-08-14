@@ -38,49 +38,57 @@ nix flake check /etc/nixos
 
 ## Automatic Updates
 
-`delayed-nixos-update.service` runs overnight at approximately 03:00, only on AC power. The timer is persistent, so a missed run is attempted after the next boot. An AC-only catch-up timer also checks every 15 minutes whether the latest overnight run was missed, covering a laptop that booted on battery and was plugged in later. Successful full-input checks are recorded; expensive catch-up retries after failures are limited to once per hour.
+The updater has two independent lanes:
 
-The updater stages the committed `HEAD` outside `/etc/nixos`, ignoring but never modifying uncommitted work, updates the candidate lock, runs `nix flake check` (including formatter checks), and builds the candidate with limited Nix parallelism and low CPU/I/O priority. It never changes the live lock file or switches generations. Approval still requires a clean worktree at the same Git revision used to build the candidate.
+- `nixpkgs-unstable`, which supplies Codex, Pi, and Claude, is checked every six hours and has no quarantine.
+- Every other root flake input is checked daily. The first discovered lock snapshot is frozen for three days before it may be built and applied. New upstream changes do not restart that clock.
+
+Both scheduled lanes run only on AC power. Persistent timers cover missed calendar runs, and a lightweight 15-minute catch-up timer retries overdue checks after AC power becomes available. Candidate discovery, `nix flake check`, and the complete system build run as `laufan`, allowing the updater to read the user-owned `git+file` development inputs. Only installation of the checked lock and prebuilt system runs as root.
+
+Successful scheduled candidates are applied automatically when `/etc/nixos` is safe. A clean checkout is safe; a checkout whose only change is a `flake.lock` written by the updater is also safe. Any user-authored or unrelated change leaves the candidate pending. Fast and delayed candidates have separate slots, and applying either lane invalidates a stale build from the other lane. A matured delayed candidate refreshes `nixpkgs-unstable` before building, so it cannot downgrade the AI tools.
+
+The updater stages committed `HEAD` outside `/etc/nixos`, records the exact revision and baseline lock hash, runs all flake checks, and builds with limited Nix parallelism and low CPU/I/O priority. Switching uses that exact prebuilt system. A failed switch restores the prior lock and system profile.
 
 ### Manual command reference
 
 Stage either update scope immediately:
 
 ```sh
-# Update every flake input.
+# Discover or build the quarantined lane without applying it automatically.
 sudo systemctl start nixos-update-check-all.service
 
-# Update only nixpkgs-unstable, which supplies Codex, Pi, and Claude.
+# Build the immediate AI-tools lane without applying it automatically.
 sudo systemctl start nixos-update-check-apps.service
 ```
 
-Both commands only check and build a candidate; neither switches the running system. There is one candidate slot, so a successful later staging command replaces the earlier candidate.
+Inspect pending state independently for each lane:
 
-When the Waybar update indicator appears, review the persistent candidate state:
-
-```sh
-sudo cat /var/lib/nixos-delayed-updates/ready-scope
-sudo diff -u /etc/nixos/flake.lock /var/lib/nixos-delayed-updates/ready-flake.lock
+```console
+sudo diff -u /etc/nixos/flake.lock /var/lib/nixos-delayed-updates/fast/ready-flake.lock
+sudo diff -u /etc/nixos/flake.lock /var/lib/nixos-delayed-updates/delayed/ready-flake.lock
+sudo cat /var/lib/nixos-delayed-updates/delayed/first-seen
 ```
 
-Apply it explicitly after review:
+Apply one lane or every ready candidate explicitly:
 
 ```sh
+sudo systemctl start nixos-update-apply-fast.service
+sudo systemctl start nixos-update-apply-delayed.service
 sudo systemctl start nixos-update-approve.service
 ```
 
 Inspect the timer and recent updater output when troubleshooting:
 
 ```sh
-systemctl list-timers delayed-nixos-update.timer
+systemctl list-timers nixos-update-fast.timer nixos-update-delayed.timer
 systemctl list-timers nixos-update-catchup.timer
-# Both timers invoke the same catch-up service.
+journalctl -u nixos-update-fast.service -u nixos-update-delayed.service -n 100 --no-pager
 journalctl -u delayed-nixos-update.service -n 100 --no-pager
 journalctl -u nixos-update-check-all.service -u nixos-update-check-apps.service -n 100 --no-pager
-journalctl -u nixos-update-approve.service -n 100 --no-pager
+journalctl -u nixos-update-apply-fast.service -u nixos-update-apply-delayed.service -n 100 --no-pager
 ```
 
-The approval service requires a clean worktree at the same Git revision used for the candidate build, checks the flake again without allowing implicit lock updates, updates `/etc/nixos/flake.lock`, and only then switches. If checking or switching fails, it restores the original lock file. Review and commit the successful lock-file change intentionally.
+Review and commit successful automatic `flake.lock` changes intentionally. Until the first clean automatic application, pre-existing uncommitted lock changes are treated as user-authored and block application.
 
 ## Generation Retention
 

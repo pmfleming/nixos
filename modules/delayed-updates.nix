@@ -15,94 +15,139 @@ let
       diffutils
       git
       gnutar
+      jq
       nix
-      nixos-rebuild
       procps
       util-linux
     ];
     replacements."@FLAKE_ATTR@" = machine.hostName;
   };
 
-  mkNixosUpdateCheckService =
+  commonUnit = {
+    wants = [ "network-online.target" ];
+    after = [ "network-online.target" ];
+    environment.NIX_CONFIG = ''
+      max-jobs = 1
+      cores = 2
+    '';
+  };
+
+  prepareService =
     {
       description,
-      scope,
-      mode ? "check",
+      command,
+      autoApply ? null,
       acOnly ? false,
     }:
-    {
+    commonUnit
+    // {
       inherit description;
-      wants = [ "network-online.target" ];
-      after = [ "network-online.target" ];
-      environment.NIX_CONFIG = ''
-        max-jobs = 1
-        cores = 2
-      '';
-      unitConfig = lib.optionalAttrs acOnly {
-        ConditionACPower = true;
-      };
+      unitConfig =
+        lib.optionalAttrs acOnly {
+          ConditionACPower = true;
+        }
+        // lib.optionalAttrs (autoApply != null) {
+          OnSuccess = autoApply;
+        };
       serviceConfig = {
         Type = "oneshot";
-        ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update ${mode}${
-          lib.optionalString (mode == "check") " ${scope}"
-        }";
+        User = machine.username;
+        StateDirectory = "nixos-delayed-updates";
+        StateDirectoryMode = "0755";
+        UMask = "0022";
+        ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update ${command}";
         Nice = 10;
         CPUWeight = 20;
         IOWeight = 20;
       };
     };
 
-  mkTimer = description: timerConfig: {
-    inherit description timerConfig;
+  applyService =
+    description: command:
+    commonUnit
+    // {
+      inherit description;
+      serviceConfig = {
+        Type = "oneshot";
+        ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update ${command}";
+      };
+    };
+
+  mkTimer = description: unit: timerOptions: {
+    inherit description;
     wantedBy = [ "timers.target" ];
+    timerConfig = timerOptions // {
+      Unit = unit;
+    };
   };
-  catchupDescription = "Retry missed overnight NixOS update checks when AC power is available";
 in
 {
   systemd = {
     services = {
-      delayed-nixos-update = mkNixosUpdateCheckService {
-        description = "Check and build NixOS flake updates for manual approval";
-        mode = "catch-up";
-        scope = "all";
+      nixos-update-fast = prepareService {
+        description = "Check and build immediate updates for Codex, Pi, and Claude";
+        command = "check-fast";
+        autoApply = "nixos-update-apply-fast.service";
         acOnly = true;
       };
 
-      nixos-update-check-all = mkNixosUpdateCheckService {
-        description = "Check and build updates for all NixOS flake inputs";
-        scope = "all";
+      nixos-update-delayed = prepareService {
+        description = "Discover, quarantine, and build other NixOS flake updates";
+        command = "check-delayed";
+        autoApply = "nixos-update-apply-delayed.service";
+        acOnly = true;
       };
 
-      nixos-update-check-apps = mkNixosUpdateCheckService {
-        description = "Check and build nixpkgs-unstable updates for Codex, Pi, and Claude";
-        scope = "apps";
+      delayed-nixos-update = prepareService {
+        description = "Catch up overdue immediate and delayed NixOS update checks";
+        command = "catch-up";
+        autoApply = "nixos-update-apply-ready.service";
+        acOnly = true;
       };
 
-      nixos-update-approve = {
-        description = "Apply a checked NixOS flake update after manual approval";
-        wants = [ "network-online.target" ];
-        after = [ "network-online.target" ];
-        serviceConfig = {
-          Type = "oneshot";
-          ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update approve";
-        };
+      # Manual staging commands intentionally omit OnSuccess.
+      nixos-update-check-apps = prepareService {
+        description = "Stage nixpkgs-unstable updates for Codex, Pi, and Claude";
+        command = "check-fast";
       };
+
+      nixos-update-check-all = prepareService {
+        description = "Stage matured updates for all inputs except nixpkgs-unstable";
+        command = "check-delayed";
+      };
+
+      nixos-update-apply-fast = applyService "Apply a checked immediate AI-tools update" "apply-fast";
+      nixos-update-apply-delayed = applyService "Apply a checked quarantined NixOS update" "apply-delayed";
+      nixos-update-apply-ready = applyService "Apply any checked NixOS update candidates" "apply-ready";
+      nixos-update-approve = applyService "Manually apply any checked NixOS update candidates" "apply-ready";
     };
 
     timers = {
-      delayed-nixos-update = mkTimer "Run overnight NixOS update check" {
-        OnCalendar = "*-*-* 03:00:00";
-        AccuracySec = "15m";
-        RandomizedDelaySec = "30m";
-        Persistent = true;
-      };
+      nixos-update-fast =
+        mkTimer "Check fast-moving AI coding tools every six hours" "nixos-update-fast.service"
+          {
+            OnCalendar = "*-*-* 00,06,12,18:00:00";
+            AccuracySec = "15m";
+            RandomizedDelaySec = "20m";
+            Persistent = true;
+          };
 
-      nixos-update-catchup = mkTimer catchupDescription {
-        Unit = "delayed-nixos-update.service";
-        OnCalendar = "*:0/15";
-        AccuracySec = "1m";
-        RandomizedDelaySec = "2m";
-      };
+      nixos-update-delayed =
+        mkTimer "Check quarantined NixOS flake inputs daily" "nixos-update-delayed.service"
+          {
+            OnCalendar = "*-*-* 03:00:00";
+            AccuracySec = "30m";
+            RandomizedDelaySec = "30m";
+            Persistent = true;
+          };
+
+      nixos-update-catchup =
+        mkTimer "Retry missed update checks when AC power becomes available" "delayed-nixos-update.service"
+          {
+            OnCalendar = "*:0/15";
+            AccuracySec = "1m";
+            RandomizedDelaySec = "2m";
+          };
     };
   };
 }

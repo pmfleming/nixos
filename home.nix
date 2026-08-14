@@ -203,8 +203,8 @@ in
         zenBrowser
         pkgs.inkscape
         waybar
-        # Track the latest nixpkgs-unstable build; the system startup updater keeps
-        # this input current for Codex, Pi, and Claude.
+        # The fast update lane keeps this nixpkgs-unstable package current without
+        # the quarantine applied to the rest of the flake inputs.
         unstablePkgs.codex
       ]
       ++ (with pkgs; [

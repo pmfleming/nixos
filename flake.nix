@@ -97,9 +97,26 @@
             '';
 
         shellcheck = pkgs.runCommand "shellcheck" { nativeBuildInputs = [ pkgs.shellcheck ]; } ''
-          shellcheck -s bash -x -e SC1091 ${self}/config/scripts/*.sh
+          find ${self}/config/scripts -type f -name '*.sh' \
+            -exec shellcheck -s bash -x -e SC1091 {} +
           touch $out
         '';
+
+        updater-state =
+          pkgs.runCommand "delayed-updater-state-tests"
+            {
+              nativeBuildInputs = with pkgs; [
+                bash
+                coreutils
+                git
+                jq
+              ];
+            }
+            ''
+              bash ${self}/config/scripts/tests/delayed-nixos-update.sh \
+                ${self}/config/scripts/delayed-nixos-update.sh
+              touch $out
+            '';
       };
 
       packages.${system} = { inherit connectParityProbe; };

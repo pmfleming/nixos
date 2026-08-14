@@ -265,8 +265,8 @@ in
     android-tools
     bibata-cursors
     brightnessctl
-    # AI coding agents track nixpkgs-unstable. The overnight updater can stage
-    # a new input revision, but switching it still requires manual approval.
+    # AI coding agents track the immediate nixpkgs-unstable update lane; other
+    # flake inputs spend three days in quarantine before they can be applied.
     unstablePkgs.claude-code
     cliphist
     curl

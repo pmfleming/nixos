@@ -44,11 +44,11 @@
   "custom/updates": {
     "interval": "once",
     "signal": 8,
-    "exec": "state=/var/lib/nixos-delayed-updates; test -f \"$state/ready-flake.lock\" && test -f \"$state/ready-revision\" && test -f \"$state/ready-scope\" && test -L \"$state/system\" && echo 󰚰 || true",
+    "exec": "state=/var/lib/nixos-delayed-updates; for lane in fast delayed; do test -f \"$state/$lane/ready-flake.lock\" && test -f \"$state/$lane/ready-revision\" && test -f \"$state/$lane/ready-base-hash\" && test -L \"$state/$lane/system\" && echo 󰚰 && break; done; true",
     "format": "{}",
     "tooltip": true,
-    "tooltip-format": "A checked and built NixOS flake input update is ready for manual review and approval",
-    "on-click": "ghostty -e bash -lc 'journalctl -u delayed-nixos-update.service -n 80 --no-pager; read -r -p \"Press enter to close\"'"
+    "tooltip-format": "A checked and built NixOS update is waiting for the checkout to become safe to apply",
+    "on-click": "ghostty -e bash -lc 'journalctl -u nixos-update-fast.service -u nixos-update-delayed.service -u delayed-nixos-update.service -n 100 --no-pager; read -r -p \"Press enter to close\"'"
   },
   "tray": {
     "icon-size": 18,
