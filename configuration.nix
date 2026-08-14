@@ -1,5 +1,6 @@
 {
   config,
+  inputs,
   lib,
   machine,
   pkgs,
@@ -11,6 +12,22 @@ let
   theme = import ./theme.nix { inherit lib; };
   mkScript = (import ./lib/scripts.nix).mkScriptFrom pkgs ./config/scripts;
   locale = "en_IE.UTF-8";
+  unfreePackageNames = [
+    "android-studio"
+    "google-chrome"
+    "spotify"
+    "vscode"
+  ];
+  trustedGitDirectories = [
+    "/etc/nixos"
+    "${machine.homeDirectory}/Projects/app-daemon"
+    "${machine.homeDirectory}/Projects/bt-daemon"
+    "${machine.homeDirectory}/Projects/clip-daemon"
+    "${machine.homeDirectory}/Projects/nm-daemon"
+    "${machine.homeDirectory}/Projects/scratchpad"
+    "${machine.homeDirectory}/Projects/shelllist"
+    "${machine.homeDirectory}/Projects/ts-react-quality-lens"
+  ];
   localeCategories = [
     "LC_ADDRESS"
     "LC_IDENTIFICATION"
@@ -70,7 +87,19 @@ in
     };
   };
 
-  nixpkgs.config.allowUnfree = true;
+  nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) unfreePackageNames;
+
+  # A clean manual flake switch is the approval boundary for unattended lock
+  # updates. Staged automatic builds use a plain path flake without `self.rev`,
+  # so they cannot advance this root-owned approval themselves.
+  system.activationScripts.approveNixosRevision = lib.optionalString (inputs.self ? rev) ''
+    install -d -m 0755 /var/lib/nixos-delayed-updates-v2
+    printf '%s\n' ${lib.escapeShellArg inputs.self.rev} \
+      > /var/lib/nixos-delayed-updates-v2/approved-revision.new
+    chmod 0644 /var/lib/nixos-delayed-updates-v2/approved-revision.new
+    mv -f /var/lib/nixos-delayed-updates-v2/approved-revision.new \
+      /var/lib/nixos-delayed-updates-v2/approved-revision
+  '';
 
   boot = {
     loader = {
@@ -160,6 +189,12 @@ in
     dconf.enable = true;
     command-not-found.enable = false;
     nix-index.enable = true;
+    # Root-run update evaluation intentionally reads these exact deployment and
+    # machine-local development repositories. Do not broaden this to "*".
+    git = {
+      enable = true;
+      config.safe.directory = trustedGitDirectories;
+    };
   };
 
   xdg.portal = {
@@ -265,8 +300,8 @@ in
     android-tools
     bibata-cursors
     brightnessctl
-    # AI coding agents track the immediate nixpkgs-unstable update lane; other
-    # flake inputs spend three days in quarantine before they can be applied.
+    # AI coding agents track the immediate nixpkgs-unstable update lane. Other
+    # remote inputs are quarantined; machine-local inputs remain manual-only.
     unstablePkgs.claude-code
     cliphist
     curl

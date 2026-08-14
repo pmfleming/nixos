@@ -5,12 +5,22 @@ flake_dir=${NIXOS_UPDATE_FLAKE_DIR:-/etc/nixos}
 flake_attr=${NIXOS_UPDATE_FLAKE_ATTR:-@FLAKE_ATTR@}
 state_dir=${NIXOS_UPDATE_STATE_DIR:-/var/lib/nixos-delayed-updates-v2}
 fast_input=nixpkgs-unstable
+manual_inputs=(
+  app-daemon
+  bt-daemon
+  clip-daemon
+  nm-daemon
+  scratchpad
+  shelllist
+  ts-react-quality-lens
+)
 delay_seconds=${NIXOS_UPDATE_DELAY_SECONDS:-$((3 * 24 * 60 * 60))}
 fast_check_seconds=${NIXOS_UPDATE_FAST_CHECK_SECONDS:-$((6 * 60 * 60))}
 delayed_check_seconds=${NIXOS_UPDATE_DELAYED_CHECK_SECONDS:-$((24 * 60 * 60))}
 fast_dir="$state_dir/fast"
 delayed_dir="$state_dir/delayed"
 applied_lock_hash="$state_dir/applied-lock-hash"
+approved_revision_file="$state_dir/approved-revision"
 transaction_dir="$state_dir/apply-transaction"
 update_lock_acquired=0
 temporary_dirs=()
@@ -139,6 +149,39 @@ require_safe_baseline() {
   return 1
 }
 
+write_approved_revision() {
+  printf '%s\n' "$1" > "$approved_revision_file.new"
+  chmod 0644 "$approved_revision_file.new"
+  mv -f "$approved_revision_file.new" "$approved_revision_file"
+}
+
+require_approved_revision() {
+  current_revision="$(git_at_flake rev-parse --verify HEAD)"
+  approved_revision="$(cat "$approved_revision_file" 2>/dev/null || true)"
+  if [ "$current_revision" = "$approved_revision" ]; then
+    return 0
+  fi
+
+  # A lock-only commit after an automatic application is safe to approve: its
+  # live lock is already recorded by root, and all other files still match the
+  # last manually approved revision.
+  if [[ "$approved_revision" =~ ^[0-9a-f]{40,64}$ ]] \
+    && [ -f "$applied_lock_hash" ] \
+    && [ "$(hash_file "$flake_dir/flake.lock")" = "$(cat "$applied_lock_hash")" ] \
+    && git_at_flake cat-file -e "$approved_revision^{commit}" \
+    && git_at_flake diff --quiet "$approved_revision" "$current_revision" -- . ':(exclude)flake.lock' \
+    && [ "$(git_at_flake show "$current_revision:flake.lock" | sha256sum | cut -d ' ' -f 1)" = \
+      "$(hash_file "$flake_dir/flake.lock")" ]; then
+    write_approved_revision "$current_revision"
+    printf 'Approved lock-only revision %s after its automatic application.\n' "$current_revision"
+    return 0
+  fi
+
+  printf '%s revision %s has not been approved by a successful manual rebuild.\n' \
+    "$flake_dir" "$current_revision" >&2
+  return 1
+}
+
 create_stage() {
   make_temp_dir
   staged_flake="$tmp_dir/flake"
@@ -164,8 +207,9 @@ non_fast_locks_match() {
 }
 
 delayed_root_inputs() {
-  jq -r --arg fast "$fast_input" '
-    .nodes.root.inputs | keys[] | select(. != $fast)
+  manual_inputs_json="$(printf '%s\n' "${manual_inputs[@]}" | jq -R . | jq -s .)"
+  jq -r --arg fast "$fast_input" --argjson manual "$manual_inputs_json" '
+    .nodes.root.inputs | keys[] | select(. != $fast and (. as $name | $manual | index($name) | not))
   ' "$1"
 }
 
@@ -227,8 +271,7 @@ build_ready() {
 
 check_fast() {
   apply_mode=${1:-manual}
-  if ! require_safe_baseline; then
-    record_check fast
+  if ! require_approved_revision || ! require_safe_baseline; then
     return 0
   fi
 
@@ -316,8 +359,7 @@ delayed_queue_is_complete() {
 
 check_delayed() {
   apply_mode=${1:-manual}
-  if ! require_safe_baseline; then
-    record_check delayed
+  if ! require_approved_revision || ! require_safe_baseline; then
     return 0
   fi
 
@@ -570,6 +612,11 @@ apply_lane() {
     return 0
   fi
 
+  if ! require_approved_revision; then
+    printf 'The %s-lane candidate remains ready because the configuration revision is not approved.\n' \
+      "$lane" >&2
+    return 0
+  fi
   if ! worktree_allows_apply; then
     printf 'The %s-lane candidate remains ready because %s has user changes.\n' "$lane" "$flake_dir" >&2
     return 0

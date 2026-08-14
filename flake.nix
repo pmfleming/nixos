@@ -14,9 +14,9 @@
     zen-browser.url = "github:youwen5/zen-browser-flake";
     zen-browser.inputs.nixpkgs.follows = "nixpkgs";
 
-    # These development inputs are intentionally machine-local. Using git+file
-    # lets this host evaluate committed local changes without first pushing them
-    # to GitHub; the exact /home/laufan/Projects paths are therefore expected.
+    # These manual-only development inputs are intentionally machine-local.
+    # Automatic lanes evaluate their pinned revisions but never advance them;
+    # use the explicit update workflow for committed local changes.
     nm-daemon.url = "git+file:///home/laufan/Projects/nm-daemon?ref=main";
     nm-daemon.inputs.nixpkgs.follows = "nixpkgs";
     bt-daemon.url = "git+file:///home/laufan/Projects/bt-daemon?ref=main";
@@ -61,7 +61,13 @@
       pkgs = nixpkgs.legacyPackages.${system};
       unstablePkgs = import inputs.nixpkgs-unstable {
         inherit system;
-        config.allowUnfree = true;
+        config.allowUnfreePredicate =
+          pkg:
+          builtins.elem (nixpkgs.lib.getName pkg) [
+            "claude-code"
+            "codex"
+            "pi-coding-agent"
+          ];
       };
       connectParityProbe = inputs.nm-daemon.packages.${system}.connectParityProbe;
       specialArgs = { inherit inputs machine unstablePkgs; };

@@ -114,7 +114,7 @@ in
       };
 
       nixos-update-check-all = prepareService {
-        description = "Stage matured updates for all inputs except nixpkgs-unstable";
+        description = "Stage quarantined remote-input updates for manual approval";
         command = "check-delayed manual";
       };
 
