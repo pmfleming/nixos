@@ -20,7 +20,10 @@ let
       procps
       util-linux
     ];
-    replacements."@FLAKE_ATTR@" = machine.hostName;
+    replacements = {
+      "@FLAKE_ATTR@" = machine.hostName;
+      "@MANUAL_INPUTS@" = lib.concatStringsSep " " machine.localProjects;
+    };
   };
 
   commonUnit = {
@@ -123,7 +126,6 @@ in
       nixos-update-auto-apply-ready = applyService "Automatically apply checked NixOS update candidates" "apply-auto";
       nixos-update-apply-fast = applyService "Apply a checked immediate AI-tools update" "apply-fast";
       nixos-update-apply-delayed = applyService "Apply a checked quarantined NixOS update" "apply-delayed";
-      nixos-update-apply-ready = applyService "Apply any checked NixOS update candidates" "apply-ready";
       nixos-update-approve = applyService "Manually apply any checked NixOS update candidates" "apply-ready";
     };
 

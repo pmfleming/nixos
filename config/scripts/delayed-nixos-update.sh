@@ -5,15 +5,7 @@ flake_dir=${NIXOS_UPDATE_FLAKE_DIR:-/etc/nixos}
 flake_attr=${NIXOS_UPDATE_FLAKE_ATTR:-@FLAKE_ATTR@}
 state_dir=${NIXOS_UPDATE_STATE_DIR:-/var/lib/nixos-delayed-updates-v2}
 fast_input=nixpkgs-unstable
-manual_inputs=(
-  app-daemon
-  bt-daemon
-  clip-daemon
-  nm-daemon
-  scratchpad
-  shelllist
-  ts-react-quality-lens
-)
+read -r -a manual_inputs <<< "${NIXOS_UPDATE_MANUAL_INPUTS:-@MANUAL_INPUTS@}"
 delay_seconds=${NIXOS_UPDATE_DELAY_SECONDS:-$((3 * 24 * 60 * 60))}
 fast_check_seconds=${NIXOS_UPDATE_FAST_CHECK_SECONDS:-$((6 * 60 * 60))}
 delayed_check_seconds=${NIXOS_UPDATE_DELAYED_CHECK_SECONDS:-$((24 * 60 * 60))}
@@ -56,25 +48,6 @@ cleanup() {
 
 notify_waybar_updates() {
   pkill "-RTMIN+8" -x '\.waybar-wrapped|waybar' >/dev/null 2>&1 || true
-}
-
-archive_legacy_state() {
-  legacy_dir="$state_dir/legacy-single-lane-state"
-  legacy_files=(
-    candidate-flake.lock
-    current-lock-needs-switch
-    first-seen
-    ready-flake.lock
-    ready-revision
-    ready-scope
-    system
-  )
-  for legacy_file in "${legacy_files[@]}"; do
-    if [ -e "$state_dir/$legacy_file" ] || [ -L "$state_dir/$legacy_file" ]; then
-      mkdir -p "$legacy_dir"
-      mv -f "$state_dir/$legacy_file" "$legacy_dir/$legacy_file"
-    fi
-  done
 }
 
 lane_dir() {
@@ -415,10 +388,6 @@ check_delayed() {
   record_check delayed
 }
 
-worktree_allows_apply() {
-  baseline_lock_is_safe
-}
-
 install_live_lock() {
   source_lock=$1
   live_lock_new="$state_dir/live-flake.lock.new"
@@ -617,7 +586,7 @@ apply_lane() {
       "$lane" >&2
     return 0
   fi
-  if ! worktree_allows_apply; then
+  if ! baseline_lock_is_safe; then
     printf 'The %s-lane candidate remains ready because %s has user changes.\n' "$lane" "$flake_dir" >&2
     return 0
   fi
@@ -686,7 +655,6 @@ main() {
     return 0
   fi
   update_lock_acquired=1
-  archive_legacy_state
   recover_transaction
 
   case "${1:-catch-up}" in

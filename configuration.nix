@@ -19,15 +19,9 @@ let
     "vscode"
   ];
   trustedGitDirectories = [
-    "/etc/nixos"
-    "${machine.homeDirectory}/Projects/app-daemon"
-    "${machine.homeDirectory}/Projects/bt-daemon"
-    "${machine.homeDirectory}/Projects/clip-daemon"
-    "${machine.homeDirectory}/Projects/nm-daemon"
-    "${machine.homeDirectory}/Projects/scratchpad"
-    "${machine.homeDirectory}/Projects/shelllist"
-    "${machine.homeDirectory}/Projects/ts-react-quality-lens"
-  ];
+    machine.configDirectory
+  ]
+  ++ map (name: "${machine.homeDirectory}/Projects/${name}") machine.localProjects;
   localeCategories = [
     "LC_ADDRESS"
     "LC_IDENTIFICATION"
@@ -49,25 +43,15 @@ let
   rebuild = mkScript {
     name = "rebuild";
     runtimeInputs = with pkgs; [
-      coreutils
-      gawk
       git
-      gnused
-      jq
       nix
       nixos-rebuild
-      util-linux
+      sudo
     ];
-    replacements."@FLAKE_ATTR@" = machine.hostName;
-  };
-
-  update = mkScript {
-    name = "update";
-    runtimeInputs = [
-      pkgs.nix
-      rebuild
-    ];
-    replacements."@FLAKE_ATTR@" = machine.hostName;
+    replacements = {
+      "@CONFIG_DIRECTORY@" = machine.configDirectory;
+      "@FLAKE_ATTR@" = machine.hostName;
+    };
   };
 in
 {
@@ -256,7 +240,7 @@ in
   sops = {
     defaultSopsFile = ./secrets.yaml;
     age.keyFile = "/var/lib/sops-nix/key.txt";
-    secrets."laufan-password".neededForUsers = true;
+    secrets."${machine.username}-password".neededForUsers = true;
   };
 
   # Keep login credentials reproducible. Restore the Age identity before the
@@ -267,7 +251,7 @@ in
     users.${machine.username} = {
       isNormalUser = true;
       description = "Paul Fleming";
-      hashedPasswordFile = config.sops.secrets."laufan-password".path;
+      hashedPasswordFile = config.sops.secrets."${machine.username}-password".path;
       extraGroups = [
         "audio"
         "input"
@@ -287,7 +271,6 @@ in
     })
 
     rebuild
-    update
 
     (mkScript {
       name = "rollback";
@@ -303,7 +286,6 @@ in
     # AI coding agents track the immediate nixpkgs-unstable update lane. Other
     # remote inputs are quarantined; machine-local inputs remain manual-only.
     unstablePkgs.claude-code
-    cliphist
     curl
     fd
     libfido2

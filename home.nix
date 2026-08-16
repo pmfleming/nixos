@@ -10,19 +10,20 @@
 
 let
   system = pkgs.stdenv.hostPlatform.system;
-  hyprlandGuiutils = inputs.hyprland-guiutils.packages.${system}.default;
-  nmDaemon = inputs.nm-daemon.packages.${system}.default;
-  btDaemon = inputs.bt-daemon.packages.${system}.default;
-  clipDaemon = inputs.clip-daemon.packages.${system}.default;
-  appDaemon = inputs.app-daemon.packages.${system}.default;
-  shelllistWifi = inputs.shelllist.packages.${system}.default;
-  shelllistBluetooth = inputs.shelllist.packages.${system}.bluetooth;
-  shelllistClipboard = inputs.shelllist.packages.${system}.clipboard;
-  shelllistLauncher = inputs.shelllist.packages.${system}.launcher;
-  shelllistPortalBrowser = inputs.shelllist.packages.${system}.captivePortalBrowser;
-  scratchpad = inputs.scratchpad.packages.${system}.scratchpad-hyprland;
-  tsReactQualityLens = inputs.ts-react-quality-lens.packages.${system}.default;
-  zenBrowser = inputs.zen-browser.packages.${system}.default;
+  inputPackage = input: name: input.packages.${system}.${name};
+  hyprlandGuiutils = inputPackage inputs.hyprland-guiutils "default";
+  nmDaemon = inputPackage inputs.nm-daemon "default";
+  btDaemon = inputPackage inputs.bt-daemon "default";
+  clipDaemon = inputPackage inputs.clip-daemon "default";
+  appDaemon = inputPackage inputs.app-daemon "default";
+  shelllistWifi = inputPackage inputs.shelllist "default";
+  shelllistBluetooth = inputPackage inputs.shelllist "bluetooth";
+  shelllistClipboard = inputPackage inputs.shelllist "clipboard";
+  shelllistLauncher = inputPackage inputs.shelllist "launcher";
+  shelllistPortalBrowser = inputPackage inputs.shelllist "captivePortalBrowser";
+  scratchpad = inputPackage inputs.scratchpad "scratchpad-hyprland";
+  tsReactQualityLens = inputPackage inputs.ts-react-quality-lens "default";
+  zenBrowser = inputPackage inputs.zen-browser "default";
   waybar = pkgs.waybar.overrideAttrs (oldAttrs: {
     patches = (oldAttrs.patches or [ ]) ++ [
       ./config/patches/waybar-hyprland-lua-workspaces.patch
@@ -75,7 +76,7 @@ let
       after ? [ ],
       requires ? [ ],
       partOf ? [ ],
-      environment ? [ ],
+      environment ? { },
       restart ? "always",
       restartSec ? "2s",
     }:
@@ -91,16 +92,10 @@ let
         Restart = restart;
         RestartSec = restartSec;
       }
-      // lib.optionalAttrs (environment != [ ]) {
-        Environment = environment;
+      // lib.optionalAttrs (environment != { }) {
+        Environment = lib.mapAttrsToList (name: value: "${name}=${builtins.toString value}") environment;
       };
       Install.WantedBy = [ "graphical-session.target" ];
-    };
-
-  binShim =
-    name: drv:
-    lib.nameValuePair ".local/bin/${name}" {
-      source = "${drv}/bin/${name}";
     };
 
   scriptLib = import ./lib/scripts.nix;
@@ -110,7 +105,7 @@ let
   readConfig = path: builtins.readFile (configPath path);
   themedConfig = path: themeText (readConfig path);
   writableConfig = path: {
-    source = config.lib.file.mkOutOfStoreSymlink "/etc/nixos/config/${path}";
+    source = config.lib.file.mkOutOfStoreSymlink "${machine.configDirectory}/config/${path}";
     force = true;
   };
   hiddenAutostart.text = ''
@@ -153,8 +148,8 @@ let
     ];
     replacements = {
       "@NWG_DISPLAYS@" = "${pkgs.nwg-displays}";
-      "@MONITORS_LUA@" = "/etc/nixos/config/hypr/monitors.lua";
-      "@WORKSPACES_LUA@" = "/etc/nixos/config/hypr/workspaces.lua";
+      "@MONITORS_LUA@" = "${machine.configDirectory}/config/hypr/monitors.lua";
+      "@WORKSPACES_LUA@" = "${machine.configDirectory}/config/hypr/workspaces.lua";
     };
   };
 
@@ -170,17 +165,6 @@ let
     ];
   };
 
-  binShims = {
-    shelllist-wifi = shelllistWifi;
-    shelllist-bluetooth = shelllistBluetooth;
-    shelllist-clipboard = shelllistClipboard;
-    shelllist-launcher = shelllistLauncher;
-    screenshot-annotate = screenshotAnnotate;
-    nm-daemon = nmDaemon;
-    bt-daemon = btDaemon;
-    clip-daemon = clipDaemon;
-    app-daemon = appDaemon;
-  };
 in
 {
   imports = [
@@ -191,33 +175,38 @@ in
     inherit (machine) username homeDirectory;
     stateVersion = "26.05";
 
-    # Everything in binShims is also a package; register each script once there.
-    packages =
-      lib.attrValues binShims
-      ++ [
-        hyprMonitorAuto
-        nwgDisplaysLua
-        shelllistPortalBrowser
-        scratchpad
-        tsReactQualityLens
-        zenBrowser
-        pkgs.inkscape
-        waybar
-        # The fast update lane keeps this nixpkgs-unstable package current without
-        # the quarantine applied to the rest of the flake inputs.
-        unstablePkgs.codex
-      ]
-      ++ (with pkgs; [
-        ghostty
-        hyprlandGuiutils
-        hyprlock
-        hyprpaper
-        swayosd
-        qt5.qtwayland
-        qt6.qtwayland
-        wlogout
-        btop
-      ]);
+    packages = [
+      appDaemon
+      btDaemon
+      clipDaemon
+      nmDaemon
+      screenshotAnnotate
+      shelllistBluetooth
+      shelllistClipboard
+      shelllistLauncher
+      shelllistPortalBrowser
+      shelllistWifi
+      hyprMonitorAuto
+      nwgDisplaysLua
+      scratchpad
+      tsReactQualityLens
+      zenBrowser
+      pkgs.inkscape
+      waybar
+      # The fast lane keeps this package current independently of other inputs.
+      unstablePkgs.codex
+    ]
+    ++ (with pkgs; [
+      ghostty
+      hyprlandGuiutils
+      hyprlock
+      hyprpaper
+      swayosd
+      qt5.qtwayland
+      qt6.qtwayland
+      wlogout
+      btop
+    ]);
 
     sessionVariables = {
       BROWSER = "zen";
@@ -236,12 +225,7 @@ in
       x11.enable = true;
     };
 
-    # User-level shims keep interactive launchers current before the next system switch.
-    file = lib.mapAttrs' binShim binShims // {
-      ".local/bin/pi" = {
-        source = "${unstablePkgs.pi-coding-agent}/bin/pi";
-        force = true;
-      };
+    file = {
       ".pi/agent/extensions/recent-sessions-sidebar" = {
         source = ./config/pi/recent-sessions-sidebar;
         force = true;
@@ -451,9 +435,7 @@ in
         execStart = "${shelllistLauncher}/bin/shelllist-launcher foreground";
         after = [ "app-daemon.service" ];
         requires = [ "app-daemon.service" ];
-        environment = lib.mapAttrsToList (
-          name: value: "${name}=${builtins.toString value}"
-        ) hyprlandSessionVariables;
+        environment = hyprlandSessionVariables;
         restart = "on-failure";
       };
 
@@ -461,12 +443,9 @@ in
         description = "Shelllist Bluetooth prompt frontend";
         execStart = "${shelllistBluetooth}/bin/shelllist-bluetooth foreground";
         after = [ "bt-daemon.service" ];
-        environment = lib.mapAttrsToList (name: value: "${name}=${builtins.toString value}") (
-          lib.removeAttrs hyprlandSessionVariables [ "SHELLLIST_WIFI_MODE" ]
-          // {
-            SHELLLIST_BLUETOOTH_MODE = "popover";
-          }
-        );
+        environment = lib.removeAttrs hyprlandSessionVariables [ "SHELLLIST_WIFI_MODE" ] // {
+          SHELLLIST_BLUETOOTH_MODE = "popover";
+        };
         restart = "on-failure";
       };
 

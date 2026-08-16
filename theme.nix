@@ -46,8 +46,6 @@ let
     radius = "${toString radiusInt}px";
     fontSizeInt = 12;
     fontSize = toString fontSizeInt;
-    rofiWidth = "36%";
-    rofiLines = "12";
     scrollbarWidth = "5px";
   };
 
@@ -94,8 +92,6 @@ let
     "@FONT_CODE@" = fonts.code;
     "@FONT_ICONS@" = fonts.icons;
     "@FONT_SIZE@" = ui.fontSize;
-    "@ROFI_WIDTH@" = ui.rofiWidth;
-    "@ROFI_LINES@" = ui.rofiLines;
     "@SCROLLBAR_WIDTH@" = ui.scrollbarWidth;
     "@MONITOR_SCALE@" = appearance.monitorScale;
   };

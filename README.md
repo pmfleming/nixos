@@ -18,15 +18,7 @@ sudo nixos-rebuild switch --flake /etc/nixos#thinkpad
 
 Home Manager is integrated as a NixOS module, so home changes in `home.nix` are applied by the same rebuild.
 
-After the preflight checks, `rebuild` prints a resource summary even if the flake check or rebuild fails. It reports Nix builds, copied and newly added store data, the largest new store paths, closure and disk-space changes, elapsed time, and system-wide CPU, peak RAM, network, and disk I/O. Resource warnings call out additions of at least 10 GiB, copied data or network receives of at least 5 GiB, disk writes of at least 20 GiB, RAM pressure of at least 90%, less than 20 GiB free, or a run lasting at least 30 minutes. System-wide figures can include unrelated work performed at the same time.
-
-Preview the visual summary without rebuilding:
-
-```sh
-rebuild --summary-preview
-```
-
-The `update` command is an intentional escape hatch that runs `nix flake update` and switches immediately, bypassing staged approval. It leaves `flake.lock` modified; review and commit or revert that change before approving any staged update.
+`rebuild` first rejects untracked Nix files, then runs the complete flake checks before switching. Extra arguments are passed to `nixos-rebuild`.
 
 ## Validate Changes
 
@@ -42,7 +34,7 @@ The updater has two independent lanes:
 
 - `nixpkgs-unstable`, which supplies Codex, Pi, and Claude, is checked every six hours and has no quarantine.
 - Remote root inputs other than `nixpkgs-unstable` are checked daily. The first discovered lock snapshot is frozen for three days before it may be built and applied. New upstream changes do not restart that clock.
-- Machine-local `git+file` development inputs are manual-only. Update and switch those explicitly with `update`, then review and commit the resulting lock.
+- Machine-local `git+file` development inputs are manual-only. Advance a specific one with `nix flake update <input>`, review its lock diff, then run `rebuild`.
 
 Both scheduled lanes run only on AC power. Persistent timers cover missed calendar runs, and a lightweight 15-minute catch-up timer retries overdue or previously blocked checks after AC power becomes available. Candidate discovery, `nix flake check`, the complete system build, and application all run as root so the trusted updater state remains root-owned. `/etc/gitconfig` trusts only the exact deployment and machine-local repositories needed to evaluate their pinned revisions.
 
@@ -120,13 +112,9 @@ sudo SOPS_AGE_KEY_FILE=/var/lib/sops-nix/key.txt \
   nix shell nixpkgs#sops -c sops secrets.yaml
 ```
 
-## Clipboard cutover
+## Clipboard
 
-Ringboard and `clip-daemon` are the only clipboard-history capture stack. `Super+V` opens Shelllist; `Super+Shift+V` retains the previous `cliphist` picker as a one-release rollback shortcut. Existing `cliphist` history was intentionally not imported.
-
-`wl-clip-persist` is intentionally disabled. Ringboard captures clipboard content before a source exits, so it remains selectable from Shelllist, but the live Wayland selection can be empty until that item is copied again.
-
-To roll back the complete cutover, revert the clipboard-cutover commit and rebuild. This restores the `cliphist` watchers, `wl-clip-persist`, and the former shortcut assignment. Do not run the Ringboard and `cliphist` writers together beyond rollback diagnosis.
+Ringboard and `clip-daemon` are the only clipboard-history stack; `Super+V` opens its Shelllist frontend. Ringboard captures content before its source exits, although the live Wayland selection can remain empty until an item is copied again.
 
 ## Notes
 

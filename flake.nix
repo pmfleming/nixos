@@ -14,9 +14,7 @@
     zen-browser.url = "github:youwen5/zen-browser-flake";
     zen-browser.inputs.nixpkgs.follows = "nixpkgs";
 
-    # These manual-only development inputs are intentionally machine-local.
-    # Automatic lanes evaluate their pinned revisions but never advance them;
-    # use the explicit update workflow for committed local changes.
+    # Automatic update lanes never advance these machine-local inputs.
     nm-daemon.url = "git+file:///home/laufan/Projects/nm-daemon?ref=main";
     nm-daemon.inputs.nixpkgs.follows = "nixpkgs";
     bt-daemon.url = "git+file:///home/laufan/Projects/bt-daemon?ref=main";
@@ -56,6 +54,16 @@
         hostName = "thinkpad";
         username = "laufan";
         homeDirectory = "/home/laufan";
+        configDirectory = "/etc/nixos";
+        localProjects = [
+          "app-daemon"
+          "bt-daemon"
+          "clip-daemon"
+          "nm-daemon"
+          "scratchpad"
+          "shelllist"
+          "ts-react-quality-lens"
+        ];
       };
       inherit (machine) system;
       pkgs = nixpkgs.legacyPackages.${system};

@@ -13,6 +13,12 @@ let
   underlinedColors = fg: bg: boldColors fg bg // { underline = true; };
   foregroundRule = rule: rule // foreground palette.foreground;
   boldForegroundRule = rule: rule // boldForeground palette.foreground;
+  openerRules =
+    field: values: use:
+    map (value: {
+      ${field} = value;
+      inherit use;
+    }) values;
 in
 {
   programs.yazi = {
@@ -76,42 +82,21 @@ in
           }
         ];
       };
-      open = {
-        prepend_rules = [
-          {
-            url = "*.md";
-            use = "scratchpad";
-          }
-          {
-            url = "*.markdown";
-            use = "scratchpad";
-          }
-          {
-            mime = "text/markdown";
-            use = "scratchpad";
-          }
-          {
-            mime = "image/*";
-            use = "satty";
-          }
-          {
-            url = "*.html";
-            use = "open";
-          }
-          {
-            url = "*.htm";
-            use = "open";
-          }
-          {
-            mime = "text/html";
-            use = "open";
-          }
-          {
-            mime = "application/xhtml+xml";
-            use = "open";
-          }
-        ];
-      };
+      open.prepend_rules =
+        openerRules "url" [
+          "*.md"
+          "*.markdown"
+        ] "scratchpad"
+        ++ openerRules "mime" [ "text/markdown" ] "scratchpad"
+        ++ openerRules "mime" [ "image/*" ] "satty"
+        ++ openerRules "url" [
+          "*.html"
+          "*.htm"
+        ] "open"
+        ++ openerRules "mime" [
+          "text/html"
+          "application/xhtml+xml"
+        ] "open";
     };
 
     theme = {
@@ -187,16 +172,19 @@ in
         footer = colors palette.bg palette.text;
       };
 
-      filetype.rules = [
-        (foregroundRule { mime = "image/*"; })
-        (foregroundRule { mime = "video/*"; })
-        (foregroundRule { mime = "audio/*"; })
-        (foregroundRule { mime = "application/zip"; })
-        (foregroundRule { mime = "application/gzip"; })
-        (foregroundRule { mime = "application/x-tar"; })
-        (boldForegroundRule { url = "*/"; })
-        (foregroundRule { url = "*"; })
-      ];
+      filetype.rules =
+        map (mime: foregroundRule { inherit mime; }) [
+          "image/*"
+          "video/*"
+          "audio/*"
+          "application/zip"
+          "application/gzip"
+          "application/x-tar"
+        ]
+        ++ [
+          (boldForegroundRule { url = "*/"; })
+          (foregroundRule { url = "*"; })
+        ];
     };
   };
 

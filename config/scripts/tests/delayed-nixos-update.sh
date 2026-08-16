@@ -7,6 +7,7 @@ trap 'rm -rf "$test_root"' EXIT
 export NIXOS_UPDATE_FLAKE_DIR="$test_root/flake"
 export NIXOS_UPDATE_STATE_DIR="$test_root/state"
 export NIXOS_UPDATE_LIB_ONLY=1
+export NIXOS_UPDATE_MANUAL_INPUTS=shelllist
 
 # shellcheck source=/dev/null
 source "$script_path"
