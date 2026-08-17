@@ -16,19 +16,11 @@ let
   btDaemon = inputPackage inputs.bt-daemon "default";
   clipDaemon = inputPackage inputs.clip-daemon "default";
   appDaemon = inputPackage inputs.app-daemon "default";
-  shelllistWifi = inputPackage inputs.shelllist "default";
-  shelllistBluetooth = inputPackage inputs.shelllist "bluetooth";
-  shelllistClipboard = inputPackage inputs.shelllist "clipboard";
-  shelllistLauncher = inputPackage inputs.shelllist "launcher";
+  shelllist = inputPackage inputs.shelllist "default";
   shelllistPortalBrowser = inputPackage inputs.shelllist "captivePortalBrowser";
   scratchpad = inputPackage inputs.scratchpad "scratchpad-hyprland";
   tsReactQualityLens = inputPackage inputs.ts-react-quality-lens "default";
   zenBrowser = inputPackage inputs.zen-browser "default";
-  waybar = pkgs.waybar.overrideAttrs (oldAttrs: {
-    patches = (oldAttrs.patches or [ ]) ++ [
-      ./config/patches/waybar-hyprland-lua-workspaces.patch
-    ];
-  });
 
   theme = import ./theme.nix { inherit lib; };
   inherit (theme)
@@ -42,9 +34,7 @@ let
     GTK_THEME = theme.appearance.gtkThemeEnv;
     QT_QPA_PLATFORM = "wayland;xcb";
     QT_QPA_PLATFORMTHEME = theme.appearance.qtPlatformTheme;
-    SHELLLIST_WIFI_MODE = "popover";
-    SHELLLIST_CLIPBOARD_MODE = "popover";
-    SHELLLIST_LAUNCHER_MODE = "popover";
+    SHELLLIST_MODE = "popover";
     SHELLLIST_BG = palette.bg;
     SHELLLIST_SURFACE = palette.borderDim;
     SHELLLIST_TEXT = palette.text;
@@ -134,7 +124,6 @@ let
       socat
     ];
     replacements = {
-      "@WAYBAR@" = "${waybar}/bin/waybar";
       "@MONITOR_SCALE@" = theme.appearance.monitorScale;
     };
   };
@@ -168,8 +157,18 @@ let
 in
 {
   imports = [
+    inputs.shelllist.homeManagerModules.default
     (import ./modules/home/yazi.nix { inherit palette scratchpad clipDaemon; })
   ];
+
+  programs.shelllist = {
+    enable = true;
+    package = shelllist;
+    systemd = {
+      target = "graphical-session.target";
+      environment = lib.mapAttrs (_name: value: builtins.toString value) hyprlandSessionVariables;
+    };
+  };
 
   home = {
     inherit (machine) username homeDirectory;
@@ -181,18 +180,13 @@ in
       clipDaemon
       nmDaemon
       screenshotAnnotate
-      shelllistBluetooth
-      shelllistClipboard
-      shelllistLauncher
       shelllistPortalBrowser
-      shelllistWifi
       hyprMonitorAuto
       nwgDisplaysLua
       scratchpad
       tsReactQualityLens
       zenBrowser
       pkgs.inkscape
-      waybar
       # The fast lane keeps this package current independently of other inputs.
       unstablePkgs.codex
     ]
@@ -427,25 +421,6 @@ in
       app-daemon = mkUserService {
         description = "Shelllist application catalog and activation service";
         execStart = "${appDaemon}/bin/app-daemon daemon";
-        restart = "on-failure";
-      };
-
-      shelllist-launcher = mkUserService {
-        description = "Shelllist application launcher frontend";
-        execStart = "${shelllistLauncher}/bin/shelllist-launcher foreground";
-        after = [ "app-daemon.service" ];
-        requires = [ "app-daemon.service" ];
-        environment = hyprlandSessionVariables;
-        restart = "on-failure";
-      };
-
-      shelllist-bluetooth = mkUserService {
-        description = "Shelllist Bluetooth prompt frontend";
-        execStart = "${shelllistBluetooth}/bin/shelllist-bluetooth foreground";
-        after = [ "bt-daemon.service" ];
-        environment = lib.removeAttrs hyprlandSessionVariables [ "SHELLLIST_WIFI_MODE" ] // {
-          SHELLLIST_BLUETOOTH_MODE = "popover";
-        };
         restart = "on-failure";
       };
 

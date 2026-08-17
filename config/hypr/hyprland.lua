@@ -22,13 +22,12 @@ hl.on("hyprland.start", function()
 @SYSTEMCTL@ --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE HYPRLAND_INSTANCE_SIGNATURE &&
 @SYSTEMCTL@ --user start hyprland-session.target]=])
 
-    hl.exec_cmd([=[pgrep -u "$USER" -f '(^|/)waybar( |$)' >/dev/null || waybar >/dev/null 2>&1]=])
     hl.exec_cmd("hyprpaper")
     hl.exec_cmd("@HYPRPOLKITAGENT@/libexec/hyprpolkitagent")
     hl.exec_cmd("swayosd-server")
     hl.exec_cmd("nmcli device wifi rescan >/dev/null 2>&1 || true")
 
-    -- Start Scratchpad silently on its dedicated fifth workspace. Waybar
+    -- Start Scratchpad silently on its dedicated fifth workspace. Shelllist
     -- supplies the workspace's Scratchpad icon.
     hl.exec_cmd("@SCRATCHPAD@")
 end)
@@ -141,13 +140,13 @@ hl.window_rule({
 
 -- Applications and session actions
 hl.bind("SUPER + RETURN", hl.dsp.exec_cmd(terminal))
-hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("shelllist-launcher toggle"))
+hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("shelllist applications toggle"))
 hl.bind("SUPER + W", hl.dsp.exec_cmd(browser))
-hl.bind("SUPER + B", hl.dsp.exec_cmd("shelllist-bluetooth toggle"))
+hl.bind("SUPER + B", hl.dsp.exec_cmd("shelllist bluetooth toggle"))
 hl.bind("SUPER + E", hl.dsp.exec_cmd("ghostty --class=com.laufan.yazi -e yazi"))
 hl.bind("SUPER + P", hl.dsp.exec_cmd("nwg-displays-lua"))
-hl.bind("SUPER + N", hl.dsp.exec_cmd("shelllist-wifi toggle"))
-hl.bind("SUPER + V", hl.dsp.exec_cmd("shelllist-clipboard toggle"))
+hl.bind("SUPER + N", hl.dsp.exec_cmd("shelllist wifi toggle"))
+hl.bind("SUPER + V", hl.dsp.exec_cmd("shelllist clipboard toggle"))
 hl.bind("SUPER + L", hl.dsp.exec_cmd("hyprlock"))
 hl.bind("SUPER + Q", hl.dsp.window.close())
 hl.bind("SUPER + F", hl.dsp.window.float())

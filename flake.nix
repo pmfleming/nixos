@@ -23,6 +23,8 @@
     clip-daemon.inputs.nixpkgs.follows = "nixpkgs";
     app-daemon.url = "git+file:///home/laufan/Projects/app-daemon?ref=main";
     app-daemon.inputs.nixpkgs.follows = "nixpkgs";
+    bar-daemon.url = "git+file:///home/laufan/Projects/bar-daemon?ref=main";
+    bar-daemon.inputs.nixpkgs.follows = "nixpkgs";
 
     shelllist = {
       url = "git+file:///home/laufan/Projects/shelllist?ref=main";
@@ -32,6 +34,7 @@
         bt-daemon.follows = "bt-daemon";
         clip-daemon.follows = "clip-daemon";
         app-daemon.follows = "app-daemon";
+        bar-daemon.follows = "bar-daemon";
       };
     };
 
@@ -57,6 +60,7 @@
         configDirectory = "/etc/nixos";
         localProjects = [
           "app-daemon"
+          "bar-daemon"
           "bt-daemon"
           "clip-daemon"
           "nm-daemon"

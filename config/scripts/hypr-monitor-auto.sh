@@ -1,19 +1,5 @@
 last_state=""
 
-restart_waybar() {
-  # Waybar can stay attached to the disabled output after a monitor swap.
-  # Restart it through Hyprland so it binds to the currently visible output.
-  sleep 0.5
-  pkill -u "$(id -u)" -f '(^|/)waybar( |$)' >/dev/null 2>&1 || true
-  for _ in 1 2 3 4 5; do
-    pgrep -u "$(id -u)" -f '(^|/)waybar( |$)' >/dev/null || break
-    sleep 0.2
-  done
-  # In a Lua-configured session, legacy `hyprctl dispatch exec ...` is parsed
-  # as Lua and fails. Evaluate the equivalent Lua API call explicitly.
-  hyprctl eval 'hl.exec_cmd("@WAYBAR@ >/dev/null 2>&1")' >/dev/null || true
-}
-
 external_connected() {
   for status in /sys/class/drm/card*-DP-*/status /sys/class/drm/card*-HDMI-A-*/status; do
     [ -e "$status" ] || continue
@@ -64,7 +50,8 @@ apply_state() {
       hyprctl eval 'hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = @MONITOR_SCALE@ })' >/dev/null || true
       ;;
   esac
-  restart_waybar
+  # Shelllist follows Quickshell.screens and rebuilds its bar surfaces after
+  # output topology changes, so no panel process restart is required here.
   last_state="$state"
 }
 
