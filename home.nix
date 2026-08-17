@@ -369,6 +369,75 @@ in
     };
 
     desktopEntries = {
+      blueman-manager = {
+        name = "Bluetooth Manager";
+        genericName = "Bluetooth Manager";
+        comment = "Configure Bluetooth devices";
+        exec = "env GDK_BACKEND=x11 blueman-manager";
+        icon = "blueman";
+        categories = [
+          "GTK"
+          "GNOME"
+          "Settings"
+          "HardwareSettings"
+        ];
+        settings.StartupWMClass = ".blueman-manager-wrapped";
+      };
+
+      nwg-displays = {
+        name = "Displays Settings";
+        genericName = "Output configuration utility";
+        comment = "Configure monitor layouts and write the Lua-compatible Hyprland layout";
+        exec = "env GDK_BACKEND=x11 ${nwgDisplaysLua}/bin/nwg-displays-lua";
+        icon = "nwg-displays";
+        categories = [
+          "Settings"
+          "DesktopSettings"
+        ];
+        settings.StartupWMClass = "Nwg-displays";
+      };
+
+      qv4l2 = {
+        name = "Qt V4L2 test Utility";
+        comment = "Allow testing Video4Linux devices";
+        exec = "env QT_QPA_PLATFORM=xcb QT_OPENGL=software qv4l2";
+        icon = "qv4l2";
+        categories = [ "AudioVideo" ];
+        settings.StartupWMClass = "qv4l2";
+      };
+
+      qvidcap = {
+        name = "Qt V4L2 video capture utility";
+        comment = "Viewer for video capture";
+        exec = "env QT_QPA_PLATFORM=xcb QT_OPENGL=software qvidcap";
+        icon = "qvidcap";
+        categories = [ "AudioVideo" ];
+        settings.StartupWMClass = "qvidcap";
+      };
+
+      cups = {
+        name = "Manage Printing";
+        comment = "Open the CUPS web interface in the default browser";
+        exec = "xdg-open http://localhost:631/";
+        icon = "cups";
+        categories = [
+          "System"
+          "Settings"
+          "Printing"
+        ];
+        settings."X-Shelllist-LaunchOnly" = "true";
+      };
+
+      nixos-manual = {
+        name = "NixOS Manual";
+        genericName = "System Manual";
+        comment = "View NixOS documentation in the default browser";
+        exec = "nixos-help";
+        icon = "nix-snowflake";
+        categories = [ "System" ];
+        settings."X-Shelllist-LaunchOnly" = "true";
+      };
+
       yazi = {
         name = "Yazi";
         genericName = "Terminal File Manager";
@@ -409,6 +478,7 @@ in
           "Network"
           "WebBrowser"
         ];
+        settings.StartupWMClass = "shelllist-captive-portal";
       };
     };
   };
