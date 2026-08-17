@@ -137,7 +137,7 @@ in
       enable = true;
       useTextGreeter = true;
       settings.default_session = {
-        command = "${cleanTuigreet}/bin/tuigreet --time --remember --prompt-padding 0 --cmd ${config.programs.hyprland.package}/bin/start-hyprland";
+        command = "${cleanTuigreet}/bin/tuigreet --time --remember --prompt-padding 0 --cmd '${config.programs.uwsm.package}/bin/uwsm start -e -D Hyprland hyprland.desktop'";
         user = "greeter";
       };
     };
@@ -167,6 +167,7 @@ in
   programs = {
     hyprland = {
       enable = true;
+      withUWSM = true;
       xwayland.enable = true;
     };
     dconf.enable = true;

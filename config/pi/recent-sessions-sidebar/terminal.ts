@@ -19,7 +19,12 @@ function launchPi(workingDir: string, piArgs: string[]): LaunchResult {
     if (!commandExists(command)) continue;
 
     try {
-      const child = spawn(command, ["-e", "pi", ...piArgs], { cwd: workingDir, detached: true, env: process.env, stdio: "ignore" });
+      const child = spawn("uwsm-app", ["--", command, "-e", "pi", ...piArgs], {
+        cwd: workingDir,
+        detached: true,
+        env: process.env,
+        stdio: "ignore",
+      });
       child.unref();
       return { ok: true };
     } catch (error) {

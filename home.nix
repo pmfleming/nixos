@@ -58,6 +58,7 @@ let
       name: value: "hl.env(${builtins.toJSON name}, ${builtins.toJSON (builtins.toString value)})"
     ) hyprlandEnvVariables
   );
+  uwsmApp = "${pkgs.uwsm}/bin/uwsm-app";
 
   mkUserService =
     {
@@ -81,6 +82,7 @@ let
         ExecStart = execStart;
         Restart = restart;
         RestartSec = restartSec;
+        Slice = "background-graphical.slice";
       }
       // lib.optionalAttrs (environment != { }) {
         Environment = lib.mapAttrsToList (name: value: "${name}=${builtins.toString value}") environment;
@@ -107,10 +109,8 @@ let
   hyprlandConfig = themeText (
     scriptWith {
       "@HYPRLAND_ENV@" = hyprlandEnvConfig;
-      "@HYPRPOLKITAGENT@" = "${pkgs.hyprpolkitagent}";
       "@SCRATCHPAD@" = "${scratchpad}/bin/scratchpad";
-      "@DBUS_UPDATE_ACTIVATION_ENVIRONMENT@" = "${pkgs.dbus}/bin/dbus-update-activation-environment";
-      "@SYSTEMCTL@" = "${pkgs.systemd}/bin/systemctl";
+      "@UWSM_APP@" = uwsmApp;
     } ./config/hypr/hyprland.lua
   );
 
@@ -158,7 +158,14 @@ in
 {
   imports = [
     inputs.shelllist.homeManagerModules.default
-    (import ./modules/home/yazi.nix { inherit palette scratchpad clipDaemon; })
+    (import ./modules/home/yazi.nix {
+      inherit
+        palette
+        scratchpad
+        clipDaemon
+        uwsmApp
+        ;
+    })
   ];
 
   programs.shelllist = {
@@ -195,7 +202,6 @@ in
       hyprlandGuiutils
       hyprlock
       hyprpaper
-      swayosd
       qt5.qtwayland
       qt6.qtwayland
       wlogout
@@ -285,10 +291,24 @@ in
       # Direct unit links keep them discoverable by systemctl; wants links enable them.
       "systemd/user/nm-daemon.service".source = "${nmDaemon}/share/systemd/user/nm-daemon.service";
       "systemd/user/bt-daemon.service".source = "${btDaemon}/share/systemd/user/bt-daemon.service";
-      "systemd/user/default.target.wants/nm-daemon.service".source =
+      "systemd/user/graphical-session.target.wants/nm-daemon.service".source =
         "${nmDaemon}/share/systemd/user/nm-daemon.service";
-      "systemd/user/default.target.wants/bt-daemon.service".source =
+      "systemd/user/graphical-session.target.wants/bt-daemon.service".source =
         "${btDaemon}/share/systemd/user/bt-daemon.service";
+      "systemd/user/nm-daemon.service.d/uwsm-session.conf".text = ''
+        [Unit]
+        PartOf=graphical-session.target
+
+        [Service]
+        Slice=background-graphical.slice
+      '';
+      "systemd/user/bt-daemon.service.d/uwsm-session.conf".text = ''
+        [Unit]
+        PartOf=graphical-session.target
+
+        [Service]
+        Slice=background-graphical.slice
+      '';
       "hypr/hyprland.lua".text = hyprlandConfig;
       # Keep generated layouts writable and version-controlled.
       "hypr/monitors.lua" = writableConfig "hypr/monitors.lua";
@@ -378,7 +398,7 @@ in
     enable = true;
     settings = {
       general = {
-        lock_cmd = "pidof hyprlock || hyprlock";
+        lock_cmd = "pidof hyprlock || ${uwsmApp} -s s -- hyprlock";
         before_sleep_cmd = "loginctl lock-session";
         after_sleep_cmd = "hyprctl dispatch 'hl.dsp.dpms(\"on\")'";
       };
@@ -400,59 +420,61 @@ in
     };
   };
 
-  systemd.user = {
-    targets.hyprland-session = {
-      Unit = {
-        Description = "Hyprland compositor session";
-        Documentation = [ "man:systemd.special(7)" ];
-        BindsTo = [ "graphical-session.target" ];
-        Wants = [ "graphical-session-pre.target" ];
-        After = [ "graphical-session-pre.target" ];
-        Before = [ "graphical-session.target" ];
-      };
+  systemd.user.services = {
+    shelllist.Service.Slice = "session-graphical.slice";
+    bar-daemon.Service.Slice = "session-graphical.slice";
+
+    hyprpaper = mkUserService {
+      description = "Hyprland wallpaper service";
+      execStart = "${pkgs.hyprpaper}/bin/hyprpaper";
+      restart = "on-failure";
     };
 
-    services = {
-      hypr-monitor-auto = mkUserService {
-        description = "Hyprland monitor auto-switcher";
-        execStart = "${hyprMonitorAuto}/bin/hypr-monitor-auto";
-      };
+    hyprpolkitagent = mkUserService {
+      description = "Hyprland PolicyKit authentication agent";
+      execStart = "${pkgs.hyprpolkitagent}/libexec/hyprpolkitagent";
+      restart = "on-failure";
+    };
 
-      app-daemon = mkUserService {
-        description = "Shelllist application catalog and activation service";
-        execStart = "${appDaemon}/bin/app-daemon daemon";
-        restart = "on-failure";
-      };
+    hypr-monitor-auto = mkUserService {
+      description = "Hyprland monitor auto-switcher";
+      execStart = "${hyprMonitorAuto}/bin/hypr-monitor-auto";
+    };
 
-      ringboard-server = mkUserService {
-        description = "Ringboard clipboard history server";
-        execStart = "${pkgs.ringboard-wayland}/bin/ringboard-server";
-      };
+    app-daemon = mkUserService {
+      description = "Shelllist application catalog and activation service";
+      execStart = "${appDaemon}/bin/app-daemon daemon";
+      restart = "on-failure";
+    };
 
-      ringboard-wayland = mkUserService {
-        description = "Ringboard Wayland clipboard watcher";
-        execStart = "${pkgs.ringboard-wayland}/bin/ringboard-wayland";
-        after = [ "ringboard-server.service" ];
-        requires = [ "ringboard-server.service" ];
-        partOf = [ "ringboard-server.service" ];
-      };
+    ringboard-server = mkUserService {
+      description = "Ringboard clipboard history server";
+      execStart = "${pkgs.ringboard-wayland}/bin/ringboard-server";
+    };
 
-      clip-daemon = mkUserService {
-        description = "Shelllist clipboard policy service";
-        execStart = "${clipDaemon}/bin/clip-daemon daemon";
-        after = [
-          "ringboard-server.service"
-          "ringboard-wayland.service"
-        ];
-        requires = [
-          "ringboard-server.service"
-          "ringboard-wayland.service"
-        ];
-        partOf = [
-          "ringboard-server.service"
-          "ringboard-wayland.service"
-        ];
-      };
+    ringboard-wayland = mkUserService {
+      description = "Ringboard Wayland clipboard watcher";
+      execStart = "${pkgs.ringboard-wayland}/bin/ringboard-wayland";
+      after = [ "ringboard-server.service" ];
+      requires = [ "ringboard-server.service" ];
+      partOf = [ "ringboard-server.service" ];
+    };
+
+    clip-daemon = mkUserService {
+      description = "Shelllist clipboard policy service";
+      execStart = "${clipDaemon}/bin/clip-daemon daemon";
+      after = [
+        "ringboard-server.service"
+        "ringboard-wayland.service"
+      ];
+      requires = [
+        "ringboard-server.service"
+        "ringboard-wayland.service"
+      ];
+      partOf = [
+        "ringboard-server.service"
+        "ringboard-wayland.service"
+      ];
     };
   };
 

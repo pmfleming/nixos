@@ -2,6 +2,7 @@
   palette,
   scratchpad,
   clipDaemon,
+  uwsmApp,
 }:
 
 let
@@ -49,13 +50,13 @@ in
         ];
         open = [
           {
-            run = ''xdg-open "$1"'';
+            run = ''${uwsmApp} -- xdg-open "$1"'';
             orphan = true;
           }
         ];
         scratchpad = [
           {
-            run = ''${scratchpad}/bin/scratchpad "$@"'';
+            run = ''${uwsmApp} -- ${scratchpad}/bin/scratchpad "$@"'';
             orphan = true;
             desc = "Edit Markdown in Scratchpad";
           }
@@ -70,7 +71,7 @@ in
                 *.png) output="$input" ;;
                 *) output="''${input%.*}.edited.png" ;;
               esac
-              exec satty \
+              exec ${uwsmApp} -- satty \
                 --filename "$input" \
                 --output-filename "$output" \
                 --resize smart \

@@ -1,5 +1,14 @@
+local uwsm_app = "@UWSM_APP@"
 local terminal = "ghostty"
 local browser = "zen"
+
+local function app(command)
+    return uwsm_app .. " -- " .. command
+end
+
+local function session_app(command)
+    return uwsm_app .. " -s s -- " .. command
+end
 
 -- Fallback for outputs without a more specific rule. The generated monitors
 -- module below contains the version-controlled nwg-displays layout.
@@ -15,26 +24,13 @@ require("workspaces")
 
 @HYPRLAND_ENV@
 
--- Home Manager services are attached to this target. Export Hyprland's
--- environment before starting it so every graphical service sees the session.
+-- UWSM owns the graphical-session targets and environment export. Long-lived
+-- session components are declarative user services; only this regular app is
+-- launched from the compositor.
 hl.on("hyprland.start", function()
-    hl.exec_cmd([=[@DBUS_UPDATE_ACTIVATION_ENVIRONMENT@ --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE HYPRLAND_INSTANCE_SIGNATURE &&
-@SYSTEMCTL@ --user import-environment WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE HYPRLAND_INSTANCE_SIGNATURE &&
-@SYSTEMCTL@ --user start hyprland-session.target]=])
-
-    hl.exec_cmd("hyprpaper")
-    hl.exec_cmd("@HYPRPOLKITAGENT@/libexec/hyprpolkitagent")
-    hl.exec_cmd("swayosd-server")
-    hl.exec_cmd("nmcli device wifi rescan >/dev/null 2>&1 || true")
-
     -- Start Scratchpad silently on its dedicated fifth workspace. Shelllist
     -- supplies the workspace's Scratchpad icon.
-    hl.exec_cmd("@SCRATCHPAD@")
-end)
-
-hl.on("hyprland.shutdown", function()
-    -- Block briefly so systemd can stop session services before Hyprland exits.
-    os.execute("@SYSTEMCTL@ --user stop hyprland-session.target && sleep 0.1")
+    hl.exec_cmd(app("@SCRATCHPAD@"))
 end)
 
 hl.config({
@@ -139,22 +135,28 @@ hl.window_rule({
 })
 
 -- Applications and session actions
-hl.bind("SUPER + RETURN", hl.dsp.exec_cmd(terminal))
+hl.bind("SUPER + RETURN", hl.dsp.exec_cmd(app(terminal)))
 hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("shelllist applications toggle"))
-hl.bind("SUPER + W", hl.dsp.exec_cmd(browser))
+hl.bind("SUPER + W", hl.dsp.exec_cmd(app(browser)))
 hl.bind("SUPER + B", hl.dsp.exec_cmd("shelllist bluetooth toggle"))
-hl.bind("SUPER + E", hl.dsp.exec_cmd("ghostty --class=com.laufan.yazi -e yazi"))
-hl.bind("SUPER + P", hl.dsp.exec_cmd("nwg-displays-lua"))
+hl.bind("SUPER + E", hl.dsp.exec_cmd(app("ghostty --class=com.laufan.yazi -e yazi")))
+hl.bind("SUPER + P", hl.dsp.exec_cmd(app("nwg-displays-lua")))
 hl.bind("SUPER + N", hl.dsp.exec_cmd("shelllist wifi toggle"))
 hl.bind("SUPER + V", hl.dsp.exec_cmd("shelllist clipboard toggle"))
-hl.bind("SUPER + L", hl.dsp.exec_cmd("hyprlock"))
+hl.bind("SUPER + L", hl.dsp.exec_cmd(session_app("hyprlock")))
 hl.bind("SUPER + Q", hl.dsp.window.close())
 hl.bind("SUPER + F", hl.dsp.window.float())
 hl.bind("SUPER + SHIFT + F", hl.dsp.window.fullscreen())
-hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd("screenshot-annotate"))
-hl.bind("SUPER + CTRL + S", hl.dsp.exec_cmd([=[grim -g "$(slurp)" - | wl-copy --type image/png]=]))
-hl.bind("SUPER + ALT + S", hl.dsp.exec_cmd("grim - | wl-copy --type image/png"))
-hl.bind("SUPER + SHIFT + Escape", hl.dsp.exec_cmd("wlogout"))
+hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd(app("screenshot-annotate")))
+hl.bind(
+    "SUPER + CTRL + S",
+    hl.dsp.exec_cmd(app([=[sh -lc 'grim -g "$(slurp)" - | wl-copy --type image/png']=]))
+)
+hl.bind(
+    "SUPER + ALT + S",
+    hl.dsp.exec_cmd(app([=[sh -lc 'grim - | wl-copy --type image/png']=]))
+)
+hl.bind("SUPER + SHIFT + Escape", hl.dsp.exec_cmd(app("wlogout")))
 hl.bind("SUPER + K", hl.dsp.exec_cmd("hyprctl switchxkblayout all next"))
 
 -- Workspaces
@@ -203,12 +205,12 @@ end
 local repeating_locked = { repeating = true, locked = true }
 local locked = { locked = true }
 
-hl.bind("XF86AudioRaiseVolume", hl.dsp.exec_cmd("swayosd-client --output-volume +5"), repeating_locked)
-hl.bind("XF86AudioLowerVolume", hl.dsp.exec_cmd("swayosd-client --output-volume -5"), repeating_locked)
-hl.bind("XF86AudioMute", hl.dsp.exec_cmd("swayosd-client --output-volume mute-toggle"), locked)
-hl.bind("XF86AudioMicMute", hl.dsp.exec_cmd("swayosd-client --input-volume mute-toggle"), locked)
+hl.bind("XF86AudioRaiseVolume", hl.dsp.global("shelllist:volume-up"), repeating_locked)
+hl.bind("XF86AudioLowerVolume", hl.dsp.global("shelllist:volume-down"), repeating_locked)
+hl.bind("XF86AudioMute", hl.dsp.global("shelllist:volume-mute"), locked)
+hl.bind("XF86AudioMicMute", hl.dsp.global("shelllist:microphone-mute"), locked)
 hl.bind("XF86AudioPlay", hl.dsp.exec_cmd("playerctl play-pause"), locked)
 hl.bind("XF86AudioNext", hl.dsp.exec_cmd("playerctl next"), locked)
 hl.bind("XF86AudioPrev", hl.dsp.exec_cmd("playerctl previous"), locked)
-hl.bind("XF86MonBrightnessUp", hl.dsp.exec_cmd("swayosd-client --brightness +5"), repeating_locked)
-hl.bind("XF86MonBrightnessDown", hl.dsp.exec_cmd("swayosd-client --brightness -5"), repeating_locked)
+hl.bind("XF86MonBrightnessUp", hl.dsp.global("shelllist:brightness-up"), repeating_locked)
+hl.bind("XF86MonBrightnessDown", hl.dsp.global("shelllist:brightness-down"), repeating_locked)

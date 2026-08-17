@@ -48,7 +48,7 @@
     "format": "{}",
     "tooltip": true,
     "tooltip-format": "A checked and built NixOS update is waiting for automatic safety or manual approval",
-    "on-click": "ghostty -e bash -lc 'journalctl -u nixos-update-fast.service -u nixos-update-delayed.service -u delayed-nixos-update.service -n 100 --no-pager; read -r -p \"Press enter to close\"'"
+    "on-click": "uwsm-app -- ghostty -e bash -lc 'journalctl -u nixos-update-fast.service -u nixos-update-delayed.service -u delayed-nixos-update.service -n 100 --no-pager; read -r -p \"Press enter to close\"'"
   },
   "tray": {
     "icon-size": 18,
@@ -61,7 +61,7 @@
     "tooltip-format-wifi": "{essid} {signalStrength}%\nLeft: Wi-Fi popover\nRight: manual portal fallback",
     "tooltip-format-ethernet": "{ifname}\nLeft: Wi-Fi popover\nRight: manual portal fallback",
     "on-click": "shelllist wifi toggle",
-    "on-click-right": "shelllist-captive-portal --manual --fallback"
+    "on-click-right": "uwsm-app -- shelllist-captive-portal --manual --fallback"
   },
   "bluetooth": {
     "format": "",
@@ -82,7 +82,7 @@
       ]
     },
     "scroll-step": 5,
-    "on-click": "pavucontrol"
+    "on-click": "uwsm-app -- pavucontrol"
   },
   "backlight": {
     "format": "󰃠",
@@ -150,7 +150,7 @@
     "format": "󰅐 {}",
     "tooltip": true,
     "tooltip-format": "Timezone city: {}\nTimezone is updated automatically from location",
-    "on-click": "ghostty -e bash -lc 'timedatectl; read -r -p \"Press enter to close\"'"
+    "on-click": "uwsm-app -- ghostty -e bash -lc 'timedatectl; read -r -p \"Press enter to close\"'"
   },
   "mpris": {
     "format": "{player_icon} {title}  {status_icon}",
