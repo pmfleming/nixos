@@ -110,6 +110,9 @@ in
     inherit (machine) hostName;
     networkmanager = {
       enable = true;
+      # Keep NetworkManager and systemd-resolved on one DNS backend. This also
+      # provides the resolve1 D-Bus service NetworkManager flushes on reconnect.
+      dns = "systemd-resolved";
       settings.connectivity = {
         enabled = true;
         uri = "http://nmcheck.gnome.org/check_network_status.txt";
@@ -133,6 +136,12 @@ in
 
   services = {
     automatic-timezoned.enable = true;
+    # Automatic timezone detection only needs GeoClue's Wi-Fi provider. Disable
+    # local-network NMEA discovery instead of warning about a missing Avahi daemon.
+    geoclue2.enableNmea = false;
+    resolved.enable = true;
+    # WirePlumber and desktop battery consumers expect UPower on a laptop.
+    upower.enable = true;
     greetd = {
       enable = true;
       useTextGreeter = true;

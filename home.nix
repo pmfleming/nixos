@@ -64,6 +64,7 @@ let
     {
       description,
       execStart,
+      execStartPre ? [ ],
       after ? [ ],
       requires ? [ ],
       partOf ? [ ],
@@ -83,6 +84,9 @@ let
         Restart = restart;
         RestartSec = restartSec;
         Slice = "background-graphical.slice";
+      }
+      // lib.optionalAttrs (execStartPre != [ ]) {
+        ExecStartPre = execStartPre;
       }
       // lib.optionalAttrs (environment != { }) {
         Environment = lib.mapAttrsToList (name: value: "${name}=${builtins.toString value}") environment;
@@ -127,6 +131,21 @@ let
       "@MONITOR_SCALE@" = theme.appearance.monitorScale;
     };
   };
+
+  # After= only waits for ringboard-server's process to start. Probe the server
+  # before launching clients so a stale socket from the previous session cannot
+  # make the Wayland watcher fail and restart during login.
+  ringboardWaitReady = pkgs.writeShellScript "wait-for-ringboard-server" ''
+    for _ in {1..100}; do
+      if ${pkgs.ringboard-wayland}/bin/ringboard debug stats >/dev/null 2>&1; then
+        exit 0
+      fi
+      ${pkgs.coreutils}/bin/sleep 0.1
+    done
+
+    echo "ringboard server did not become ready within 10 seconds" >&2
+    exit 1
+  '';
 
   nwgDisplaysLua = mkScript {
     name = "nwg-displays-lua";
@@ -455,6 +474,7 @@ in
     ringboard-wayland = mkUserService {
       description = "Ringboard Wayland clipboard watcher";
       execStart = "${pkgs.ringboard-wayland}/bin/ringboard-wayland";
+      execStartPre = [ ringboardWaitReady ];
       after = [ "ringboard-server.service" ];
       requires = [ "ringboard-server.service" ];
       partOf = [ "ringboard-server.service" ];
