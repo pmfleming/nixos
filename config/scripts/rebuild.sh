@@ -15,4 +15,4 @@ if ((${#untracked_nix[@]})); then
 fi
 
 nix flake check "$flake_dir"
-sudo nixos-rebuild switch --flake "$flake_dir#$flake_attr" "$@"
+/run/wrappers/bin/sudo nixos-rebuild switch --flake "$flake_dir#$flake_attr" "$@"

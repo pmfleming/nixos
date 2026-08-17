@@ -1,1 +1,1 @@
-sudo nixos-rebuild switch --rollback
+/run/wrappers/bin/sudo nixos-rebuild switch --rollback

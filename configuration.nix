@@ -46,7 +46,6 @@ let
       git
       nix
       nixos-rebuild
-      sudo
     ];
     replacements = {
       "@CONFIG_DIRECTORY@" = machine.configDirectory;
