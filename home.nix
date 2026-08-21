@@ -153,6 +153,7 @@ let
       coreutils
       gawk
       hyprland
+      util-linux
     ];
     replacements = {
       "@NWG_DISPLAYS@" = "${pkgs.nwg-displays}";

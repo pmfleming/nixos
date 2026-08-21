@@ -2,13 +2,41 @@
 # temporary files, translate every accepted change to native Lua, and atomically
 # update the version-controlled modules required by hyprland.lua.
 
-runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/nwg-displays-lua"
-legacy_monitors="$runtime_dir/monitors.conf"
-legacy_workspaces="$runtime_dir/workspaces.conf"
+runtime_root="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/nwg-displays-lua"
 target_monitors="@MONITORS_LUA@"
 target_workspaces="@WORKSPACES_LUA@"
+target_monitors_tmp="$target_monitors.tmp.$$"
+target_workspaces_tmp="$target_workspaces.tmp.$$"
+nwg_pid=
 
-mkdir -p "$runtime_dir"
+mkdir -p "$runtime_root"
+exec 9>"$runtime_root/instance.lock"
+if ! flock -n 9; then
+  printf 'nwg-displays-lua is already running.\n' >&2
+  exit 0
+fi
+
+runtime_dir="$(mktemp -d "$runtime_root/run.XXXXXX")"
+legacy_monitors="$runtime_dir/monitors.conf"
+legacy_workspaces="$runtime_dir/workspaces.conf"
+
+# Invoked by the EXIT trap.
+# shellcheck disable=SC2329
+cleanup() {
+  status=$?
+  trap - EXIT
+  if [ -n "$nwg_pid" ] && kill -0 "$nwg_pid" 2>/dev/null; then
+    kill "$nwg_pid" 2>/dev/null || true
+    wait "$nwg_pid" 2>/dev/null || true
+  fi
+  rm -rf "$runtime_dir"
+  rm -f "$target_monitors_tmp" "$target_workspaces_tmp" "$target_workspaces_tmp.with-header"
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 : >"$legacy_monitors"
 : >"$legacy_workspaces"
 
@@ -17,7 +45,7 @@ fingerprint() {
 }
 
 convert_monitors() {
-  tmp="$target_monitors.tmp"
+  tmp="$target_monitors_tmp"
 
   if awk '
     function lua_string(value, escaped) {
@@ -104,7 +132,7 @@ convert_monitors() {
 }
 
 convert_workspaces() {
-  tmp="$target_workspaces.tmp"
+  tmp="$target_workspaces_tmp"
 
   if awk '
     function lua_string(value, escaped) {
