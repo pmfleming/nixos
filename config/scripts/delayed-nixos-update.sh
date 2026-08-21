@@ -567,6 +567,33 @@ recover_transaction() {
   rollback_transaction
 }
 
+ready_matches_live_baseline() {
+  lane=$1
+  target_dir="$(lane_dir "$lane")"
+
+  if ! require_approved_revision; then
+    printf 'The %s-lane candidate remains ready because the configuration revision is not approved.\n' \
+      "$lane" >&2
+    return 1
+  fi
+  if ! baseline_lock_is_safe; then
+    printf 'The %s-lane candidate remains ready because %s has user changes.\n' "$lane" "$flake_dir" >&2
+    return 1
+  fi
+
+  revision="$(git_at_flake rev-parse --verify HEAD)"
+  if [ "$(cat "$target_dir/ready-revision")" != "$revision" ]; then
+    printf 'The %s-lane candidate was built from a different Git revision.\n' "$lane" >&2
+    return 1
+  fi
+
+  current_hash="$(hash_file "$flake_dir/flake.lock")"
+  if [ "$(cat "$target_dir/ready-base-hash")" != "$current_hash" ]; then
+    printf 'The %s-lane candidate has a stale lock-file baseline.\n' "$lane" >&2
+    return 1
+  fi
+}
+
 apply_lane() {
   lane=$1
   apply_mode=${2:-manual}
@@ -581,31 +608,22 @@ apply_lane() {
     return 0
   fi
 
-  if ! require_approved_revision; then
-    printf 'The %s-lane candidate remains ready because the configuration revision is not approved.\n' \
-      "$lane" >&2
-    return 0
-  fi
-  if ! baseline_lock_is_safe; then
-    printf 'The %s-lane candidate remains ready because %s has user changes.\n' "$lane" "$flake_dir" >&2
-    return 0
-  fi
-
-  revision="$(git_at_flake rev-parse --verify HEAD)"
-  if [ "$(cat "$target_dir/ready-revision")" != "$revision" ]; then
-    printf 'The %s-lane candidate was built from a different Git revision.\n' "$lane" >&2
-    return 0
-  fi
-
-  current_hash="$(hash_file "$flake_dir/flake.lock")"
-  if [ "$(cat "$target_dir/ready-base-hash")" != "$current_hash" ]; then
-    printf 'The %s-lane candidate has a stale lock-file baseline.\n' "$lane" >&2
+  if ! ready_matches_live_baseline "$lane"; then
     return 0
   fi
 
   if ! verify_candidate_system "$lane"; then
     clear_ready "$lane"
     return 1
+  fi
+
+  # Candidate verification can evaluate or build for long enough that the live
+  # checkout changes underneath it. Revalidate at the transaction boundary so
+  # user edits are never overwritten by a candidate checked against older state.
+  if ! ready_matches_live_baseline "$lane"; then
+    printf 'The %s-lane candidate remains ready because the live baseline changed during verification.\n' \
+      "$lane" >&2
+    return 0
   fi
 
   begin_transaction "$lane" "$expected_system" "$target_dir/ready-flake.lock"

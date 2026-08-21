@@ -174,6 +174,27 @@ check_delayed
 [ "$(jq -r '.nodes.fast.locked.rev' "$captured_ready")" = fast-c ]
 [ "$(cat "$test_root/captured-base-hash")" = "$(hash_file "$test_flake_dir/flake.lock")" ]
 
+# A user edit made while the candidate is being independently verified must be
+# noticed before the updater starts a transaction or replaces the live lock.
+cp "$captured_ready" "$test_fast_dir/ready-flake.lock"
+git -C "$test_flake_dir" rev-parse HEAD > "$test_fast_dir/ready-revision"
+hash_file "$test_flake_dir/flake.lock" > "$test_fast_dir/ready-base-hash"
+date +%s > "$test_fast_dir/ready-created-at"
+ln -s "$mock_verified_system" "$test_fast_dir/system"
+live_hash_before_verification="$(hash_file "$test_flake_dir/flake.lock")"
+verify_candidate_system() {
+  # Consumed by apply_lane in the sourced updater.
+  # shellcheck disable=SC2034
+  expected_system=$mock_verified_system
+  printf 'concurrent user edit\n' >> "$test_flake_dir/README.md"
+}
+apply_lane fast manual
+[ ! -d "$test_transaction_dir" ]
+[ "$(hash_file "$test_flake_dir/flake.lock")" = "$live_hash_before_verification" ]
+ready_is_complete fast
+git -C "$test_flake_dir" restore README.md
+clear_ready fast
+
 # A ready candidate based on another lock must remain pending rather than being
 # applied over the live lock.
 mkdir -p "$test_fast_dir"
