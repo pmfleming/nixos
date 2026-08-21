@@ -1,7 +1,7 @@
 import type { ExtensionAPI, ThinkingLevel } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
 
-type Level = "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+type Level = ThinkingLevel;
 type NotifyType = "info" | "warning" | "error";
 type ThinkingUi = {
   notify: (message: string, type: NotifyType) => void;
@@ -10,19 +10,20 @@ type ThinkingUi = {
 };
 type ThinkingContext = { ui: ThinkingUi };
 
-const LEVELS: Level[] = ["off", "minimal", "low", "medium", "high", "xhigh"];
+const LEVELS: Level[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 const DESCRIPTIONS: Record<Level, string> = {
   off: "no extended thinking",
   minimal: "fastest reasoning",
   low: "light reasoning",
   medium: "balanced reasoning",
   high: "deeper reasoning",
-  xhigh: "maximum reasoning",
+  xhigh: "very deep reasoning",
+  max: "maximum unconstrained reasoning",
 };
-const ALIASES: Record<string, Level> = { extra: "xhigh", "extra-high": "xhigh", extra_high: "xhigh", max: "xhigh" };
+const ALIASES: Record<string, Level> = { extra: "xhigh", "extra-high": "xhigh", extra_high: "xhigh" };
 
 function isLevel(value: string): value is Level {
-  return value === "off" || value === "minimal" || value === "low" || value === "medium" || value === "high" || value === "xhigh";
+  return LEVELS.some((level) => level === value);
 }
 
 function parseLevel(value: string): Level | undefined {
