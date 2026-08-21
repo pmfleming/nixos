@@ -14,10 +14,8 @@ function safeCwd(cwd?: string): string {
   return cwd && existsSync(cwd) ? cwd : homedir();
 }
 
-function launchPi(workingDir: string, piArgs: string[]): LaunchResult {
-  for (const command of terminalCandidates()) {
-    if (!commandExists(command)) continue;
-
+function spawnPi(command: string, workingDir: string, piArgs: string[]): Promise<LaunchResult> {
+  return new Promise((resolve) => {
     try {
       const child = spawn("uwsm-app", ["--", command, "-e", "pi", ...piArgs], {
         cwd: workingDir,
@@ -25,22 +23,37 @@ function launchPi(workingDir: string, piArgs: string[]): LaunchResult {
         env: process.env,
         stdio: "ignore",
       });
-      child.unref();
-      return { ok: true };
+      child.once("error", (error) => resolve({ ok: false, error: error.message }));
+      child.once("spawn", () => {
+        child.unref();
+        resolve({ ok: true });
+      });
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : String(error) };
+      resolve({ ok: false, error: error instanceof Error ? error.message : String(error) });
     }
-  }
-
-  return { ok: false, error: "No supported terminal found" };
+  });
 }
 
-export function launchSession(session: SessionRow, fallbackCwd: string): string | undefined {
-  const result = launchPi(safeCwd(session.cwd || fallbackCwd), ["--session", session.path]);
+async function launchPi(workingDir: string, piArgs: string[]): Promise<LaunchResult> {
+  if (!commandExists("uwsm-app")) return { ok: false, error: "uwsm-app is not available" };
+
+  let lastError: string | undefined;
+  for (const command of terminalCandidates()) {
+    if (!commandExists(command)) continue;
+    const result = await spawnPi(command, workingDir, piArgs);
+    if (result.ok) return result;
+    lastError = result.error;
+  }
+
+  return { ok: false, error: lastError ?? "No supported terminal found" };
+}
+
+export async function launchSession(session: SessionRow, fallbackCwd: string): Promise<string | undefined> {
+  const result = await launchPi(safeCwd(session.cwd || fallbackCwd), ["--session", session.path]);
   return result.ok ? undefined : result.error;
 }
 
-export function launchNewChat(group: SessionGroup, fallbackCwd: string): string | undefined {
-  const result = launchPi(safeCwd(group.cwd || group.sessions[0]?.cwd || fallbackCwd), []);
+export async function launchNewChat(group: SessionGroup, fallbackCwd: string): Promise<string | undefined> {
+  const result = await launchPi(safeCwd(group.cwd || group.sessions[0]?.cwd || fallbackCwd), []);
   return result.ok ? undefined : result.error;
 }

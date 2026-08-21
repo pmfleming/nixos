@@ -79,11 +79,11 @@ async function actOnSession(pi: ExtensionAPI, ctx: RecentContext, group: Session
     return "back";
   }
   if (action === NEW_CHAT) {
-    notifyLaunch(ctx, launchNewChat(group, ctx.cwd || homedir()), "new chat");
+    notifyLaunch(ctx, await launchNewChat(group, ctx.cwd || homedir()), "new chat");
     return "done";
   }
   if (action === CONTINUE) {
-    notifyLaunch(ctx, launchSession(session, ctx.cwd || homedir()), "chat");
+    notifyLaunch(ctx, await launchSession(session, ctx.cwd || homedir()), "chat");
     return "done";
   }
   return "done";
@@ -144,10 +144,10 @@ async function openSidebar(pi: ExtensionAPI, ctx: CustomRecentContext): Promise<
     return;
   }
   if (choice.action === "new") {
-    notifyLaunch(ctx, launchNewChat(choice.group, ctx.cwd || homedir()), "new chat");
+    notifyLaunch(ctx, await launchNewChat(choice.group, ctx.cwd || homedir()), "new chat");
     return;
   }
-  notifyLaunch(ctx, launchSession(choice.session, ctx.cwd || homedir()), "chat");
+  notifyLaunch(ctx, await launchSession(choice.session, ctx.cwd || homedir()), "chat");
 }
 
 async function openRecentSessions(pi: ExtensionAPI, ctx: CustomRecentContext): Promise<void> {
@@ -167,7 +167,7 @@ async function openRecentSessions(pi: ExtensionAPI, ctx: CustomRecentContext): P
       if (!picked) return;
       if (picked === BACK_CHOICE) break;
       if (picked === NEW_CHAT_CHOICE) {
-        notifyLaunch(ctx, launchNewChat(group, ctx.cwd || homedir()), "new chat");
+        notifyLaunch(ctx, await launchNewChat(group, ctx.cwd || homedir()), "new chat");
         return;
       }
 
