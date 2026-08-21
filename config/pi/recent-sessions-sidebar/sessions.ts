@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, write
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { SessionManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { acquireDirectoryLock } from "./maintenance-lock.ts";
 import { run } from "./shell.ts";
 import type { ProjectInfo, RecentContext, SessionGroup, SessionInfo, SessionRow } from "./types.ts";
 
@@ -202,6 +203,7 @@ export async function pickGroup(ctx: RecentContext): Promise<SessionGroup | unde
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TRASH_ROOT = join(homedir(), ".pi", "agent", "session-trash");
 const MAINTENANCE_MARKER = join(TRASH_ROOT, ".last-maintenance");
+const MAINTENANCE_LOCK = join(TRASH_ROOT, ".maintenance-lock");
 
 function positiveNumber(name: string, fallback: number): number {
   const value = Number(process.env[name]);
@@ -259,16 +261,20 @@ function purgeExpiredTrash(now: number): number {
   let purged = 0;
 
   for (const project of readdirSync(TRASH_ROOT, { withFileTypes: true })) {
-    if (!project.isDirectory()) continue;
+    if (!project.isDirectory() || project.name === ".maintenance-lock") continue;
     const projectPath = join(TRASH_ROOT, project.name);
-    for (const entry of readdirSync(projectPath, { withFileTypes: true })) {
-      if (!entry.isFile()) continue;
-      const trashedAt = Number(entry.name.match(/^(\d+)--/)?.[1]);
-      if (!Number.isFinite(trashedAt) || now - trashedAt < retentionPolicy.trashRetentionMs) continue;
-      rmSync(join(projectPath, entry.name), { force: true });
-      purged++;
+    try {
+      for (const entry of readdirSync(projectPath, { withFileTypes: true })) {
+        if (!entry.isFile()) continue;
+        const trashedAt = Number(entry.name.match(/^(\d+)--/)?.[1]);
+        if (!Number.isFinite(trashedAt) || now - trashedAt < retentionPolicy.trashRetentionMs) continue;
+        rmSync(join(projectPath, entry.name), { force: true });
+        purged++;
+      }
+      if (readdirSync(projectPath).length === 0) rmSync(projectPath, { recursive: true, force: true });
+    } catch {
+      // External cleanup may remove a trash directory between scans.
     }
-    if (readdirSync(projectPath).length === 0) rmSync(projectPath, { recursive: true, force: true });
   }
 
   return purged;
@@ -338,13 +344,18 @@ function archiveExcess(groups: SessionGroup[], current: string | undefined, now:
 /** Run at most daily unless forced. Limits are soft when protected sessions alone exceed them. */
 export async function enforceRetention(current?: string, force = false): Promise<RetentionResult | undefined> {
   const now = Date.now();
-  if (!force && !maintenanceDue(now)) return undefined;
-
   mkdirSync(TRASH_ROOT, { recursive: true });
-  // Claim today's maintenance before scanning so concurrently opened pi windows back off.
-  writeFileSync(MAINTENANCE_MARKER, new Date(now).toISOString());
+  const releaseLock = acquireDirectoryLock(MAINTENANCE_LOCK, now);
+  if (!releaseLock) return undefined;
 
-  const purged = purgeExpiredTrash(now);
-  const groups = await loadGroups(current);
-  return { ...archiveExcess(groups, current, now), purged };
+  try {
+    if (!force && !maintenanceDue(now)) return undefined;
+    writeFileSync(MAINTENANCE_MARKER, new Date(now).toISOString());
+
+    const purged = purgeExpiredTrash(now);
+    const groups = await loadGroups(current);
+    return { ...archiveExcess(groups, current, now), purged };
+  } finally {
+    releaseLock();
+  }
 }
