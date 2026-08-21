@@ -258,7 +258,7 @@ check_fast() {
   if cmp -s "$flake_dir/flake.lock" "$updated_lock"; then
     clear_ready fast
     record_check fast
-    printf 'Codex, Pi, and Claude are up to date.\n'
+    printf 'Codex, Pi, Claude, and T3 Code are up to date.\n'
     return 0
   fi
 

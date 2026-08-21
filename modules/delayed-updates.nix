@@ -90,7 +90,7 @@ in
   systemd = {
     services = {
       nixos-update-fast = prepareService {
-        description = "Check and build immediate updates for Codex, Pi, and Claude";
+        description = "Check and build immediate updates for Codex, Pi, Claude, and T3 Code";
         command = "check-fast auto";
         autoApply = "nixos-update-auto-apply-fast.service";
         acOnly = true;
@@ -112,7 +112,7 @@ in
 
       # Manual staging commands intentionally omit OnSuccess.
       nixos-update-check-apps = prepareService {
-        description = "Stage nixpkgs-unstable updates for Codex, Pi, and Claude";
+        description = "Stage nixpkgs-unstable updates for Codex, Pi, Claude, and T3 Code";
         command = "check-fast manual";
       };
 

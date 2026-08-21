@@ -79,6 +79,7 @@
             "claude-code"
             "codex"
             "pi-coding-agent"
+            "t3code"
           ];
       };
       connectParityProbe = inputs.nm-daemon.packages.${system}.connectParityProbe;

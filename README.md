@@ -32,7 +32,7 @@ nix flake check /etc/nixos
 
 The updater has two independent lanes:
 
-- `nixpkgs-unstable`, which supplies Codex, Pi, and Claude, is checked every six hours and has no quarantine.
+- `nixpkgs-unstable`, which supplies Codex, Pi, Claude, and T3 Code, is checked every six hours and has no quarantine.
 - Remote root inputs other than `nixpkgs-unstable` are checked daily. The first discovered lock snapshot is frozen for three days before it may be built and applied. New upstream changes do not restart that clock.
 - Machine-local `git+file` development inputs are manual-only. Advance a specific one with `nix flake update <input>`, review its lock diff, then run `rebuild`.
 

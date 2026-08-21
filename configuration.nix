@@ -155,7 +155,6 @@ in
     # The patched tuigreet above filters PAM's instructional fingerprint text.
     fprintd.enable = true;
     printing.enable = true;
-    flatpak.enable = true;
     # FIDO2/WebAuthn security key support for browser passkeys.
     udev.packages = [ pkgs.libfido2 ];
     blueman.enable = true;
@@ -314,6 +313,7 @@ in
     nwg-displays
     pavucontrol
     unstablePkgs.pi-coding-agent
+    unstablePkgs.t3code
     playerctl
     ripgrep
     slurp
