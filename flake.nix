@@ -136,6 +136,90 @@
                 ${self}/config/scripts/delayed-nixos-update.sh
               touch $out
             '';
+
+        generation-retention =
+          pkgs.runCommand "generation-retention-tests"
+            {
+              nativeBuildInputs = with pkgs; [
+                bash
+                coreutils
+                gawk
+              ];
+            }
+            ''
+              bash ${self}/config/scripts/tests/prune-nixos-generations.sh \
+                ${self}/config/scripts/prune-nixos-generations.sh
+              touch $out
+            '';
+
+        pi-extensions =
+          pkgs.runCommand "pi-extension-tests"
+            {
+              nativeBuildInputs = with pkgs; [
+                nodejs
+                typescript
+              ];
+            }
+            ''
+              cp -R ${self}/config/pi ./pi
+              chmod -R u+w ./pi
+
+              vendor=${unstablePkgs.pi-coding-agent}/lib/node_modules/pi-monorepo/node_modules
+              mkdir -p node_modules/@earendil-works
+              for entry in "$vendor"/*; do
+                name="$(basename "$entry")"
+                if [ "$name" != @earendil-works ]; then
+                  ln -s "$entry" "node_modules/$name"
+                fi
+              done
+              for entry in "$vendor/@earendil-works"/*; do
+                ln -s "$entry" "node_modules/@earendil-works/$(basename "$entry")"
+              done
+              ln -s ${unstablePkgs.pi-coding-agent}/lib/node_modules/pi-monorepo \
+                node_modules/@earendil-works/pi-coding-agent
+
+              tsc --project ./pi/tsconfig.json
+              node --experimental-strip-types --test ./pi/tests/*.test.ts
+              touch $out
+            '';
+
+        config-files =
+          pkgs.runCommand "desktop-config-tests"
+            {
+              nativeBuildInputs = with pkgs; [
+                lua
+                (python3.withPackages (pythonPackages: [ pythonPackages.json5 ]))
+              ];
+            }
+            ''
+              python - <<'PY'
+              import json
+              from pathlib import Path
+
+              import json5
+
+              root = Path("${self}/config")
+              for path in root.rglob("*.json"):
+                  with path.open(encoding="utf-8") as source:
+                      json.load(source)
+              for path in root.rglob("*.jsonc"):
+                  with path.open(encoding="utf-8") as source:
+                      json5.load(source)
+              PY
+
+              cp -R ${self}/config/hypr ./hypr
+              chmod -R u+w ./hypr
+              substituteInPlace ./hypr/hyprland.lua \
+                --replace-fail '@UWSM_APP@' '/bin/true' \
+                --replace-fail '@SCRATCHPAD@' '/bin/true' \
+                --replace-fail '@MONITOR_SCALE@' '1' \
+                --replace-fail '@RADIUS_INT@' '1' \
+                --replace-fail '@ACCENT_BARE@' '000000' \
+                --replace-fail '@BORDER_DIM_BARE@' '000000' \
+                --replace-fail '@HYPRLAND_ENV@' '-- generated environment'
+              find ./hypr -type f -name '*.lua' -exec luac -p {} +
+              touch $out
+            '';
       };
 
       packages.${system} = { inherit connectParityProbe; };
