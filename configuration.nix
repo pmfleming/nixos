@@ -45,6 +45,7 @@ let
     name = "rebuild";
     runtimeInputs = with pkgs; [
       git
+      jq
       nix
       nixos-rebuild
     ];

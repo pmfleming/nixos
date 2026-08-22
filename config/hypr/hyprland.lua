@@ -137,6 +137,7 @@ hl.window_rule({
 -- Applications and session actions
 hl.bind("SUPER + RETURN", hl.dsp.exec_cmd(app(terminal)))
 hl.bind("SUPER + SPACE", hl.dsp.exec_cmd("shelllist applications toggle"))
+hl.bind("SUPER + A", hl.dsp.global("shelllist:activity"))
 hl.bind("SUPER + W", hl.dsp.exec_cmd(app(browser)))
 hl.bind("SUPER + B", hl.dsp.exec_cmd("shelllist bluetooth toggle"))
 hl.bind("SUPER + E", hl.dsp.exec_cmd(app("ghostty --class=com.laufan.yazi -e yazi")))

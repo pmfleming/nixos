@@ -18,7 +18,7 @@ sudo nixos-rebuild switch --flake /etc/nixos#thinkpad
 
 Home Manager is integrated as a NixOS module, so home changes in `home.nix` are applied by the same rebuild.
 
-`rebuild` first rejects untracked Nix files, advances every machine-local `git+file` input to its committed branch head, then runs the complete flake checks before switching. Extra arguments are passed to `nixos-rebuild`.
+`rebuild` first rejects untracked Nix files, discovers every root `git+file` input from `flake.lock`, verifies that the set exactly matches `machine.localProjects`, and advances all of them to their committed branch heads. It then runs the complete flake checks, switches the NixOS and integrated Home Manager generations, and force-restarts Shelllist plus `app-daemon`, `bar-daemon`, `bt-daemon`, `clip-daemon`, and `nm-daemon` when the graphical session is active. This explicit restart is intentional: Home Manager normally restarts only units whose unit files changed. Extra arguments are passed to `nixos-rebuild`.
 
 ## Validate Changes
 

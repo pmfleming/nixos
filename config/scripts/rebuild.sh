@@ -2,7 +2,15 @@ set -euo pipefail
 
 flake_dir=@CONFIG_DIRECTORY@
 flake_attr=@FLAKE_ATTR@
-local_inputs=( @LOCAL_INPUTS@ )
+configured_local_inputs=( @LOCAL_INPUTS@ )
+shelllist_daemons=(
+  app-daemon.service
+  bar-daemon.service
+  bt-daemon.service
+  clip-daemon.service
+  nm-daemon.service
+)
+shelllist_units=( "${shelllist_daemons[@]}" shelllist.service )
 
 cd "$flake_dir"
 mapfile -d '' -t untracked_nix < <(
@@ -15,8 +23,66 @@ if ((${#untracked_nix[@]})); then
   exit 1
 fi
 
-printf 'Updating machine-local flake inputs: %s\n' "${local_inputs[*]}"
+# Add newly declared inputs without advancing anything, then derive the local
+# git input set from the lock itself. The configured list is also used by the
+# automatic updater, so refuse to continue if the two sets ever drift apart.
+nix flake lock "$flake_dir"
+mapfile -t local_inputs < <(
+  jq -r '
+    .nodes as $nodes
+    | $nodes.root.inputs
+    | to_entries[]
+    | select(.value | type == "string")
+    | select($nodes[.value].original.type == "git")
+    | select($nodes[.value].original.url | startswith("file:"))
+    | .key
+  ' "$flake_dir/flake.lock"
+)
+
+declare -A undiscovered_inputs=()
+for input in "${configured_local_inputs[@]}"; do
+  undiscovered_inputs["$input"]=1
+done
+for input in "${local_inputs[@]}"; do
+  if [[ ! -v "undiscovered_inputs[$input]" ]]; then
+    printf 'Local git input %q is missing from machine.localProjects.\n' "$input" >&2
+    exit 1
+  fi
+  unset 'undiscovered_inputs[$input]'
+done
+if ((${#undiscovered_inputs[@]})); then
+  printf 'Configured local input is not a root git+file input: %s\n' \
+    "${!undiscovered_inputs[*]}" >&2
+  exit 1
+fi
+if ((${#local_inputs[@]} == 0)); then
+  printf 'No machine-local git flake inputs were discovered.\n' >&2
+  exit 1
+fi
+
+printf 'Updating every machine-local git flake input: %s\n' "${local_inputs[*]}"
 nix flake update "${local_inputs[@]}" --flake "$flake_dir"
 
 nix flake check "$flake_dir"
 /run/wrappers/bin/sudo nixos-rebuild switch --flake "$flake_dir#$flake_attr" "$@"
+
+# If D-Bus has activated Shelllist's privileged helper, move that process to
+# the new package too. An inactive helper remains D-Bus activated.
+if /run/wrappers/bin/sudo systemctl --quiet is-active bar-battery-helper.service; then
+  /run/wrappers/bin/sudo systemctl restart bar-battery-helper.service
+fi
+
+# Home Manager's sd-switch restarts only changed units. Force the whole
+# Shelllist process graph onto the new generation even when a unit file itself
+# did not change (for example, after only a followed local input advanced).
+if systemctl --user --quiet is-active graphical-session.target; then
+  printf 'Restarting Shelllist and all of its local daemons...\n'
+  systemctl --user daemon-reload
+  systemctl --user stop shelllist.service
+  systemctl --user restart "${shelllist_daemons[@]}"
+  systemctl --user start shelllist.service
+  systemctl --user --quiet is-active "${shelllist_units[@]}"
+  printf 'Shelllist stack is active on the new generation.\n'
+else
+  printf 'No active graphical user session; Shelllist will start fresh at next login.\n'
+fi
