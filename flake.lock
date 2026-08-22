@@ -432,11 +432,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787404945,
-        "narHash": "sha256-SrRQR1mLowwPV5fBQ7vljWlsRod9QOWir2mWGgsjCc4=",
+        "lastModified": 1787435486,
+        "narHash": "sha256-R4bs2ajWbUzwIMU4jBWRTX2maClsaMkcqzgCXrBJNJw=",
         "ref": "main",
-        "rev": "1c0c931530a053afdad31e17aefb5710d3c2bec1",
-        "revCount": 238,
+        "rev": "7d9b5b1d3a46ed923c914860ed4ff8603014a502",
+        "revCount": 243,
         "type": "git",
         "url": "file:///home/laufan/Projects/shelllist"
       },

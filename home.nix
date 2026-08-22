@@ -510,13 +510,23 @@ in
     };
   };
 
-  # Keep activation open briefly so a newly restarted graphical service that
-  # crashes immediately makes the rebuild fail instead of silently disappearing.
-  systemd.user.servicesStartTimeoutMs = 5000;
+  # Keep activation bounded so a newly restarted graphical service that crashes
+  # makes the rebuild fail instead of silently disappearing. Leave enough
+  # headroom for unit-stop and sd-switch D-Bus bookkeeping.
+  systemd.user.servicesStartTimeoutMs = 60000;
 
   systemd.user.services = {
-    shelllist.Service.Slice = "session-graphical.slice";
-    bar-daemon.Service.Slice = "session-graphical.slice";
+    shelllist.Service = {
+      Slice = "session-graphical.slice";
+      TimeoutStopSec = "5s";
+    };
+    # A blocked PipeWire worker can prevent bar-daemon's Tokio runtime from
+    # completing shutdown after SIGTERM. Do not let that strand Home Manager's
+    # unit transaction and leave Shelllist stopped after a generation switch.
+    bar-daemon.Service = {
+      Slice = "session-graphical.slice";
+      TimeoutStopSec = "5s";
+    };
 
     hyprpaper = mkUserService {
       description = "Hyprland wallpaper service";

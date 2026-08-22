@@ -64,25 +64,47 @@ printf 'Updating every machine-local git flake input: %s\n' "${local_inputs[*]}"
 nix flake update "${local_inputs[@]}" --flake "$flake_dir"
 
 nix flake check "$flake_dir"
-/run/wrappers/bin/sudo nixos-rebuild switch --flake "$flake_dir#$flake_attr" "$@"
+
+# A failed Home Manager unit transaction can still leave the new generation
+# linked while some graphical units are stopped. Preserve the switch status,
+# but always run the Shelllist recovery below after switch-to-configuration.
+switch_status=0
+if /run/wrappers/bin/sudo nixos-rebuild switch --flake "$flake_dir#$flake_attr" "$@"; then
+  :
+else
+  switch_status=$?
+  printf 'The generation switch failed; attempting Shelllist recovery.\n' >&2
+fi
 
 # If D-Bus has activated Shelllist's privileged helper, move that process to
 # the new package too. An inactive helper remains D-Bus activated.
 if /run/wrappers/bin/sudo systemctl --quiet is-active bar-battery-helper.service; then
-  /run/wrappers/bin/sudo systemctl restart bar-battery-helper.service
+  /run/wrappers/bin/sudo systemctl restart bar-battery-helper.service || true
 fi
 
 # Home Manager's sd-switch restarts only changed units. Force the whole
 # Shelllist process graph onto the new generation even when a unit file itself
 # did not change (for example, after only a followed local input advanced).
+stack_status=0
 if systemctl --user --quiet is-active graphical-session.target; then
   printf 'Restarting Shelllist and all of its local daemons...\n'
-  systemctl --user daemon-reload
-  systemctl --user stop shelllist.service
-  systemctl --user restart "${shelllist_daemons[@]}"
-  systemctl --user start shelllist.service
-  systemctl --user --quiet is-active "${shelllist_units[@]}"
-  printf 'Shelllist stack is active on the new generation.\n'
+  if systemctl --user daemon-reload \
+    && systemctl --user stop shelllist.service \
+    && systemctl --user restart "${shelllist_daemons[@]}" \
+    && systemctl --user start shelllist.service \
+    && systemctl --user --quiet is-active "${shelllist_units[@]}"; then
+    printf 'Shelllist stack is active on the new generation.\n'
+  else
+    stack_status=$?
+    printf 'Shelllist recovery failed; inspect its user units.\n' >&2
+  fi
 else
   printf 'No active graphical user session; Shelllist will start fresh at next login.\n'
+fi
+
+if ((switch_status != 0)); then
+  exit "$switch_status"
+fi
+if ((stack_status != 0)); then
+  exit "$stack_status"
 fi
