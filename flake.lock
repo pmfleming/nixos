@@ -7,11 +7,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787314197,
-        "narHash": "sha256-+eaShDUpFqMF50bfaY8vGqDaMtPqbj2Yumbo128/+E4=",
+        "lastModified": 1787353375,
+        "narHash": "sha256-7FY88q54EgtsOyu07gTbDCUNYUUFMXcX+W40XeVtQ4Q=",
         "ref": "main",
-        "rev": "167e2101fd64dcf0c5d0ce37689492c4dcea729a",
-        "revCount": 30,
+        "rev": "4522b2dd17e53ee0cff992666e0cbee03f2c558a",
+        "revCount": 32,
         "type": "git",
         "url": "file:///home/laufan/Projects/app-daemon"
       },
@@ -61,11 +61,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787320102,
-        "narHash": "sha256-VLgyuMX7gwVzz+dUMaNo+Vf1cJDHazL75Quw8wdAcSo=",
+        "lastModified": 1787389802,
+        "narHash": "sha256-52doIA+07nOsBydM/nGTit7UH3rAT/N+7LNRtbc8dlQ=",
         "ref": "main",
-        "rev": "a59ebafbab9c9a1620d0c481d5b68f4b9e3091d2",
-        "revCount": 36,
+        "rev": "443ed5ed4db3806f987f1701c9b24c23033d6fb4",
+        "revCount": 56,
         "type": "git",
         "url": "file:///home/laufan/Projects/bar-daemon"
       },
@@ -396,11 +396,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787227151,
-        "narHash": "sha256-WH8V1yaWfTXLU6LUiqFWSqzOftO0RKhakrisbcQeaf8=",
+        "lastModified": 1787355711,
+        "narHash": "sha256-rG8Zc9QmpAWyIV+cvJLd10A1bx/UCi/GmCvtRARIQBI=",
         "ref": "master",
-        "rev": "d541f07fcdf524561106a97872c5f9c763fbe243",
-        "revCount": 156,
+        "rev": "191cc50af0346af9a75aa16847c54d71488a063e",
+        "revCount": 160,
         "type": "git",
         "url": "file:///home/laufan/Projects/scratchpad"
       },

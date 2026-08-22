@@ -136,6 +136,11 @@ in
 
   services = {
     automatic-timezoned.enable = true;
+    avahi = {
+      enable = true;
+      nssmdns4 = true;
+      openFirewall = true;
+    };
     # Automatic timezone detection only needs GeoClue's Wi-Fi provider. Disable
     # local-network NMEA discovery instead of warning about a missing Avahi daemon.
     geoclue2.enableNmea = false;
