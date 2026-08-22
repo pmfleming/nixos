@@ -12,6 +12,7 @@ let
   theme = import ./theme.nix { inherit lib; };
   mkScript = (import ./lib/scripts.nix).mkScriptFrom pkgs ./config/scripts;
   locale = "en_IE.UTF-8";
+  shelllistPackage = inputs.shelllist.packages.${pkgs.stdenv.hostPlatform.system}.default;
   unfreePackageNames = [
     "android-studio"
     "google-chrome"
@@ -72,6 +73,11 @@ in
   };
 
   nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) unfreePackageNames;
+
+  # Shelllist runs as a user service, but its privileged battery helper must be
+  # registered with the system D-Bus and systemd instances.
+  services.dbus.packages = [ shelllistPackage ];
+  systemd.packages = [ shelllistPackage ];
 
   # A clean manual flake switch is the approval boundary for unattended lock
   # updates. Staged automatic builds use a plain path flake without `self.rev`,
