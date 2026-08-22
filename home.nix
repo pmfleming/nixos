@@ -510,6 +510,10 @@ in
     };
   };
 
+  # Keep activation open briefly so a newly restarted graphical service that
+  # crashes immediately makes the rebuild fail instead of silently disappearing.
+  systemd.user.servicesStartTimeoutMs = 5000;
+
   systemd.user.services = {
     shelllist.Service.Slice = "session-graphical.slice";
     bar-daemon.Service.Slice = "session-graphical.slice";

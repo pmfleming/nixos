@@ -2,6 +2,7 @@ set -euo pipefail
 
 flake_dir=@CONFIG_DIRECTORY@
 flake_attr=@FLAKE_ATTR@
+local_inputs=( @LOCAL_INPUTS@ )
 
 cd "$flake_dir"
 mapfile -d '' -t untracked_nix < <(
@@ -13,6 +14,9 @@ if ((${#untracked_nix[@]})); then
   printf 'Add the files to Git before rebuilding.\n' >&2
   exit 1
 fi
+
+printf 'Updating machine-local flake inputs: %s\n' "${local_inputs[*]}"
+nix flake update "${local_inputs[@]}" --flake "$flake_dir"
 
 nix flake check "$flake_dir"
 /run/wrappers/bin/sudo nixos-rebuild switch --flake "$flake_dir#$flake_attr" "$@"

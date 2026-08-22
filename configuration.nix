@@ -50,6 +50,7 @@ let
     replacements = {
       "@CONFIG_DIRECTORY@" = machine.configDirectory;
       "@FLAKE_ATTR@" = machine.hostName;
+      "@LOCAL_INPUTS@" = lib.escapeShellArgs machine.localProjects;
     };
   };
 in
@@ -297,7 +298,7 @@ in
     bibata-cursors
     brightnessctl
     # AI coding agents track the immediate nixpkgs-unstable update lane. Other
-    # remote inputs are quarantined; machine-local inputs remain manual-only.
+    # remote inputs are quarantined; local inputs advance only through rebuild.
     unstablePkgs.claude-code
     curl
     fd

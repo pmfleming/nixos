@@ -18,7 +18,7 @@ sudo nixos-rebuild switch --flake /etc/nixos#thinkpad
 
 Home Manager is integrated as a NixOS module, so home changes in `home.nix` are applied by the same rebuild.
 
-`rebuild` first rejects untracked Nix files, then runs the complete flake checks before switching. Extra arguments are passed to `nixos-rebuild`.
+`rebuild` first rejects untracked Nix files, advances every machine-local `git+file` input to its committed branch head, then runs the complete flake checks before switching. Extra arguments are passed to `nixos-rebuild`.
 
 ## Validate Changes
 
@@ -34,7 +34,7 @@ The updater has two independent lanes:
 
 - `nixpkgs-unstable`, which supplies Codex, Pi, Claude, and T3 Code, is checked every six hours and has no quarantine.
 - Remote root inputs other than `nixpkgs-unstable` are checked daily. The first discovered lock snapshot is frozen for three days before it may be built and applied. New upstream changes do not restart that clock.
-- Machine-local `git+file` development inputs are manual-only. Advance a specific one with `nix flake update <input>`, review its lock diff, then run `rebuild`.
+- Scheduled update lanes never advance machine-local `git+file` development inputs. Every manual `rebuild` advances all of them together before validation; use `nix flake update <input>` only when intentionally staging one input without rebuilding yet.
 
 Both scheduled lanes run only on AC power. Persistent timers cover missed calendar runs, and a lightweight 15-minute catch-up timer retries overdue or previously blocked checks after AC power becomes available. Candidate discovery, `nix flake check`, the complete system build, and application all run as root so the trusted updater state remains root-owned. `/etc/gitconfig` trusts only the exact deployment and machine-local repositories needed to evaluate their pinned revisions.
 

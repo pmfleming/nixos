@@ -357,11 +357,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1786988817,
-        "narHash": "sha256-aWhvWg5l/geYzWOlBHU0xCpXFZQCr9T5H7WiW1iLX9E=",
+        "lastModified": 1787400617,
+        "narHash": "sha256-wKgJNkNZvoM4D6iDGuabyy0VsCpWGyqfGetukI9dSu8=",
         "ref": "main",
-        "rev": "83994b0fbf8e2e98330e99fc7b907dd77e8a1b44",
-        "revCount": 60,
+        "rev": "3be47a4c601d540ef94f8ac2bbaf2ff33fd685e3",
+        "revCount": 76,
         "type": "git",
         "url": "file:///home/laufan/Projects/nm-daemon"
       },
@@ -432,11 +432,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787321464,
-        "narHash": "sha256-XMuhFVL8cnG485OUcK98lFNH0fRgkPrB7AX4K086uJQ=",
+        "lastModified": 1787401905,
+        "narHash": "sha256-ypqmkxyM9BUecSLiK79/RNl5RU1zSQbLm+L3kN+kj5I=",
         "ref": "main",
-        "rev": "dda6d193ae2a7b201b9a8af71d2fef17a8d5b1ed",
-        "revCount": 213,
+        "rev": "b3253fbdf81cc81584401a27c63e623e331efb1e",
+        "revCount": 237,
         "type": "git",
         "url": "file:///home/laufan/Projects/shelllist"
       },
@@ -488,11 +488,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1784239364,
-        "narHash": "sha256-yebVmDS1e24CPCoSJGxyHre1uyD2kecabAHUYmTYn9E=",
+        "lastModified": 1787399148,
+        "narHash": "sha256-HP8ua41/c50pNQf0OFssUgvr0j7djBy3TfsA4/6zy7o=",
         "ref": "main",
-        "rev": "4e1bc5544af5c931ac42c8cc9cc5ef9c495e80ce",
-        "revCount": 6,
+        "rev": "aebb62caf02228cca074f726bc4ba8e772ee3d6d",
+        "revCount": 22,
         "type": "git",
         "url": "file:///home/laufan/Projects/ts-react-quality-lens"
       },
