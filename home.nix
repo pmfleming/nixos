@@ -330,6 +330,46 @@ in
         Slice=background-graphical.slice
       '';
       "hypr/hyprland.lua".text = hyprlandConfig;
+      "bar-daemon/activity.json".text = builtins.toJSON {
+        weather_locations = [
+          {
+            id = "home";
+            location = "Amsterdam";
+            home = true;
+            latitude = 52.3676;
+            longitude = 4.9041;
+            timezone = "Europe/Amsterdam";
+          }
+          {
+            id = "dublin";
+            location = "Dublin";
+            latitude = 53.3498;
+            longitude = -6.2603;
+            timezone = "Europe/Dublin";
+          }
+          {
+            id = "oklahoma-city";
+            location = "Oklahoma City";
+            latitude = 35.4676;
+            longitude = -97.5164;
+            timezone = "America/Chicago";
+          }
+          {
+            id = "hangzhou";
+            location = "Hangzhou";
+            latitude = 30.2741;
+            longitude = 120.1551;
+            timezone = "Asia/Shanghai";
+          }
+          {
+            id = "taipei";
+            location = "Taipei";
+            latitude = 25.033;
+            longitude = 121.5654;
+            timezone = "Asia/Taipei";
+          }
+        ];
+      };
       # Keep generated layouts writable and version-controlled.
       "hypr/monitors.lua" = writableConfig "hypr/monitors.lua";
       "hypr/workspaces.lua" = writableConfig "hypr/workspaces.lua";
