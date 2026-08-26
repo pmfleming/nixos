@@ -215,8 +215,7 @@
                 --replace-fail '@MONITOR_SCALE@' '1' \
                 --replace-fail '@RADIUS_INT@' '1' \
                 --replace-fail '@ACCENT_BARE@' '000000' \
-                --replace-fail '@BORDER_DIM_BARE@' '000000' \
-                --replace-fail '@HYPRLAND_ENV@' '-- generated environment'
+                --replace-fail '@BORDER_DIM_BARE@' '000000'
               find ./hypr -type f -name '*.lua' -exec luac -p {} +
               touch $out
             '';

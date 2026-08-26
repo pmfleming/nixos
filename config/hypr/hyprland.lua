@@ -22,11 +22,9 @@ hl.monitor({
 require("monitors")
 require("workspaces")
 
-@HYPRLAND_ENV@
-
--- UWSM owns the graphical-session targets and environment export. Long-lived
--- session components are declarative user services; only this regular app is
--- launched from the compositor.
+-- UWSM owns the graphical-session targets and loads the shared session
+-- environment. Long-lived session components are declarative user services;
+-- only this regular app is launched from the compositor.
 hl.on("hyprland.start", function()
     -- Start Scratchpad silently on its dedicated fifth workspace. Shelllist
     -- supplies the workspace's Scratchpad icon.

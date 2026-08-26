@@ -30,7 +30,7 @@ let
     wallpaper
     ;
 
-  hyprlandSessionVariables = {
+  uwsmEnvironment = {
     GTK_THEME = theme.appearance.gtkThemeEnv;
     QT_QPA_PLATFORM = "wayland;xcb";
     QT_QPA_PLATFORMTHEME = theme.appearance.qtPlatformTheme;
@@ -45,18 +45,15 @@ let
     SHELLLIST_SUCCESS = palette.success;
     SHELLLIST_WARNING = palette.warning;
     SHELLLIST_RADIUS = builtins.toString theme.ui.radiusInt;
-  };
-
-  hyprlandEnvVariables = hyprlandSessionVariables // {
     XCURSOR_SIZE = builtins.toString theme.appearance.cursorSize;
     HYPRCURSOR_SIZE = builtins.toString theme.appearance.cursorSize;
     NIXOS_OZONE_WL = "1";
   };
 
-  hyprlandEnvConfig = lib.concatStringsSep "\n" (
+  uwsmEnvConfig = lib.concatStringsSep "\n" (
     lib.mapAttrsToList (
-      name: value: "hl.env(${builtins.toJSON name}, ${builtins.toJSON (builtins.toString value)})"
-    ) hyprlandEnvVariables
+      name: value: "export ${name}=${lib.escapeShellArg (builtins.toString value)}"
+    ) uwsmEnvironment
   );
   uwsmApp = "${pkgs.uwsm}/bin/uwsm-app";
 
@@ -112,7 +109,6 @@ let
 
   hyprlandConfig = themeText (
     scriptWith {
-      "@HYPRLAND_ENV@" = hyprlandEnvConfig;
       "@SCRATCHPAD@" = "${scratchpad}/bin/scratchpad";
       "@UWSM_APP@" = uwsmApp;
     } ./config/hypr/hyprland.lua
@@ -191,10 +187,7 @@ in
   programs.shelllist = {
     enable = true;
     package = shelllist;
-    systemd = {
-      target = "graphical-session.target";
-      environment = lib.mapAttrs (_name: value: builtins.toString value) hyprlandSessionVariables;
-    };
+    systemd.target = "graphical-session.target";
   };
 
   home = {
@@ -307,6 +300,9 @@ in
       # network/Bluetooth controls own these interfaces instead of tray applets.
       "autostart/blueman.desktop" = hiddenAutostart;
       "autostart/nm-applet.desktop" = hiddenAutostart;
+      # UWSM sources this before starting the compositor and exports the values
+      # to the systemd and D-Bus activation environments for the whole session.
+      "uwsm/env".text = uwsmEnvConfig;
       # Install and enable the package-owned units instead of cloning their definitions.
       # Direct unit links keep them discoverable by systemctl; wants links enable them.
       "systemd/user/nm-daemon.service".source = "${nmDaemon}/share/systemd/user/nm-daemon.service";
