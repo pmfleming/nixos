@@ -13,6 +13,7 @@ fast_dir="$state_dir/fast"
 delayed_dir="$state_dir/delayed"
 applied_lock_hash="$state_dir/applied-lock-hash"
 approved_revision_file="$state_dir/approved-revision"
+approved_system_file="$state_dir/approved-system"
 transaction_dir="$state_dir/apply-transaction"
 update_lock_acquired=0
 temporary_dirs=()
@@ -23,6 +24,10 @@ git_at_flake() {
 
 hash_file() {
   sha256sum "$1" | cut -d ' ' -f 1
+}
+
+active_system_path() {
+  readlink -f "${NIXOS_UPDATE_ACTIVE_SYSTEM_LINK:-/run/current-system}" 2>/dev/null || true
 }
 
 make_temp_dir() {
@@ -128,10 +133,46 @@ write_approved_revision() {
   mv -f "$approved_revision_file.new" "$approved_revision_file"
 }
 
+write_approved_system() {
+  printf '%s\n' "$1" > "$approved_system_file.new"
+  chmod 0644 "$approved_system_file.new"
+  mv -f "$approved_system_file.new" "$approved_system_file"
+}
+
+approve_current() {
+  status="$(worktree_status)"
+  while IFS= read -r line; do
+    if [ -n "$line" ] && [ "${line:3}" != "flake.lock" ]; then
+      printf 'The successful rebuild is not an unattended-update approval because %s has non-lock changes:\n%s\n' \
+        "$flake_dir" "$status" >&2
+      return 1
+    fi
+  done <<< "$status"
+
+  current_system="$(active_system_path)"
+  if [ -z "$current_system" ] || [ ! -x "$current_system/bin/switch-to-configuration" ]; then
+    printf 'The active NixOS system cannot be recorded as an approved baseline.\n' >&2
+    return 1
+  fi
+
+  write_approved_revision "$(git_at_flake rev-parse --verify HEAD)"
+  write_approved_system "$current_system"
+  write_applied_lock_hash
+  clear_ready fast
+  clear_ready delayed
+  clear_delayed_queue
+  rm -rf "$transaction_dir" "$transaction_dir.new"
+  printf 'Approved revision, lock, and active system from the successful manual rebuild.\n'
+}
+
 require_approved_revision() {
   current_revision="$(git_at_flake rev-parse --verify HEAD)"
   approved_revision="$(cat "$approved_revision_file" 2>/dev/null || true)"
-  if [ "$current_revision" = "$approved_revision" ]; then
+  approved_system="$(cat "$approved_system_file" 2>/dev/null || true)"
+  active_system="$(active_system_path)"
+  if [ "$current_revision" = "$approved_revision" ] \
+    && [ -n "$approved_system" ] \
+    && [ "$active_system" = "$approved_system" ]; then
     return 0
   fi
 
@@ -139,6 +180,8 @@ require_approved_revision() {
   # live lock is already recorded by root, and all other files still match the
   # last manually approved revision.
   if [[ "$approved_revision" =~ ^[0-9a-f]{40,64}$ ]] \
+    && [ -n "$approved_system" ] \
+    && [ "$active_system" = "$approved_system" ] \
     && [ -f "$applied_lock_hash" ] \
     && [ "$(hash_file "$flake_dir/flake.lock")" = "$(cat "$applied_lock_hash")" ] \
     && git_at_flake cat-file -e "$approved_revision^{commit}" \
@@ -150,7 +193,7 @@ require_approved_revision() {
     return 0
   fi
 
-  printf '%s revision %s has not been approved by a successful manual rebuild.\n' \
+  printf '%s revision %s, active system, and lock do not match the last successful manual or automatic baseline.\n' \
     "$flake_dir" "$current_revision" >&2
   return 1
 }
@@ -217,9 +260,10 @@ build_ready() {
 
   cp "$candidate_lock" "$staged_flake/flake.lock"
   nix flake check "path:$staged_flake" --no-update-lock-file
-  rm -f "$target_dir/system.new"
+  # Keep the stable out-link pathname registered as the indirect GC root. Nix
+  # replaces it only after the complete system build succeeds.
   nix build \
-    --out-link "$target_dir/system.new" \
+    --out-link "$target_dir/system" \
     "path:$staged_flake#nixosConfigurations.$flake_attr.config.system.build.toplevel"
 
   cp "$candidate_lock" "$target_dir/ready-flake.lock.new"
@@ -231,7 +275,6 @@ build_ready() {
     "$target_dir/ready-revision.new" \
     "$target_dir/ready-base-hash.new" \
     "$target_dir/ready-created-at.new"
-  mv -Tf "$target_dir/system.new" "$target_dir/system"
   mv -f "$target_dir/ready-flake.lock.new" "$target_dir/ready-flake.lock"
   mv -f "$target_dir/ready-revision.new" "$target_dir/ready-revision"
   mv -f "$target_dir/ready-base-hash.new" "$target_dir/ready-base-hash"
@@ -477,6 +520,8 @@ finish_transaction() {
   fi
 
   write_applied_lock_hash
+  write_approved_revision "$(git_at_flake rev-parse --verify HEAD)"
+  write_approved_system "$(cat "$transaction_dir/candidate-system")"
   clear_ready "$lane"
   if [ "$lane" = delayed ]; then
     clear_delayed_queue
@@ -516,7 +561,7 @@ rollback_transaction() {
     if ! nix-env --profile /nix/var/nix/profiles/system --set "$original_system"; then
       return 1
     fi
-    if ! "$original_system/bin/switch-to-configuration" switch; then
+    if ! "$original_system/bin/switch-to-configuration" boot; then
       return 1
     fi
   fi
@@ -637,14 +682,19 @@ apply_lane() {
   fi
   write_transaction_phase profile-installed
 
-  if ! "$expected_system/bin/switch-to-configuration" switch; then
-    printf 'Activating the %s-lane system failed; restoring the previous system.\n' "$lane" >&2
+  if ! "$expected_system/bin/switch-to-configuration" boot; then
+    printf 'Staging the %s-lane system for boot failed; restoring the previous boot target.\n' "$lane" >&2
     rollback_transaction
     return 1
   fi
   write_transaction_phase switched
   finish_transaction
-  printf 'Applied the checked %s-lane update successfully.\n' "$lane"
+  printf 'Installed the checked %s-lane update for the next boot; the active desktop was not switched.\n' "$lane"
+}
+
+run_delayed() {
+  check_delayed auto
+  apply_lane delayed auto
 }
 
 catch_up() {
@@ -673,11 +723,16 @@ main() {
     return 0
   fi
   update_lock_acquired=1
+  if [ "${1:-catch-up}" = approve-current ]; then
+    approve_current
+    return
+  fi
   recover_transaction
 
   case "${1:-catch-up}" in
     check-fast) check_fast "${2:-manual}" ;;
     check-delayed) check_delayed "${2:-manual}" ;;
+    run-delayed) run_delayed ;;
     catch-up) catch_up ;;
     apply-auto-fast) apply_lane fast auto ;;
     apply-auto-delayed) apply_lane delayed auto ;;
@@ -686,7 +741,7 @@ main() {
     apply-delayed) apply_lane delayed manual ;;
     apply-ready) apply_ready manual ;;
     *)
-      printf 'Usage: %s check-fast [auto|manual] | check-delayed [auto|manual] | catch-up | apply-auto-fast | apply-auto-delayed | apply-auto | apply-fast | apply-delayed | apply-ready\n' "$0" >&2
+      printf 'Usage: %s approve-current | check-fast [auto|manual] | check-delayed [auto|manual] | run-delayed | catch-up | apply-auto-fast | apply-auto-delayed | apply-auto | apply-fast | apply-delayed | apply-ready\n' "$0" >&2
       return 2
       ;;
   esac

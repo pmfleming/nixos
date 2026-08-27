@@ -83,6 +83,16 @@
           ];
       };
       connectParityProbe = inputs.nm-daemon.packages.${system}.connectParityProbe;
+      aiTools = pkgs.buildEnv {
+        name = "ai-coding-tools";
+        paths = with unstablePkgs; [
+          claude-code
+          codex
+          pi-coding-agent
+          t3code
+        ];
+        pathsToLink = [ "/bin" ];
+      };
       specialArgs = { inherit inputs machine unstablePkgs; };
       homeManagerModule = {
         home-manager = {
@@ -134,6 +144,21 @@
             ''
               bash ${self}/config/scripts/tests/delayed-nixos-update.sh \
                 ${self}/config/scripts/delayed-nixos-update.sh
+              touch $out
+            '';
+
+        ai-tools-updater-state =
+          pkgs.runCommand "ai-tools-updater-state-tests"
+            {
+              nativeBuildInputs = with pkgs; [
+                bash
+                coreutils
+                jq
+              ];
+            }
+            ''
+              bash ${self}/config/scripts/tests/update-ai-tools.sh \
+                ${self}/config/scripts/update-ai-tools.sh
               touch $out
             '';
 
@@ -221,7 +246,9 @@
             '';
       };
 
-      packages.${system} = { inherit connectParityProbe; };
+      packages.${system} = {
+        inherit aiTools connectParityProbe;
+      };
 
       apps.${system}.connectParityProbe = {
         type = "app";

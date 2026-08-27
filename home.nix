@@ -207,7 +207,8 @@ in
       tsReactQualityLens
       zenBrowser
       pkgs.inkscape
-      # The fast lane keeps this package current independently of other inputs.
+      # Bootstrap fallback; /var/lib/nixos-ai-tools/current/bin shadows it
+      # after the independent frequently updated profile has completed once.
       unstablePkgs.codex
     ]
     ++ (with pkgs; [
@@ -228,7 +229,10 @@ in
       EDITOR = "nvim";
       VISUAL = "code --wait";
     };
-    sessionPath = [ "$HOME/.local/bin" ];
+    sessionPath = [
+      "/var/lib/nixos-ai-tools/current/bin"
+      "$HOME/.local/bin"
+    ];
 
     pointerCursor = {
       name = theme.appearance.cursorTheme;

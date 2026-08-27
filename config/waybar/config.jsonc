@@ -44,11 +44,11 @@
   "custom/updates": {
     "interval": "once",
     "signal": 8,
-    "exec": "state=/var/lib/nixos-delayed-updates-v2; for lane in fast delayed; do test -f \"$state/$lane/ready-flake.lock\" && test -f \"$state/$lane/ready-revision\" && test -f \"$state/$lane/ready-base-hash\" && test -L \"$state/$lane/system\" && echo 󰚰 && break; done; true",
+    "exec": "state=/var/lib/nixos-delayed-updates-v2/delayed; test -f \"$state/ready-flake.lock\" && test -f \"$state/ready-revision\" && test -f \"$state/ready-base-hash\" && test -L \"$state/system\" && echo 󰚰; true",
     "format": "{}",
     "tooltip": true,
-    "tooltip-format": "A checked and built NixOS update is waiting for automatic safety or manual approval",
-    "on-click": "uwsm-app -- ghostty -e bash -lc 'journalctl -u nixos-update-fast.service -u nixos-update-delayed.service -u delayed-nixos-update.service -n 100 --no-pager; read -r -p \"Press enter to close\"'"
+    "tooltip-format": "A checked NixOS update is ready to be staged for the next boot",
+    "on-click": "uwsm-app -- ghostty -e bash -lc 'journalctl -u nixos-ai-tools-update.service -u nixos-update-delayed.service -n 100 --no-pager; read -r -p \"Press enter to close\"'"
   },
   "tray": {
     "icon-size": 18,

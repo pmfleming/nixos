@@ -108,3 +108,13 @@ fi
 if ((stack_status != 0)); then
   exit "$stack_status"
 fi
+
+# Approval is based on the exact committed configuration revision, resulting
+# lock hash, and active system path. Local project commits may remain unpushed;
+# only unrelated uncommitted files in /etc/nixos prevent unattended updates.
+if /run/wrappers/bin/sudo systemctl start --wait nixos-update-approve-baseline.service; then
+  printf 'Recorded this successful rebuild as the unattended-update baseline.\n'
+else
+  printf 'The rebuild succeeded, but unattended NixOS updates remain paused; inspect nixos-update-approve-baseline.service.\n' >&2
+  /run/wrappers/bin/sudo systemctl reset-failed nixos-update-approve-baseline.service || true
+fi

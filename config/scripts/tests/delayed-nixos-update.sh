@@ -6,6 +6,7 @@ trap 'rm -rf "$test_root"' EXIT
 
 export NIXOS_UPDATE_FLAKE_DIR="$test_root/flake"
 export NIXOS_UPDATE_STATE_DIR="$test_root/state"
+export NIXOS_UPDATE_ACTIVE_SYSTEM_LINK="$test_root/active-system-link"
 export NIXOS_UPDATE_LIB_ONLY=1
 export NIXOS_UPDATE_MANUAL_INPUTS=shelllist
 
@@ -17,11 +18,15 @@ test_fast_dir=$NIXOS_UPDATE_STATE_DIR/fast
 test_delayed_dir=$NIXOS_UPDATE_STATE_DIR/delayed
 test_applied_lock_hash=$NIXOS_UPDATE_STATE_DIR/applied-lock-hash
 test_approved_revision=$NIXOS_UPDATE_STATE_DIR/approved-revision
+test_approved_system=$NIXOS_UPDATE_STATE_DIR/approved-system
 test_transaction_dir=$NIXOS_UPDATE_STATE_DIR/apply-transaction
 test_fast_input=nixpkgs-unstable
 staged_flake=
 
-mkdir -p "$test_flake_dir" "$test_fast_dir" "$test_delayed_dir"
+mkdir -p "$test_flake_dir" "$test_fast_dir" "$test_delayed_dir" "$test_root/initial-system/bin"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$test_root/initial-system/bin/switch-to-configuration"
+chmod +x "$test_root/initial-system/bin/switch-to-configuration"
+ln -s "$test_root/initial-system" "$NIXOS_UPDATE_ACTIVE_SYSTEM_LINK"
 git -C "$test_flake_dir" init -q
 git -C "$test_flake_dir" config user.email updater-test@example.invalid
 git -C "$test_flake_dir" config user.name updater-test
@@ -39,7 +44,10 @@ printf '%s\n' '{
 printf 'test\n' > "$test_flake_dir/README.md"
 git -C "$test_flake_dir" add flake.lock README.md
 git -C "$test_flake_dir" commit -qm initial
-git -C "$test_flake_dir" rev-parse HEAD > "$test_approved_revision"
+approve_current
+[ "$(cat "$test_approved_revision")" = "$(git -C "$test_flake_dir" rev-parse HEAD)" ]
+[ "$(cat "$test_approved_system")" = "$test_root/initial-system" ]
+[ "$(cat "$test_applied_lock_hash")" = "$(hash_file "$test_flake_dir/flake.lock")" ]
 
 require_approved_revision
 mapfile -t automatic_delayed_inputs < <(delayed_root_inputs "$test_flake_dir/flake.lock")
@@ -139,7 +147,10 @@ nix() {
 
 mock_verified_system="$test_root/verified-system"
 mkdir -p "$mock_verified_system/bin"
-printf '#!/usr/bin/env bash\nexit 0\n' > "$mock_verified_system/bin/switch-to-configuration"
+cat > "$mock_verified_system/bin/switch-to-configuration" <<EOF
+#!$(command -v bash)
+printf '%s\\n' "\$1" > "$test_root/switch-operation"
+EOF
 chmod +x "$mock_verified_system/bin/switch-to-configuration"
 cp "$test_flake_dir/flake.lock" "$test_fast_dir/ready-flake.lock"
 ln -s "$mock_verified_system" "$test_fast_dir/system"
@@ -151,6 +162,21 @@ if verify_candidate_system fast; then
   exit 1
 fi
 clear_ready fast
+
+# Automatic NixOS application must only prepare the checked generation for
+# boot; it must never activate Home Manager or graphical units in this session.
+cp "$test_flake_dir/flake.lock" "$test_delayed_dir/ready-flake.lock"
+git -C "$test_flake_dir" rev-parse HEAD > "$test_delayed_dir/ready-revision"
+hash_file "$test_flake_dir/flake.lock" > "$test_delayed_dir/ready-base-hash"
+date +%s > "$test_delayed_dir/ready-created-at"
+ln -s "$mock_verified_system" "$test_delayed_dir/system"
+nix-env() {
+  return 0
+}
+apply_lane delayed manual
+[ "$(cat "$test_root/switch-operation")" = boot ]
+[ ! -d "$test_transaction_dir" ]
+approve_current
 
 seed_delayed_queue
 queued_hash="$(hash_file "$test_delayed_dir/queued-flake.lock")"

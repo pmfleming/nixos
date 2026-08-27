@@ -59,6 +59,7 @@ in
 {
   imports = [
     ./hardware-configuration.nix
+    ./modules/ai-tools-updates.nix
     ./modules/delayed-updates.nix
     ./modules/generation-retention.nix
   ];
@@ -78,19 +79,14 @@ in
   # Shelllist runs as a user service, but its privileged battery helper must be
   # registered with the system D-Bus and systemd instances.
   services.dbus.packages = [ shelllistPackage ];
-  systemd.packages = [ shelllistPackage ];
 
-  # A clean manual flake switch is the approval boundary for unattended lock
-  # updates. Staged automatic builds use a plain path flake without `self.rev`,
-  # so they cannot advance this root-owned approval themselves.
-  system.activationScripts.approveNixosRevision = lib.optionalString (inputs.self ? rev) ''
-    install -d -m 0755 /var/lib/nixos-delayed-updates-v2
-    printf '%s\n' ${lib.escapeShellArg inputs.self.rev} \
-      > /var/lib/nixos-delayed-updates-v2/approved-revision.new
-    chmod 0644 /var/lib/nixos-delayed-updates-v2/approved-revision.new
-    mv -f /var/lib/nixos-delayed-updates-v2/approved-revision.new \
-      /var/lib/nixos-delayed-updates-v2/approved-revision
+  # Allow the user-level app daemon to sample CPU package energy through RAPL.
+  # Desktop users already receive hardware access through the video group.
+  services.udev.extraRules = ''
+    ACTION=="add|change", SUBSYSTEM=="powercap", TEST=="energy_uj", ATTR{enabled}="1", RUN+="${pkgs.coreutils}/bin/chgrp video /sys%p/energy_uj", RUN+="${pkgs.coreutils}/bin/chmod 0440 /sys%p/energy_uj"
   '';
+
+  systemd.packages = [ shelllistPackage ];
 
   boot = {
     loader = {
@@ -304,8 +300,9 @@ in
     android-tools
     bibata-cursors
     brightnessctl
-    # AI coding agents track the immediate nixpkgs-unstable update lane. Other
-    # remote inputs are quarantined; local inputs advance only through rebuild.
+    # Bootstrap fallbacks remain in the system generation. The independent,
+    # independently GC-rooted profile shadows these paths for normal user
+    # sessions without switching NixOS or Home Manager.
     unstablePkgs.claude-code
     curl
     fd
