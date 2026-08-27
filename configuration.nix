@@ -76,16 +76,6 @@ in
 
   nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) unfreePackageNames;
 
-  # Shelllist runs as a user service, but its privileged battery helper must be
-  # registered with the system D-Bus and systemd instances.
-  services.dbus.packages = [ shelllistPackage ];
-
-  # Allow the user-level app daemon to sample CPU package energy through RAPL.
-  # Desktop users already receive hardware access through the video group.
-  services.udev.extraRules = ''
-    ACTION=="add|change", SUBSYSTEM=="powercap", TEST=="energy_uj", ATTR{enabled}="1", RUN+="${pkgs.coreutils}/bin/chgrp video /sys%p/energy_uj", RUN+="${pkgs.coreutils}/bin/chmod 0440 /sys%p/energy_uj"
-  '';
-
   systemd.packages = [ shelllistPackage ];
 
   boot = {
@@ -140,6 +130,18 @@ in
 
   services = {
     automatic-timezoned.enable = true;
+    # Shelllist runs as a user service, but its privileged battery helper must
+    # be registered with the system D-Bus instance.
+    dbus.packages = [ shelllistPackage ];
+    # Allow the user-level app daemon to sample CPU package energy through RAPL.
+    # Desktop users already receive hardware access through the video group.
+    udev = {
+      extraRules = ''
+        ACTION=="add|change", SUBSYSTEM=="powercap", TEST=="energy_uj", ATTR{enabled}="1", RUN+="${pkgs.coreutils}/bin/chgrp video /sys%p/energy_uj", RUN+="${pkgs.coreutils}/bin/chmod 0440 /sys%p/energy_uj"
+      '';
+      # FIDO2/WebAuthn security key support for browser passkeys.
+      packages = [ pkgs.libfido2 ];
+    };
     avahi = {
       enable = true;
       nssmdns4 = true;
@@ -164,8 +166,6 @@ in
     # The patched tuigreet above filters PAM's instructional fingerprint text.
     fprintd.enable = true;
     printing.enable = true;
-    # FIDO2/WebAuthn security key support for browser passkeys.
-    udev.packages = [ pkgs.libfido2 ];
     blueman.enable = true;
     pipewire = {
       enable = true;
