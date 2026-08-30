@@ -44,6 +44,8 @@ let
   rebuild = mkScript {
     name = "rebuild";
     runtimeInputs = with pkgs; [
+      coreutils
+      findutils
       git
       jq
       nix
@@ -282,6 +284,10 @@ in
   };
 
   environment.systemPackages = with pkgs; [
+    # Polkit only discovers action definitions linked into the system profile.
+    # The helper's D-Bus/systemd registration alone is not sufficient.
+    shelllistPackage
+
     (mkScript {
       name = "google-chrome-fullscreen";
       runtimeInputs = [ google-chrome ];
