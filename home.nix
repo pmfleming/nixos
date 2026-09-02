@@ -247,7 +247,6 @@ in
         source = ./config/pi/recent-sessions-sidebar;
         force = true;
       };
-      ".pi/agent/extensions/thinking-level-picker.ts".source = ./config/pi/thinking-level-picker.ts;
     };
   };
 
