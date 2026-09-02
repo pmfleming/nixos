@@ -231,28 +231,6 @@
         "url": "file:../daemon-framework"
       }
     },
-    "daemonFramework_5": {
-      "inputs": {
-        "nixpkgs": [
-          "nm-daemon",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1788051473,
-        "narHash": "sha256-KvdGb1Gdad8JSo8r/rVBGdZKkuLm/GlgvF/H1ft7Fkw=",
-        "ref": "main",
-        "rev": "2624c56a58657b27dd03e3fd7e5a4ca1e2c49bf7",
-        "revCount": 20,
-        "type": "git",
-        "url": "file:../daemon-framework"
-      },
-      "original": {
-        "ref": "main",
-        "type": "git",
-        "url": "file:../daemon-framework"
-      }
-    },
     "home-manager": {
       "inputs": {
         "nixpkgs": [
@@ -488,17 +466,16 @@
     },
     "nm-daemon": {
       "inputs": {
-        "daemonFramework": "daemonFramework_5",
         "nixpkgs": [
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1788056332,
-        "narHash": "sha256-85NGlaoux73BjbG1rWqIpXWpkbtl/Wj58HsYHnFQ0qk=",
+        "lastModified": 1788350005,
+        "narHash": "sha256-O9vqM0Cy6noEeORYxQwadh9rzUvO38MxlkpGDtwWLxM=",
         "ref": "main",
-        "rev": "1b400401be0b6a5c278f03abc574845c634cde80",
-        "revCount": 101,
+        "rev": "5d3591cddabdeb01c58d79b648b32264b4037047",
+        "revCount": 104,
         "type": "git",
         "url": "file:///home/laufan/Projects/nm-daemon"
       },

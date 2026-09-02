@@ -116,7 +116,12 @@ in
         interval = 300;
       };
     };
-    firewall.enable = true;
+    firewall = {
+      enable = true;
+      # systemd-resolved is the sole mDNS engine and listens for local
+      # DNS-SD traffic on the standard multicast port.
+      allowedUDPPorts = [ 5353 ];
+    };
   };
   # NetworkManager-wait-online can take ~10s on Wi-Fi while autoconnect/DHCP
   # settle. This does not block graphical login; it only gates units that
@@ -144,15 +149,15 @@ in
       # FIDO2/WebAuthn security key support for browser passkeys.
       packages = [ pkgs.libfido2 ];
     };
-    avahi = {
-      enable = true;
-      nssmdns4 = true;
-      openFirewall = true;
-    };
-    # Automatic timezone detection only needs GeoClue's Wi-Fi provider. Disable
-    # local-network NMEA discovery instead of warning about a missing Avahi daemon.
+    # Automatic timezone detection only needs GeoClue's Wi-Fi provider. Keep
+    # local-network NMEA discovery disabled without an Avahi service browser.
     geoclue2.enableNmea = false;
-    resolved.enable = true;
+    resolved = {
+      enable = true;
+      # Own .local resolution and DNS-SD multicast traffic instead of running
+      # a second mDNS engine through Avahi.
+      settings.Resolve.MulticastDNS = true;
+    };
     # WirePlumber and desktop battery consumers expect UPower on a laptop.
     upower.enable = true;
     greetd = {
