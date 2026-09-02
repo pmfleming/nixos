@@ -51,9 +51,9 @@ readlink -f /var/lib/nixos-ai-tools/current
 
 Machine-local `git+file` inputs remain local-first and are never advanced by the scheduled updater. `rebuild` advances them to their local committed branch heads, checks the complete flake, switches the machine, and then records the exact local configuration revision, lock hash, and active system path as the unattended-update baseline. Those commits do not need to be pushed to GitHub. Uncommitted `/etc/nixos` files other than `flake.lock` deliberately prevent approval, while unpushed commits in the local project repositories are supported.
 
-Other remote inputs are checked daily on AC power. A discovered lock snapshot is frozen for three days, checked, and built against the approved local baseline. A successful candidate updates the live lock and system profile but uses `switch-to-configuration boot`, so Home Manager and the graphical session are not activated or restarted. The update takes effect on the next reboot. `nixpkgs-unstable` is refreshed when the matured system candidate is built, but the independently newer AI-tools profile continues to shadow its fallback packages.
+Other remote inputs are checked daily on AC power. A lightweight 30-minute catch-up timer retries an overdue check after AC power becomes available. A discovered lock snapshot is frozen for three days, checked, and built against the approved local baseline. A successful candidate updates the live lock and system profile but uses `switch-to-configuration boot`, so Home Manager and the graphical session are not activated or restarted. The update takes effect on the next reboot. `nixpkgs-unstable` is refreshed when the matured system candidate is built, but the independently newer AI-tools profile continues to shadow its fallback packages.
 
-One service performs discovery and conditional staging; skipped checks no longer trigger separate `OnSuccess` apply jobs.
+A single updater invocation performs discovery and conditional staging; skipped checks do not trigger separate `OnSuccess` apply jobs.
 
 ```sh
 # Discover or mature the quarantined candidate.
@@ -66,8 +66,9 @@ sudo diff -u /etc/nixos/flake.lock \
   /var/lib/nixos-delayed-updates-v2/delayed/ready-flake.lock
 sudo cat /var/lib/nixos-delayed-updates-v2/delayed/first-seen
 
-systemctl list-timers nixos-update-delayed.timer
-journalctl -u nixos-update-delayed.service -n 100 --no-pager
+systemctl list-timers nixos-update-delayed.timer nixos-update-delayed-catchup.timer
+journalctl -u nixos-update-delayed.service \
+  -u nixos-update-delayed-catchup.service -n 100 --no-pager
 ```
 
 Review and commit automatic `flake.lock` changes intentionally. After changing and committing NixOS configuration, run `rebuild` once to approve that local commit and exact resulting lock for future unattended staging.

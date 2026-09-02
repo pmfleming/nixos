@@ -83,6 +83,23 @@
           ];
       };
       connectParityProbe = inputs.nm-daemon.packages.${system}.connectParityProbe;
+      updateAiTools = (import ./lib/scripts.nix).mkScriptFrom pkgs ./config/scripts {
+        name = "update-ai-tools";
+        runtimeInputs = with pkgs; [
+          coreutils
+          diffutils
+          git
+          gnutar
+          jq
+          libnotify
+          nix
+          procps
+          util-linux
+        ];
+        replacements = {
+          "@USERNAME@" = machine.username;
+        };
+      };
       aiTools = pkgs.buildEnv {
         name = "ai-coding-tools";
         paths = with unstablePkgs; [
@@ -93,7 +110,14 @@
         ];
         pathsToLink = [ "/bin" ];
       };
-      specialArgs = { inherit inputs machine unstablePkgs; };
+      specialArgs = {
+        inherit
+          inputs
+          machine
+          unstablePkgs
+          updateAiTools
+          ;
+      };
       homeManagerModule = {
         home-manager = {
           useGlobalPkgs = true;
@@ -153,6 +177,7 @@
               nativeBuildInputs = with pkgs; [
                 bash
                 coreutils
+                diffutils
                 jq
               ];
             }
@@ -161,6 +186,12 @@
                 ${self}/config/scripts/update-ai-tools.sh
               touch $out
             '';
+
+        ai-tools-updater-runtime = pkgs.runCommand "ai-tools-updater-runtime-test" { } ''
+          ${pkgs.coreutils}/bin/env -i PATH=/missing \
+            ${updateAiTools}/bin/update-ai-tools check-runtime
+          touch $out
+        '';
 
         generation-retention =
           pkgs.runCommand "generation-retention-tests"

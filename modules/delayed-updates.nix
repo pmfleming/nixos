@@ -58,6 +58,12 @@ in
           unitConfig.ConditionACPower = true;
         };
 
+      nixos-update-delayed-catchup =
+        (mkService "Retry an overdue delayed NixOS update check on AC power" "catch-up-delayed")
+        // {
+          unitConfig.ConditionACPower = true;
+        };
+
       nixos-update-check-all = mkService "Check quarantined remote NixOS flake updates" "check-delayed manual";
 
       nixos-update-apply-delayed = mkService "Stage a checked NixOS update for next boot" "apply-delayed";
@@ -74,15 +80,28 @@ in
       };
     };
 
-    timers.nixos-update-delayed = {
-      description = "Check quarantined NixOS flake inputs daily";
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "*-*-* 03:00:00";
-        AccuracySec = "30m";
-        RandomizedDelaySec = "30m";
-        Persistent = true;
-        Unit = "nixos-update-delayed.service";
+    timers = {
+      nixos-update-delayed = {
+        description = "Check quarantined NixOS flake inputs daily";
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar = "*-*-* 03:00:00";
+          AccuracySec = "30m";
+          RandomizedDelaySec = "30m";
+          Persistent = true;
+          Unit = "nixos-update-delayed.service";
+        };
+      };
+
+      nixos-update-delayed-catchup = {
+        description = "Retry overdue delayed NixOS update checks when AC power is available";
+        wantedBy = [ "timers.target" ];
+        timerConfig = {
+          OnCalendar = "*:0/30";
+          AccuracySec = "1m";
+          RandomizedDelaySec = "5m";
+          Unit = "nixos-update-delayed-catchup.service";
+        };
       };
     };
   };

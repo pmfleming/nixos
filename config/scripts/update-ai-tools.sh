@@ -13,6 +13,24 @@ git_at_flake() {
   git -c safe.directory="$flake_dir" -C "$flake_dir" "$@"
 }
 
+require_runtime_commands() {
+  local command
+  local -a missing=()
+
+  for command in \
+    cat chmod cmp cp date env flock git id jq mkdir mktemp mv nix \
+    notify-send pkill readlink rm runuser tar; do
+    if ! command -v "$command" >/dev/null 2>&1; then
+      missing+=("$command")
+    fi
+  done
+
+  if ((${#missing[@]})); then
+    printf 'Missing runtime commands: %s\n' "${missing[*]}" >&2
+    return 1
+  fi
+}
+
 lock_without_fast_input() {
   jq --arg input "$fast_input" '
     .nodes.root.inputs[$input] as $node
@@ -167,12 +185,18 @@ update_tools() {
 }
 
 if [ "${AI_TOOLS_LIB_ONLY:-0}" != 1 ]; then
+  require_runtime_commands
+  if [ "$operation" = check-runtime ]; then
+    printf 'AI-tools updater runtime is complete.\n'
+    exit 0
+  fi
+
   trap cleanup EXIT
   case "$operation" in
     update) update_tools ;;
     check-stale) check_stale ;;
     *)
-      printf 'Usage: %s [update|check-stale]\n' "$0" >&2
+      printf 'Usage: %s [update|check-stale|check-runtime]\n' "$0" >&2
       exit 2
       ;;
   esac

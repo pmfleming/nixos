@@ -1,28 +1,6 @@
-{
-  machine,
-  pkgs,
-  ...
-}:
+{ updateAiTools, ... }:
 
 let
-  mkScript = (import ../lib/scripts.nix).mkScriptFrom pkgs ../config/scripts;
-  updateAiTools = mkScript {
-    name = "update-ai-tools";
-    runtimeInputs = with pkgs; [
-      coreutils
-      git
-      gnutar
-      jq
-      libnotify
-      nix
-      procps
-      util-linux
-    ];
-    replacements = {
-      "@USERNAME@" = machine.username;
-    };
-  };
-
   commonService = {
     wants = [ "network-online.target" ];
     after = [ "network-online.target" ];

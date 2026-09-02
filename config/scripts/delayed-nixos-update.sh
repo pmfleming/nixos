@@ -697,6 +697,12 @@ run_delayed() {
   apply_lane delayed auto
 }
 
+catch_up_delayed() {
+  if check_is_due delayed "$delayed_check_seconds"; then
+    run_delayed
+  fi
+}
+
 catch_up() {
   if check_is_due fast "$fast_check_seconds"; then
     check_fast auto
@@ -733,6 +739,7 @@ main() {
     check-fast) check_fast "${2:-manual}" ;;
     check-delayed) check_delayed "${2:-manual}" ;;
     run-delayed) run_delayed ;;
+    catch-up-delayed) catch_up_delayed ;;
     catch-up) catch_up ;;
     apply-auto-fast) apply_lane fast auto ;;
     apply-auto-delayed) apply_lane delayed auto ;;
@@ -741,7 +748,7 @@ main() {
     apply-delayed) apply_lane delayed manual ;;
     apply-ready) apply_ready manual ;;
     *)
-      printf 'Usage: %s approve-current | check-fast [auto|manual] | check-delayed [auto|manual] | run-delayed | catch-up | apply-auto-fast | apply-auto-delayed | apply-auto | apply-fast | apply-delayed | apply-ready\n' "$0" >&2
+      printf 'Usage: %s approve-current | check-fast [auto|manual] | check-delayed [auto|manual] | run-delayed | catch-up-delayed | catch-up | apply-auto-fast | apply-auto-delayed | apply-auto | apply-fast | apply-delayed | apply-ready\n' "$0" >&2
       return 2
       ;;
   esac

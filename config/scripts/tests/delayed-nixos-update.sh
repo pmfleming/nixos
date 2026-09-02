@@ -267,4 +267,17 @@ recover_transaction
 [ ! -d "$test_transaction_dir" ]
 [ "$(cat "$test_applied_lock_hash")" = "$(hash_file "$test_flake_dir/flake.lock")" ]
 
+# The frequent AC-power catch-up path should run only when the daily delayed
+# check is overdue. A skipped ConditionACPower check does not update this marker.
+catchup_runs=0
+run_delayed() {
+  catchup_runs=$((catchup_runs + 1))
+}
+rm -f "$test_delayed_dir/last-check"
+catch_up_delayed
+[ "$catchup_runs" -eq 1 ]
+date +%s > "$test_delayed_dir/last-check"
+catch_up_delayed
+[ "$catchup_runs" -eq 1 ]
+
 printf 'delayed updater state tests passed\n'
