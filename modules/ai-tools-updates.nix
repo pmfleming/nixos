@@ -31,6 +31,10 @@ in
 
     nixos-ai-tools-stale = {
       description = "Report a stale AI coding-tools profile";
+      # Persistent timers can both catch up immediately after boot or resume.
+      # Retry and wait for the updater before deciding that its state is stale.
+      wants = [ "nixos-ai-tools-update.service" ];
+      after = [ "nixos-ai-tools-update.service" ];
       serviceConfig = {
         Type = "oneshot";
         StateDirectory = "nixos-ai-tools";

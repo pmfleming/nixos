@@ -36,7 +36,7 @@ Updates are split by activation risk rather than by one shared system switch.
 
 ### AI coding tools
 
-Claude Code, Codex, Pi, and T3 Code are checked against `nixpkgs-unstable` every 30 minutes. The updater keeps an independent lock under `/var/lib/nixos-ai-tools`, builds only the four-tool profile, runs the Pi extension compatibility check, and atomically moves `/var/lib/nixos-ai-tools/current` after everything succeeds. New processes immediately use that profile through `PATH`; running agent sessions are not interrupted. A failed build leaves the previous profile active and sends a rate-limited desktop notification. A separate stale check warns if no successful check completes for four hours.
+Claude Code, Codex, Pi, and T3 Code are checked against `nixpkgs-unstable` every 30 minutes. The updater keeps an independent lock under `/var/lib/nixos-ai-tools`, builds only the four-tool profile, runs the Pi extension compatibility check, and atomically moves `/var/lib/nixos-ai-tools/current` after everything succeeds. New processes immediately use that profile through `PATH`; running agent sessions are not interrupted. A failed build leaves the previous profile active and sends a rate-limited desktop notification. A separate stale check first retries and waits for the updater, then warns if no successful check completes for four hours.
 
 The system and Home Manager packages remain bootstrap fallbacks. The independent profile shadows them after its first successful run and never modifies `/etc/nixos/flake.lock` or switches NixOS.
 
