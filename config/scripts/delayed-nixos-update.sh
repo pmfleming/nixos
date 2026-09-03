@@ -726,6 +726,11 @@ main() {
   exec 9>"$state_dir/update.lock"
   if ! flock -n 9; then
     printf 'Another NixOS update operation is already running.\n' >&2
+    # Timer collisions are harmless skips, but baseline approval must not
+    # report success when nothing was recorded.
+    if [ "${1:-catch-up}" = approve-current ]; then
+      return 75
+    fi
     return 0
   fi
   update_lock_acquired=1

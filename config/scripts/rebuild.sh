@@ -1,12 +1,17 @@
-set -Eeuo pipefail
+set -euo pipefail
 
 flake_dir=@CONFIG_DIRECTORY@
 flake_attr=@FLAKE_ATTR@
-configured_local_inputs=( @LOCAL_INPUTS@ )
+local_inputs=( @LOCAL_INPUTS@ )
+shelllist_daemons=(
+  app-daemon.service
+  bar-daemon.service
+  bt-daemon.service
+  clip-daemon.service
+  nm-daemon.service
+)
+shelllist_units=( "${shelllist_daemons[@]}" shelllist.service )
 
-# Preserve complete output even when Nix's terminal UI disappears or the
-# rebuild is interrupted. A process-substitution redirect keeps command exit
-# statuses intact, unlike piping the whole script through tee.
 state_home=${XDG_STATE_HOME:-${HOME:?HOME is not set}/.local/state}
 log_dir="$state_home/nixos-rebuild"
 umask 077
@@ -17,150 +22,199 @@ log_file="$log_dir/rebuild-$(date --utc +%Y%m%dT%H%M%SZ)-$$.running.log"
 ln -sfn "$(basename "$log_file")" "$log_dir/latest.log"
 exec > >(tee -a "$log_file") 2>&1
 
-rebuild_stage="initialization"
-finish_log() {
-  status=$?
+started_at=$(date +%s)
+system_before=$(readlink -f /run/current-system 2>/dev/null || true)
+rebuild_stage=initialization
+session_result='not reached'
+baseline_result='not reached'
+temporary_file=
+
+human_duration() {
+  local seconds=$1
+
+  if ((seconds >= 3600)); then
+    printf '%dh %dm %ds' "$((seconds / 3600))" "$((seconds % 3600 / 60))" "$((seconds % 60))"
+  elif ((seconds >= 60)); then
+    printf '%dm %ds' "$((seconds / 60))" "$((seconds % 60))"
+  else
+    printf '%ds' "$seconds"
+  fi
+}
+
+stage() {
+  rebuild_stage=$1
+  printf '\n==> %s\n' "$rebuild_stage"
+}
+
+finish() {
+  local status=$?
+  local elapsed final_log outcome suffix system_after
+
   trap - EXIT HUP INT TERM
   set +e
+  [[ -z $temporary_file ]] || rm -f -- "$temporary_file"
 
+  elapsed=$(($(date +%s) - started_at))
+  system_after=$(readlink -f /run/current-system 2>/dev/null || true)
   if ((status == 0)); then
-    outcome=success
+    outcome=SUCCESS
   else
-    outcome=failed
+    outcome=FAILED
   fi
-  final_log=${log_file%.running.log}.$outcome.log
+
+  suffix=${outcome,,}
+  final_log=${log_file%.running.log}.$suffix.log
   if mv -- "$log_file" "$final_log"; then
     log_file=$final_log
   fi
   ln -sfn "$(basename "$log_file")" "$log_dir/latest.log"
   if ((status != 0)); then
     ln -sfn "$(basename "$log_file")" "$log_dir/latest-failed.log"
-    printf '\nRebuild failed during %s (exit status %d).\n' "$rebuild_stage" "$status"
-  else
-    printf '\nRebuild completed successfully.\n'
   fi
-  printf 'Log: %s\n' "$log_file"
+
+  printf '\n=== REBUILD %s (%s) ===\n' "$outcome" "$(human_duration "$elapsed")"
+  if ((status != 0)); then
+    printf 'Failed at: %s (exit %d)\n' "$rebuild_stage" "$status"
+  fi
+  if [[ -n $system_before && -n $system_after ]]; then
+    if [[ $system_before == "$system_after" ]]; then
+      printf 'System:    unchanged (%s)\n' "$(basename "$system_after")"
+    else
+      printf 'System:    %s -> %s\n' "$(basename "$system_before")" "$(basename "$system_after")"
+    fi
+  fi
+  [[ $session_result == 'not reached' ]] || printf 'Session:   %s\n' "$session_result"
+  [[ $baseline_result == 'not reached' ]] || printf 'Baseline:  %s\n' "$baseline_result"
+  printf 'Log:       %s\n' "$log_file"
+
+  if [[ -n $system_before && -n $system_after && $system_before != "$system_after" ]]; then
+    printf '\nClosure changes:\n'
+    nix store diff-closures "$system_before" "$system_after" || \
+      printf '  (closure diff unavailable)\n'
+  fi
+
   exit "$status"
 }
-trap finish_log EXIT
+trap finish EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-printf 'Rebuild started at %s\n' "$(date --iso-8601=seconds)"
-printf 'Log: %s\n' "$log_file"
-printf 'Arguments:'
-printf ' %q' "$@"
-printf '\n'
-
-shelllist_daemons=(
-  app-daemon.service
-  bar-daemon.service
-  bt-daemon.service
-  clip-daemon.service
-  nm-daemon.service
-)
-shelllist_units=( "${shelllist_daemons[@]}" shelllist.service )
-
-rebuild_stage="checking the configuration worktree"
-cd "$flake_dir"
-mapfile -d '' -t untracked_nix < <(
-  git ls-files --others --exclude-standard -z -- ':(glob)**/*.nix'
-)
-if ((${#untracked_nix[@]})); then
-  printf 'Refusing to rebuild with Nix files that Git flakes cannot see:\n' >&2
-  printf '  %s\n' "${untracked_nix[@]}" >&2
-  printf 'Add the files to Git before rebuilding.\n' >&2
-  exit 1
+printf 'Rebuild started; full log: %s\n' "$log_file"
+if (($#)); then
+  printf 'nixos-rebuild arguments:'
+  printf ' %q' "$@"
+  printf '\n'
 fi
 
-# Add newly declared inputs without advancing anything, then derive the local
-# git input set from the lock itself. The configured list is also used by the
-# automatic updater, so refuse to continue if the two sets ever drift apart.
-rebuild_stage="locking flake inputs"
-nix flake lock "$flake_dir"
-rebuild_stage="validating machine-local flake inputs"
-mapfile -t local_inputs < <(
-  jq -r '
-    .nodes as $nodes
-    | $nodes.root.inputs
-    | to_entries[]
-    | select(.value | type == "string")
-    | select($nodes[.value].original.type == "git")
-    | select($nodes[.value].original.url | startswith("file:"))
-    | .key
-  ' "$flake_dir/flake.lock"
-)
+# Do not let two interactive rebuilds update the lock and switch concurrently.
+exec 9>"$log_dir/rebuild.lock"
+if ! flock -n 9; then
+  printf 'Another rebuild is already running (see %s/latest.log).\n' "$log_dir" >&2
+  exit 75
+fi
 
-declare -A undiscovered_inputs=()
-for input in "${configured_local_inputs[@]}"; do
-  undiscovered_inputs["$input"]=1
-done
-for input in "${local_inputs[@]}"; do
-  if [[ ! -v "undiscovered_inputs[$input]" ]]; then
-    printf 'Local git input %q is missing from machine.localProjects.\n' "$input" >&2
-    exit 1
-  fi
-  unset 'undiscovered_inputs[$input]'
-done
-if ((${#undiscovered_inputs[@]})); then
-  printf 'Configured local input is not a root git+file input: %s\n' \
-    "${!undiscovered_inputs[*]}" >&2
+stage 'Checking the configuration worktree'
+cd "$flake_dir"
+temporary_file=$(mktemp "$log_dir/untracked.XXXXXXXX")
+if ! git ls-files --others --exclude-standard -z > "$temporary_file"; then
+  printf 'Could not inspect the configuration Git worktree.\n' >&2
+  exit 1
+fi
+mapfile -d '' -t untracked_files < "$temporary_file"
+rm -f -- "$temporary_file"
+temporary_file=
+if ((${#untracked_files[@]})); then
+  printf 'Refusing to rebuild with files that Git flakes cannot see:\n' >&2
+  printf '  %s\n' "${untracked_files[@]}" >&2
+  printf 'Add or ignore these files before rebuilding.\n' >&2
   exit 1
 fi
 if ((${#local_inputs[@]} == 0)); then
-  printf 'No machine-local git flake inputs were discovered.\n' >&2
+  printf 'No machine-local flake inputs are configured.\n' >&2
   exit 1
 fi
 
-printf 'Updating every machine-local git flake input: %s\n' "${local_inputs[*]}"
-rebuild_stage="updating machine-local flake inputs"
+# Fail before doing expensive evaluation if privilege elevation is unavailable.
+stage 'Authorizing the generation switch'
+/run/wrappers/bin/sudo -v
+
+# A single update both adds newly declared locks and advances all configured
+# local projects. Validate the resulting lock so the manual and automatic
+# updater input sets cannot silently drift apart.
+stage "Updating ${#local_inputs[@]} machine-local flake inputs"
 nix flake update "${local_inputs[@]}" --flake "$flake_dir"
 
-rebuild_stage="running flake checks"
-nix flake check --print-build-logs "$flake_dir"
+stage 'Validating machine-local flake inputs'
+configured_inputs_json=$(jq -cn '$ARGS.positional | sort' --args "${local_inputs[@]}")
+locked_inputs_json=$(jq -c '
+  .nodes as $nodes
+  | [
+      $nodes.root.inputs
+      | to_entries[]
+      | select(.value | type == "string")
+      | select($nodes[.value].original.type == "git")
+      | select($nodes[.value].original.url | startswith("file:"))
+      | .key
+    ]
+  | sort
+' "$flake_dir/flake.lock")
+if [[ $configured_inputs_json != "$locked_inputs_json" ]]; then
+  printf 'machine.localProjects does not match the root git+file inputs.\n' >&2
+  printf '  configured: %s\n' "$(jq -r 'join(" ")' <<< "$configured_inputs_json")" >&2
+  printf '  lock file:  %s\n' "$(jq -r 'join(" ")' <<< "$locked_inputs_json")" >&2
+  exit 1
+fi
 
-# A failed Home Manager unit transaction can still leave the new generation
-# linked while some graphical units are stopped. Preserve the switch status,
-# but always run the Shelllist recovery below after switch-to-configuration.
+stage 'Running flake checks'
+nix flake check "$flake_dir"
+
+# Activation can fail after Home Manager has stopped graphical services. Save
+# the switch status, then make a best effort to put the complete stack back in
+# a known state before returning that status.
 switch_status=0
-rebuild_stage="building and switching the NixOS generation"
-if /run/wrappers/bin/sudo nixos-rebuild switch --print-build-logs --flake "$flake_dir#$flake_attr" "$@"; then
+failed_stage=
+stage 'Building and switching the NixOS generation'
+if /run/wrappers/bin/sudo nixos-rebuild switch --flake "$flake_dir#$flake_attr" "$@"; then
   :
 else
   switch_status=$?
   failed_stage=$rebuild_stage
-  printf 'The generation switch failed; attempting Shelllist recovery.\n' >&2
+  printf 'The generation switch failed; recovering the Shelllist stack.\n' >&2
 fi
 
-# If D-Bus has activated Shelllist's privileged helper, move that process to
-# the new package too. An inactive helper remains D-Bus activated.
-rebuild_stage="recovering the Shelllist stack"
-if /run/wrappers/bin/sudo systemctl --quiet is-active bar-battery-helper.service; then
-  /run/wrappers/bin/sudo systemctl restart bar-battery-helper.service || true
-fi
-
-# Home Manager's sd-switch restarts only changed units. Force the whole
-# Shelllist process graph onto the new generation even when a unit file itself
-# did not change (for example, after only a followed local input advanced).
+stage 'Refreshing graphical services'
 stack_status=0
+remember_stack_failure() {
+  local status
+
+  "$@" && return 0
+  status=$?
+  ((stack_status != 0)) || stack_status=$status
+  return 0
+}
+if /run/wrappers/bin/sudo systemctl --quiet is-active bar-battery-helper.service; then
+  if ! /run/wrappers/bin/sudo systemctl restart bar-battery-helper.service; then
+    printf 'Warning: bar-battery-helper could not be restarted.\n' >&2
+  fi
+fi
+
 if systemctl --user --quiet is-active graphical-session.target; then
-  printf 'Restarting Shelllist and all of its local daemons...\n'
-  if systemctl --user daemon-reload \
-    && systemctl --user stop shelllist.service \
-    && systemctl --user restart "${shelllist_daemons[@]}" \
-    && systemctl --user start shelllist.service \
-    && systemctl --user --quiet is-active "${shelllist_units[@]}"; then
-    printf 'Shelllist stack is active on the new generation.\n'
+  remember_stack_failure systemctl --user daemon-reload
+  remember_stack_failure systemctl --user restart "${shelllist_daemons[@]}"
+  # Always restart the frontend, even if a daemon failed.
+  remember_stack_failure systemctl --user restart shelllist.service
+  remember_stack_failure systemctl --user --quiet is-active "${shelllist_units[@]}"
+
+  if ((stack_status == 0)); then
+    session_result='Shelllist stack restarted'
   else
-    stack_status=$?
-    if [[ -z ${failed_stage:-} ]]; then
-      failed_stage=$rebuild_stage
-    fi
+    session_result='Shelllist recovery failed'
+    [[ -n $failed_stage ]] || failed_stage=$rebuild_stage
     printf 'Shelllist recovery failed; inspect its user units.\n' >&2
   fi
 else
-  printf 'No active graphical user session; Shelllist will start fresh at next login.\n'
+  session_result='no active graphical session'
 fi
 
 if ((switch_status != 0)); then
@@ -172,13 +226,12 @@ if ((stack_status != 0)); then
   exit "$stack_status"
 fi
 
-# Approval is based on the exact committed configuration revision, resulting
-# lock hash, and active system path. Local project commits may remain unpushed;
-# only unrelated uncommitted files in /etc/nixos prevent unattended updates.
-rebuild_stage="recording the unattended-update baseline"
+stage 'Recording the update baseline'
 if /run/wrappers/bin/sudo systemctl start --wait nixos-update-approve-baseline.service; then
-  printf 'Recorded this successful rebuild as the unattended-update baseline.\n'
+  baseline_result=recorded
 else
-  printf 'The rebuild succeeded, but unattended NixOS updates remain paused; inspect nixos-update-approve-baseline.service.\n' >&2
+  baseline_result='not recorded (unattended updates remain paused)'
+  printf 'Warning: inspect nixos-update-approve-baseline.service.\n' >&2
   /run/wrappers/bin/sudo systemctl reset-failed nixos-update-approve-baseline.service || true
 fi
+rebuild_stage=complete

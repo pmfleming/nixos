@@ -50,6 +50,7 @@ let
       jq
       nix
       nixos-rebuild
+      util-linux
     ];
     replacements = {
       "@CONFIG_DIRECTORY@" = machine.configDirectory;
