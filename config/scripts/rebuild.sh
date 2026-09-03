@@ -20,7 +20,11 @@ find "$log_dir" -maxdepth 1 -type f -name 'rebuild-*.log' -mtime +30 -delete
 log_file="$log_dir/rebuild-$(date --utc +%Y%m%dT%H%M%SZ)-$$.running.log"
 : > "$log_file"
 ln -sfn "$(basename "$log_file")" "$log_dir/latest.log"
-exec > >(tee -a "$log_file") 2>&1
+# Keep the terminal descriptors so the EXIT handler can drain the asynchronous
+# logger before it reads the log and renders the summary.
+exec 3>&1 4>&2
+exec > >(tee -a "$log_file" >&3) 2>&1
+log_writer_pid=$!
 
 started_at=$(date +%s)
 system_before=$(readlink -f /run/current-system 2>/dev/null || true)
@@ -41,6 +45,29 @@ human_duration() {
   fi
 }
 
+human_bytes() {
+  numfmt --to=iec-i --suffix=B --format='%.1f' "${1:-0}"
+}
+
+human_byte_delta() {
+  local bytes=${1:-0}
+
+  if ((bytes < 0)); then
+    printf -- '-%s' "$(human_bytes "$((-bytes))")"
+  else
+    printf '+%s' "$(human_bytes "$bytes")"
+  fi
+}
+
+closure_bytes() {
+  local output size
+
+  output=$(nix path-info --closure-size "$1" 2>/dev/null) || return 1
+  size=${output##*[[:space:]]}
+  [[ $size =~ ^[0-9]+$ ]] || return 1
+  printf '%s\n' "$size"
+}
+
 stage() {
   rebuild_stage=$1
   printf '\n==> %s\n' "$rebuild_stage"
@@ -48,20 +75,51 @@ stage() {
 
 finish() {
   local status=$?
-  local elapsed final_log outcome suffix system_after
+  local copied_info disk_after elapsed final_log line outcome suffix system_after
+  local closure_after='' copied_bytes='' store_available_after='' store_used_after=''
+  local -A built_paths=() copied_paths=()
 
   trap - EXIT HUP INT TERM
   set +e
   [[ -z $temporary_file ]] || rm -f -- "$temporary_file"
 
+  # Close the pipe and wait for tee so every final build event is available to
+  # the summary parser. Summary output is appended with a separate tee below.
+  exec 1>&3 2>&4
+  wait "$log_writer_pid"
+
+  while IFS= read -r line; do
+    if [[ $line =~ ^building\ \'([^\']+\.drv)\' ]]; then
+      built_paths["${BASH_REMATCH[1]}"]=1
+    elif [[ $line =~ ^copying\ path\ \'([^\']+)\' ]]; then
+      copied_paths["${BASH_REMATCH[1]}"]=1
+    fi
+  done < "$log_file"
+
+  if ((${#copied_paths[@]})); then
+    temporary_file=$(mktemp "$log_dir/copied-paths.XXXXXXXX")
+    printf '%s\n' "${!copied_paths[@]}" > "$temporary_file"
+    if copied_info=$(nix path-info --json --stdin < "$temporary_file" 2>/dev/null); then
+      copied_bytes=$(jq -r '[.[] | (.narSize // 0)] | add // 0' <<< "$copied_info")
+    fi
+    rm -f -- "$temporary_file"
+    temporary_file=
+  fi
+
   elapsed=$(($(date +%s) - started_at))
   system_after=$(readlink -f /run/current-system 2>/dev/null || true)
+  [[ -z $system_after ]] || closure_after=$(closure_bytes "$system_after")
+  disk_after=$(df -B1 --output=used,avail /nix/store 2>/dev/null | tail -n 1) || disk_after=
+  if [[ $disk_after =~ ^[[:space:]]*([0-9]+)[[:space:]]+([0-9]+)[[:space:]]*$ ]]; then
+    store_used_after=${BASH_REMATCH[1]}
+    store_available_after=${BASH_REMATCH[2]}
+  fi
+
   if ((status == 0)); then
     outcome=SUCCESS
   else
     outcome=FAILED
   fi
-
   suffix=${outcome,,}
   final_log=${log_file%.running.log}.$suffix.log
   if mv -- "$log_file" "$final_log"; then
@@ -72,33 +130,64 @@ finish() {
     ln -sfn "$(basename "$log_file")" "$log_dir/latest-failed.log"
   fi
 
-  printf '\n=== REBUILD %s (%s) ===\n' "$outcome" "$(human_duration "$elapsed")"
-  if ((status != 0)); then
-    printf 'Failed at: %s (exit %d)\n' "$rebuild_stage" "$status"
-  fi
-  if [[ -n $system_before && -n $system_after ]]; then
-    if [[ $system_before == "$system_after" ]]; then
-      printf 'System:    unchanged (%s)\n' "$(basename "$system_after")"
-    else
-      printf 'System:    %s -> %s\n' "$(basename "$system_before")" "$(basename "$system_after")"
+  {
+    printf '\n=== REBUILD %s (%s) ===\n' "$outcome" "$(human_duration "$elapsed")"
+    if ((status != 0)); then
+      printf 'Failed at:  %s (exit %d)\n' "$rebuild_stage" "$status"
     fi
-  fi
-  [[ $session_result == 'not reached' ]] || printf 'Session:   %s\n' "$session_result"
-  [[ $baseline_result == 'not reached' ]] || printf 'Baseline:  %s\n' "$baseline_result"
-  printf 'Log:       %s\n' "$log_file"
+    printf 'Nix work:   %d derivations built; %d store paths copied' \
+      "${#built_paths[@]}" "${#copied_paths[@]}"
+    [[ -z $copied_bytes ]] || printf ' (%s)' "$(human_bytes "$copied_bytes")"
+    printf '\n'
+    if [[ -n $closure_after ]]; then
+      printf 'Closure:    %s' "$(human_bytes "$closure_after")"
+      [[ -z $closure_before ]] || \
+        printf ' (%s)' "$(human_byte_delta "$((closure_after - closure_before))")"
+      printf '\n'
+    fi
+    if [[ -n $store_used_after && -n $store_available_after ]]; then
+      printf 'Nix store:  '
+      [[ -z $store_used_before ]] || \
+        printf '%s used; ' "$(human_byte_delta "$((store_used_after - store_used_before))")"
+      printf '%s free\n' "$(human_bytes "$store_available_after")"
+    fi
+    if [[ -n $system_before && -n $system_after ]]; then
+      if [[ $system_before == "$system_after" ]]; then
+        printf 'System:     unchanged (%s)\n' "$(basename "$system_after")"
+      else
+        printf 'System:     %s -> %s\n' "$(basename "$system_before")" "$(basename "$system_after")"
+      fi
+    fi
+    [[ $session_result == 'not reached' ]] || printf 'Session:    %s\n' "$session_result"
+    [[ $baseline_result == 'not reached' ]] || printf 'Baseline:   %s\n' "$baseline_result"
+    printf 'Log:        %s\n' "$log_file"
 
-  if [[ -n $system_before && -n $system_after && $system_before != "$system_after" ]]; then
-    printf '\nClosure changes:\n'
-    nix store diff-closures "$system_before" "$system_after" || \
-      printf '  (closure diff unavailable)\n'
-  fi
+    if [[ -n $system_before && -n $system_after && $system_before != "$system_after" ]]; then
+      printf '\nPackage changes:\n'
+      nix store diff-closures "$system_before" "$system_after" || \
+        printf '  (closure diff unavailable)\n'
+    fi
+  } 2>&1 | tee -a "$log_file"
 
+  exec 3>&- 4>&-
   exit "$status"
 }
+
+closure_before=
+store_used_before=
+disk_before=
 trap finish EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+if [[ -n $system_before ]]; then
+  closure_before=$(closure_bytes "$system_before") || closure_before=
+fi
+disk_before=$(df -B1 --output=used /nix/store 2>/dev/null | tail -n 1) || disk_before=
+if [[ $disk_before =~ ^[[:space:]]*([0-9]+)[[:space:]]*$ ]]; then
+  store_used_before=${BASH_REMATCH[1]}
+fi
 
 printf 'Rebuild started; full log: %s\n' "$log_file"
 if (($#)); then
