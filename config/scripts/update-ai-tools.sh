@@ -2,7 +2,7 @@ set -euo pipefail
 
 flake_dir=${AI_TOOLS_FLAKE_DIR:-/etc/nixos}
 state_dir=${AI_TOOLS_STATE_DIR:-/var/lib/nixos-ai-tools}
-fast_input=nixpkgs-unstable
+managed_input=nixpkgs-unstable
 notify_user=${AI_TOOLS_NOTIFY_USER:-@USERNAME@}
 stale_seconds=${AI_TOOLS_STALE_SECONDS:-$((4 * 60 * 60))}
 notify_interval=${AI_TOOLS_NOTIFY_INTERVAL:-$((6 * 60 * 60))}
@@ -31,23 +31,14 @@ require_runtime_commands() {
   fi
 }
 
-lock_without_fast_input() {
-  jq --arg input "$fast_input" '
-    .nodes.root.inputs[$input] as $node
-    | del(.nodes.root.inputs[$input])
-    | if $node then del(.nodes[$node]) else . end
-  ' "$1"
-}
-
-non_fast_locks_match() {
-  left="$(mktemp)"
-  right="$(mktemp)"
-  lock_without_fast_input "$1" > "$left"
-  lock_without_fast_input "$2" > "$right"
-  cmp -s "$left" "$right"
-  status=$?
-  rm -f "$left" "$right"
-  return "$status"
+locks_match_except_managed_input() {
+  jq --exit-status --arg input "$managed_input" --slurpfile right "$2" '
+    def without_managed:
+      .nodes.root.inputs[$input] as $node
+      | del(.nodes.root.inputs[$input])
+      | if $node then del(.nodes[$node]) else . end;
+    without_managed == ($right[0] | without_managed)
+  ' "$1" >/dev/null
 }
 
 notify_desktop() {
@@ -131,7 +122,7 @@ create_stage() {
   # Carry the independently advanced unstable lock forward only while every
   # other input still matches the live local-development baseline.
   if [ -f "$state_dir/flake.lock" ] \
-    && non_fast_locks_match "$state_dir/flake.lock" "$flake_dir/flake.lock"; then
+    && locks_match_except_managed_input "$state_dir/flake.lock" "$flake_dir/flake.lock"; then
     cp "$state_dir/flake.lock" "$staged_flake/flake.lock"
   else
     cp "$flake_dir/flake.lock" "$staged_flake/flake.lock"
@@ -148,7 +139,7 @@ update_tools() {
 
   create_stage
   candidate_lock="$temporary_dir/flake.lock"
-  nix flake update "$fast_input" \
+  nix flake update "$managed_input" \
     --flake "path:$staged_flake" \
     --output-lock-file "$candidate_lock"
   cp "$candidate_lock" "$staged_flake/flake.lock"

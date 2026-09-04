@@ -14,7 +14,7 @@
     zen-browser.url = "github:youwen5/zen-browser-flake";
     zen-browser.inputs.nixpkgs.follows = "nixpkgs";
 
-    # Automatic update lanes never advance these machine-local inputs.
+    # Automatic updates never advance these machine-local inputs.
     nm-daemon.url = "git+file:///home/laufan/Projects/nm-daemon?ref=main";
     nm-daemon.inputs.nixpkgs.follows = "nixpkgs";
     bt-daemon.url = "git+file:///home/laufan/Projects/bt-daemon?ref=main";
@@ -127,95 +127,82 @@
           users.${machine.username} = import ./home.nix;
         };
       };
+      mkCheck =
+        name: nativeBuildInputs: script:
+        pkgs.runCommand name { inherit nativeBuildInputs; } (script + "\ntouch $out\n");
     in
     {
       formatter.${system} = pkgs.nixfmt-tree;
 
       checks.${system} = {
         nix =
-          pkgs.runCommand "nix-quality-check"
-            {
-              nativeBuildInputs = with pkgs; [
-                deadnix
-                findutils
-                nixfmt
-                statix
-              ];
-            }
+          mkCheck "nix-quality-check"
+            (with pkgs; [
+              deadnix
+              findutils
+              nixfmt
+              statix
+            ])
             ''
               find ${self} -type f -name '*.nix' -exec nixfmt --check {} +
               deadnix --fail ${self}
               statix check ${self}
-              touch $out
             '';
 
-        shellcheck = pkgs.runCommand "shellcheck" { nativeBuildInputs = [ pkgs.shellcheck ]; } ''
+        shellcheck = mkCheck "shellcheck" [ pkgs.shellcheck ] ''
           find ${self}/config/scripts -type f -name '*.sh' \
             -exec shellcheck -s bash -x -e SC1091 {} +
-          touch $out
         '';
 
         updater-state =
-          pkgs.runCommand "delayed-updater-state-tests"
-            {
-              nativeBuildInputs = with pkgs; [
-                bash
-                coreutils
-                git
-                jq
-              ];
-            }
+          mkCheck "delayed-updater-state-tests"
+            (with pkgs; [
+              bash
+              coreutils
+              git
+              jq
+            ])
             ''
               bash ${self}/config/scripts/tests/delayed-nixos-update.sh \
                 ${self}/config/scripts/delayed-nixos-update.sh
-              touch $out
             '';
 
         ai-tools-updater-state =
-          pkgs.runCommand "ai-tools-updater-state-tests"
-            {
-              nativeBuildInputs = with pkgs; [
-                bash
-                coreutils
-                diffutils
-                jq
-              ];
-            }
+          mkCheck "ai-tools-updater-state-tests"
+            (with pkgs; [
+              bash
+              coreutils
+              diffutils
+              jq
+            ])
             ''
               bash ${self}/config/scripts/tests/update-ai-tools.sh \
                 ${self}/config/scripts/update-ai-tools.sh
-              touch $out
             '';
 
-        ai-tools-updater-runtime = pkgs.runCommand "ai-tools-updater-runtime-test" { } ''
+        ai-tools-updater-runtime = mkCheck "ai-tools-updater-runtime-test" [ ] ''
           ${pkgs.coreutils}/bin/env -i PATH=/missing \
             ${updateAiTools}/bin/update-ai-tools check-runtime
-          touch $out
         '';
 
         generation-retention =
-          pkgs.runCommand "generation-retention-tests"
-            {
-              nativeBuildInputs = with pkgs; [
-                bash
-                coreutils
-                gawk
-              ];
-            }
+          mkCheck "generation-retention-tests"
+            (with pkgs; [
+              bash
+              coreutils
+              gawk
+            ])
             ''
               bash ${self}/config/scripts/tests/prune-nixos-generations.sh \
                 ${self}/config/scripts/prune-nixos-generations.sh
-              touch $out
             '';
 
         pi-extensions =
-          pkgs.runCommand "pi-extension-tests"
-            {
-              nativeBuildInputs = with pkgs; [
-                nodejs
-                typescript
-              ];
-            }
+          mkCheck "pi-extension-tests"
+            (with pkgs; [
+              nodejs
+              typescript
+            ])
             ''
               cp -R ${self}/config/pi ./pi
               chmod -R u+w ./pi
@@ -236,17 +223,14 @@
 
               tsc --project ./pi/tsconfig.json
               node --experimental-strip-types --test ./pi/tests/*.test.ts
-              touch $out
             '';
 
         config-files =
-          pkgs.runCommand "desktop-config-tests"
-            {
-              nativeBuildInputs = with pkgs; [
-                lua
-                (python3.withPackages (pythonPackages: [ pythonPackages.json5 ]))
-              ];
-            }
+          mkCheck "desktop-config-tests"
+            (with pkgs; [
+              lua
+              (python3.withPackages (pythonPackages: [ pythonPackages.json5 ]))
+            ])
             ''
               python - <<'PY'
               import json
@@ -273,7 +257,6 @@
                 --replace-fail '@ACCENT_BARE@' '000000' \
                 --replace-fail '@BORDER_DIM_BARE@' '000000'
               find ./hypr -type f -name '*.lua' -exec luac -p {} +
-              touch $out
             '';
       };
 

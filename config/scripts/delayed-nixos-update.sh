@@ -4,12 +4,10 @@ export GIT_OPTIONAL_LOCKS=0
 flake_dir=${NIXOS_UPDATE_FLAKE_DIR:-/etc/nixos}
 flake_attr=${NIXOS_UPDATE_FLAKE_ATTR:-@FLAKE_ATTR@}
 state_dir=${NIXOS_UPDATE_STATE_DIR:-/var/lib/nixos-delayed-updates-v2}
-fast_input=nixpkgs-unstable
+late_input=nixpkgs-unstable
 read -r -a manual_inputs <<< "${NIXOS_UPDATE_MANUAL_INPUTS:-@MANUAL_INPUTS@}"
 delay_seconds=${NIXOS_UPDATE_DELAY_SECONDS:-$((3 * 24 * 60 * 60))}
-fast_check_seconds=${NIXOS_UPDATE_FAST_CHECK_SECONDS:-$((6 * 60 * 60))}
-delayed_check_seconds=${NIXOS_UPDATE_DELAYED_CHECK_SECONDS:-$((24 * 60 * 60))}
-fast_dir="$state_dir/fast"
+check_seconds=${NIXOS_UPDATE_DELAYED_CHECK_SECONDS:-$((24 * 60 * 60))}
 delayed_dir="$state_dir/delayed"
 applied_lock_hash="$state_dir/applied-lock-hash"
 approved_revision_file="$state_dir/approved-revision"
@@ -55,26 +53,14 @@ notify_waybar_updates() {
   pkill "-RTMIN+8" -x '\.waybar-wrapped|waybar' >/dev/null 2>&1 || true
 }
 
-lane_dir() {
-  case "$1" in
-    fast) printf '%s\n' "$fast_dir" ;;
-    delayed) printf '%s\n' "$delayed_dir" ;;
-    *)
-      printf 'Unknown update lane: %s\n' "$1" >&2
-      return 2
-      ;;
-  esac
-}
-
 clear_ready() {
-  target_dir="$(lane_dir "$1")"
   rm -f \
-    "$target_dir/ready-flake.lock" "$target_dir/ready-flake.lock.new" \
-    "$target_dir/ready-revision" "$target_dir/ready-revision.new" \
-    "$target_dir/ready-base-hash" "$target_dir/ready-base-hash.new" \
-    "$target_dir/ready-created-at" "$target_dir/ready-created-at.new" \
-    "$target_dir/auto-apply" "$target_dir/auto-apply.new" \
-    "$target_dir/system" "$target_dir/system.new"
+    "$delayed_dir/ready-flake.lock" "$delayed_dir/ready-flake.lock.new" \
+    "$delayed_dir/ready-revision" "$delayed_dir/ready-revision.new" \
+    "$delayed_dir/ready-base-hash" "$delayed_dir/ready-base-hash.new" \
+    "$delayed_dir/ready-created-at" "$delayed_dir/ready-created-at.new" \
+    "$delayed_dir/auto-apply" "$delayed_dir/auto-apply.new" \
+    "$delayed_dir/system" "$delayed_dir/system.new"
 }
 
 clear_delayed_queue() {
@@ -86,12 +72,11 @@ clear_delayed_queue() {
 }
 
 ready_is_complete() {
-  target_dir="$(lane_dir "$1")"
-  test -f "$target_dir/ready-flake.lock" \
-    && test -f "$target_dir/ready-revision" \
-    && test -f "$target_dir/ready-base-hash" \
-    && test -f "$target_dir/ready-created-at" \
-    && test -L "$target_dir/system"
+  test -f "$delayed_dir/ready-flake.lock" \
+    && test -f "$delayed_dir/ready-revision" \
+    && test -f "$delayed_dir/ready-base-hash" \
+    && test -f "$delayed_dir/ready-created-at" \
+    && test -L "$delayed_dir/system"
 }
 
 worktree_status() {
@@ -158,8 +143,7 @@ approve_current() {
   write_approved_revision "$(git_at_flake rev-parse --verify HEAD)"
   write_approved_system "$current_system"
   write_applied_lock_hash
-  clear_ready fast
-  clear_ready delayed
+  clear_ready
   clear_delayed_queue
   rm -rf "$transaction_dir" "$transaction_dir.new"
   printf 'Approved revision, lock, and active system from the successful manual rebuild.\n'
@@ -207,119 +191,70 @@ create_stage() {
   cp "$flake_dir/flake.lock" "$staged_flake/flake.lock"
 }
 
-lock_without_fast_input() {
-  jq --arg input "$fast_input" '
+lock_without_late_input() {
+  jq --arg input "$late_input" '
     .nodes.root.inputs[$input] as $node
     | del(.nodes.root.inputs[$input])
     | if $node then del(.nodes[$node]) else . end
   ' "$1"
 }
 
-non_fast_locks_match() {
+queued_baseline_matches() {
   make_temp_dir
-  lock_without_fast_input "$1" > "$tmp_dir/left.json"
-  lock_without_fast_input "$2" > "$tmp_dir/right.json"
+  lock_without_late_input "$1" > "$tmp_dir/left.json"
+  lock_without_late_input "$2" > "$tmp_dir/right.json"
   cmp -s "$tmp_dir/left.json" "$tmp_dir/right.json"
 }
 
 delayed_root_inputs() {
   manual_inputs_json="$(printf '%s\n' "${manual_inputs[@]}" | jq -R . | jq -s .)"
-  jq -r --arg fast "$fast_input" --argjson manual "$manual_inputs_json" '
-    .nodes.root.inputs | keys[] | select(. != $fast and (. as $name | $manual | index($name) | not))
+  jq -r --arg late "$late_input" --argjson manual "$manual_inputs_json" '
+    .nodes.root.inputs | keys[] | select(. != $late and (. as $name | $manual | index($name) | not))
   ' "$1"
 }
 
 record_check() {
-  target_dir="$(lane_dir "$1")"
-  date +%s > "$target_dir/last-check.new"
-  mv -f "$target_dir/last-check.new" "$target_dir/last-check"
+  date +%s > "$delayed_dir/last-check.new"
+  mv -f "$delayed_dir/last-check.new" "$delayed_dir/last-check"
 }
 
 check_is_due() {
-  lane=$1
-  interval=$2
-  target_dir="$(lane_dir "$lane")"
   now="$(date +%s)"
-  checked="$(cat "$target_dir/last-check" 2>/dev/null || printf '0')"
-  ! [[ "$checked" =~ ^[0-9]+$ ]] || ((now - checked >= interval))
+  checked="$(cat "$delayed_dir/last-check" 2>/dev/null || printf '0')"
+  ! [[ "$checked" =~ ^[0-9]+$ ]] || ((now - checked >= check_seconds))
 }
 
 mark_auto_apply() {
-  target_dir="$(lane_dir "$1")"
-  printf '%s\n' auto > "$target_dir/auto-apply.new"
-  mv -f "$target_dir/auto-apply.new" "$target_dir/auto-apply"
+  printf '%s\n' auto > "$delayed_dir/auto-apply.new"
+  mv -f "$delayed_dir/auto-apply.new" "$delayed_dir/auto-apply"
 }
 
 build_ready() {
-  lane=$1
-  candidate_lock=$2
-  candidate_revision=$3
-  base_hash=$4
-  apply_mode=${5:-manual}
-  target_dir="$(lane_dir "$lane")"
+  candidate_lock=$1
+  candidate_revision=$2
+  base_hash=$3
+  apply_mode=${4:-manual}
 
   cp "$candidate_lock" "$staged_flake/flake.lock"
   nix flake check "path:$staged_flake" --no-update-lock-file
   # Keep the stable out-link pathname registered as the indirect GC root. Nix
   # replaces it only after the complete system build succeeds.
   nix build \
-    --out-link "$target_dir/system" \
+    --out-link "$delayed_dir/system" \
     "path:$staged_flake#nixosConfigurations.$flake_attr.config.system.build.toplevel"
 
-  cp "$candidate_lock" "$target_dir/ready-flake.lock.new"
-  printf '%s\n' "$candidate_revision" > "$target_dir/ready-revision.new"
-  printf '%s\n' "$base_hash" > "$target_dir/ready-base-hash.new"
-  date +%s > "$target_dir/ready-created-at.new"
-  chmod 0644 \
-    "$target_dir/ready-flake.lock.new" \
-    "$target_dir/ready-revision.new" \
-    "$target_dir/ready-base-hash.new" \
-    "$target_dir/ready-created-at.new"
-  mv -f "$target_dir/ready-flake.lock.new" "$target_dir/ready-flake.lock"
-  mv -f "$target_dir/ready-revision.new" "$target_dir/ready-revision"
-  mv -f "$target_dir/ready-base-hash.new" "$target_dir/ready-base-hash"
-  mv -f "$target_dir/ready-created-at.new" "$target_dir/ready-created-at"
+  cp "$candidate_lock" "$delayed_dir/ready-flake.lock.new"
+  printf '%s\n' "$candidate_revision" > "$delayed_dir/ready-revision.new"
+  printf '%s\n' "$base_hash" > "$delayed_dir/ready-base-hash.new"
+  date +%s > "$delayed_dir/ready-created-at.new"
+  chmod 0644 "$delayed_dir"/ready-*.new
+  for file in flake.lock revision base-hash created-at; do
+    mv -f "$delayed_dir/ready-$file.new" "$delayed_dir/ready-$file"
+  done
   if [ "$apply_mode" = auto ]; then
-    mark_auto_apply "$lane"
+    mark_auto_apply
   fi
-  printf 'A checked and built %s-lane update is ready to apply.\n' "$lane"
-}
-
-check_fast() {
-  apply_mode=${1:-manual}
-  if ! require_approved_revision || ! require_safe_baseline; then
-    return 0
-  fi
-
-  create_stage
-  base_hash="$(hash_file "$flake_dir/flake.lock")"
-  updated_lock="$tmp_dir/fast-flake.lock"
-  nix flake update "$fast_input" \
-    --flake "path:$staged_flake" \
-    --output-lock-file "$updated_lock"
-
-  if cmp -s "$flake_dir/flake.lock" "$updated_lock"; then
-    clear_ready fast
-    record_check fast
-    printf 'Codex, Pi, Claude, and T3 Code are up to date.\n'
-    return 0
-  fi
-
-  if ready_is_complete fast \
-    && [ "$(cat "$fast_dir/ready-revision")" = "$revision" ] \
-    && [ "$(cat "$fast_dir/ready-base-hash")" = "$base_hash" ] \
-    && cmp -s "$fast_dir/ready-flake.lock" "$updated_lock"; then
-    if [ "$apply_mode" = auto ]; then
-      mark_auto_apply fast
-    fi
-    record_check fast
-    printf 'The existing fast-lane candidate is still current.\n'
-    return 0
-  fi
-
-  clear_ready fast
-  build_ready fast "$updated_lock" "$revision" "$base_hash" "$apply_mode"
-  record_check fast
+  printf 'A checked and built delayed update is ready to apply.\n'
 }
 
 save_delayed_queue() {
@@ -337,7 +272,7 @@ save_delayed_queue() {
   mv -f "$delayed_dir/queued-base-flake.lock.new" "$delayed_dir/queued-base-flake.lock"
   mv -f "$delayed_dir/queued-revision.new" "$delayed_dir/queued-revision"
   mv -f "$delayed_dir/first-seen.new" "$delayed_dir/first-seen"
-  printf 'Frozen a delayed-lane candidate for %s seconds.\n' "$delay_seconds"
+  printf 'Frozen a delayed candidate for %s seconds.\n' "$delay_seconds"
 }
 
 seed_delayed_queue() {
@@ -349,7 +284,7 @@ seed_delayed_queue() {
 
   if ((${#update_inputs[@]} == 0)); then
     clear_delayed_queue
-    printf 'There are no delayed-lane inputs.\n'
+    printf 'There are no delayed inputs.\n'
     return 0
   fi
 
@@ -359,7 +294,7 @@ seed_delayed_queue() {
 
   if cmp -s "$base_lock" "$updated_lock"; then
     clear_delayed_queue
-    printf 'All delayed-lane inputs are up to date.\n'
+    printf 'All delayed inputs are up to date.\n'
     return 0
   fi
 
@@ -382,53 +317,53 @@ check_delayed() {
   current_revision="$(git_at_flake rev-parse --verify HEAD)"
   current_hash="$(hash_file "$flake_dir/flake.lock")"
 
-  if ready_is_complete delayed; then
+  if ready_is_complete; then
     if [ "$(cat "$delayed_dir/ready-revision")" = "$current_revision" ] \
       && [ "$(cat "$delayed_dir/ready-base-hash")" = "$current_hash" ]; then
       if [ "$apply_mode" = auto ]; then
-        mark_auto_apply delayed
+        mark_auto_apply
       fi
-      record_check delayed
-      printf 'The delayed-lane candidate is built and ready.\n'
+      record_check
+      printf 'The delayed candidate is built and ready.\n'
       return 0
     fi
-    clear_ready delayed
+    clear_ready
   fi
 
   if ! delayed_queue_is_complete; then
     seed_delayed_queue
-    record_check delayed
+    record_check
     return 0
   fi
 
   if [ "$(cat "$delayed_dir/queued-revision")" != "$current_revision" ] \
-    || ! non_fast_locks_match "$delayed_dir/queued-base-flake.lock" "$flake_dir/flake.lock"; then
+    || ! queued_baseline_matches "$delayed_dir/queued-base-flake.lock" "$flake_dir/flake.lock"; then
     printf 'The delayed queue no longer matches the live configuration; reseeding it.\n'
-    clear_ready delayed
+    clear_ready
     clear_delayed_queue
     seed_delayed_queue
-    record_check delayed
+    record_check
     return 0
   fi
 
   first_seen="$(cat "$delayed_dir/first-seen")"
   now="$(date +%s)"
   if ! [[ "$first_seen" =~ ^[0-9]+$ ]] || ((now - first_seen < delay_seconds)); then
-    record_check delayed
-    printf 'The frozen delayed-lane candidate is still in quarantine.\n'
+    record_check
+    printf 'The frozen delayed candidate is still in quarantine.\n'
     return 0
   fi
 
   create_stage
   cp "$delayed_dir/queued-flake.lock" "$staged_flake/flake.lock"
   rebased_lock="$tmp_dir/rebased-flake.lock"
-  nix flake update "$fast_input" \
+  nix flake update "$late_input" \
     --flake "path:$staged_flake" \
     --output-lock-file "$rebased_lock"
 
-  clear_ready delayed
-  build_ready delayed "$rebased_lock" "$revision" "$current_hash" "$apply_mode"
-  record_check delayed
+  clear_ready
+  build_ready "$rebased_lock" "$revision" "$current_hash" "$apply_mode"
+  record_check
 }
 
 install_live_lock() {
@@ -454,12 +389,10 @@ write_applied_lock_hash() {
 }
 
 verify_candidate_system() {
-  lane=$1
-  target_dir="$(lane_dir "$lane")"
-  candidate_system="$(readlink -f "$target_dir/system" 2>/dev/null || true)"
+  candidate_system="$(readlink -f "$delayed_dir/system" 2>/dev/null || true)"
 
   create_stage
-  cp "$target_dir/ready-flake.lock" "$staged_flake/flake.lock"
+  cp "$delayed_dir/ready-flake.lock" "$staged_flake/flake.lock"
   build_output="$(
     nix build \
       --no-link \
@@ -468,8 +401,8 @@ verify_candidate_system() {
   )"
   mapfile -t verified_systems <<< "$build_output"
   if ((${#verified_systems[@]} != 1)); then
-    printf 'The %s-lane candidate evaluation returned %s system paths instead of one.\n' \
-      "$lane" "${#verified_systems[@]}" >&2
+    printf 'The delayed candidate evaluation returned %s system paths instead of one.\n' \
+      "${#verified_systems[@]}" >&2
     return 1
   fi
 
@@ -477,7 +410,7 @@ verify_candidate_system() {
   if [ -z "$candidate_system" ] \
     || [ "$candidate_system" != "$expected_system" ] \
     || [ ! -x "$expected_system/bin/switch-to-configuration" ]; then
-    printf 'The saved %s-lane system does not match the system evaluated from its lock file.\n' "$lane" >&2
+    printf 'The saved delayed system does not match the system evaluated from its lock file.\n' >&2
     return 1
   fi
 }
@@ -488,9 +421,8 @@ write_transaction_phase() {
 }
 
 begin_transaction() {
-  lane=$1
-  candidate_system=$2
-  candidate_lock=$3
+  candidate_system=$1
+  candidate_lock=$2
   transaction_new="$transaction_dir.new"
 
   rm -rf "$transaction_new"
@@ -505,14 +437,12 @@ begin_transaction() {
     > "$transaction_new/original-system"
   printf '%s\n' "$candidate_system" > "$transaction_new/candidate-system"
   hash_file "$candidate_lock" > "$transaction_new/candidate-lock-hash"
-  printf '%s\n' "$lane" > "$transaction_new/lane"
   printf '%s\n' prepared > "$transaction_new/phase"
   chmod 0600 "$transaction_new"/*
   mv -T "$transaction_new" "$transaction_dir"
 }
 
 finish_transaction() {
-  lane="$(cat "$transaction_dir/lane")"
   candidate_hash="$(cat "$transaction_dir/candidate-lock-hash")"
   if [ "$(hash_file "$flake_dir/flake.lock")" != "$candidate_hash" ]; then
     printf 'Cannot finalize the update because the installed lock does not match the transaction.\n' >&2
@@ -522,16 +452,8 @@ finish_transaction() {
   write_applied_lock_hash
   write_approved_revision "$(git_at_flake rev-parse --verify HEAD)"
   write_approved_system "$(cat "$transaction_dir/candidate-system")"
-  clear_ready "$lane"
-  if [ "$lane" = delayed ]; then
-    clear_delayed_queue
-  fi
-
-  other_lane=delayed
-  if [ "$lane" = delayed ]; then
-    other_lane=fast
-  fi
-  clear_ready "$other_lane"
+  clear_ready
+  clear_delayed_queue
   rm -rf "$transaction_dir"
 }
 
@@ -588,8 +510,7 @@ recover_transaction() {
   fi
   if [ ! -f "$transaction_dir/phase" ] \
     || [ ! -f "$transaction_dir/candidate-system" ] \
-    || [ ! -f "$transaction_dir/candidate-lock-hash" ] \
-    || [ ! -f "$transaction_dir/lane" ]; then
+    || [ ! -f "$transaction_dir/candidate-lock-hash" ]; then
     printf 'The persistent update transaction is incomplete; refusing to continue.\n' >&2
     return 1
   fi
@@ -613,113 +534,88 @@ recover_transaction() {
 }
 
 ready_matches_live_baseline() {
-  lane=$1
-  target_dir="$(lane_dir "$lane")"
-
   if ! require_approved_revision; then
-    printf 'The %s-lane candidate remains ready because the configuration revision is not approved.\n' \
-      "$lane" >&2
+    printf 'The delayed candidate remains ready because the configuration revision is not approved.\n' >&2
     return 1
   fi
   if ! baseline_lock_is_safe; then
-    printf 'The %s-lane candidate remains ready because %s has user changes.\n' "$lane" "$flake_dir" >&2
+    printf 'The delayed candidate remains ready because %s has user changes.\n' "$flake_dir" >&2
     return 1
   fi
 
   revision="$(git_at_flake rev-parse --verify HEAD)"
-  if [ "$(cat "$target_dir/ready-revision")" != "$revision" ]; then
-    printf 'The %s-lane candidate was built from a different Git revision.\n' "$lane" >&2
+  if [ "$(cat "$delayed_dir/ready-revision")" != "$revision" ]; then
+    printf 'The delayed candidate was built from a different Git revision.\n' >&2
     return 1
   fi
 
   current_hash="$(hash_file "$flake_dir/flake.lock")"
-  if [ "$(cat "$target_dir/ready-base-hash")" != "$current_hash" ]; then
-    printf 'The %s-lane candidate has a stale lock-file baseline.\n' "$lane" >&2
+  if [ "$(cat "$delayed_dir/ready-base-hash")" != "$current_hash" ]; then
+    printf 'The delayed candidate has a stale lock-file baseline.\n' >&2
     return 1
   fi
 }
 
-apply_lane() {
-  lane=$1
-  apply_mode=${2:-manual}
-  target_dir="$(lane_dir "$lane")"
+apply_delayed() {
+  apply_mode=${1:-manual}
 
-  if ! ready_is_complete "$lane"; then
-    printf 'No complete %s-lane candidate is ready.\n' "$lane"
+  if ! ready_is_complete; then
+    printf 'No complete delayed candidate is ready.\n'
     return 0
   fi
-  if [ "$apply_mode" = auto ] && [ ! -f "$target_dir/auto-apply" ]; then
-    printf 'The %s-lane candidate requires manual approval.\n' "$lane"
+  if [ "$apply_mode" = auto ] && [ ! -f "$delayed_dir/auto-apply" ]; then
+    printf 'The delayed candidate requires manual approval.\n'
     return 0
   fi
-
-  if ! ready_matches_live_baseline "$lane"; then
+  if ! ready_matches_live_baseline; then
     return 0
   fi
-
-  if ! verify_candidate_system "$lane"; then
-    clear_ready "$lane"
+  if ! verify_candidate_system; then
+    clear_ready
     return 1
   fi
 
-  # Candidate verification can evaluate or build for long enough that the live
-  # checkout changes underneath it. Revalidate at the transaction boundary so
-  # user edits are never overwritten by a candidate checked against older state.
-  if ! ready_matches_live_baseline "$lane"; then
-    printf 'The %s-lane candidate remains ready because the live baseline changed during verification.\n' \
-      "$lane" >&2
+  # Candidate verification can take long enough for the checkout to change.
+  # Revalidate at the transaction boundary before replacing any live state.
+  if ! ready_matches_live_baseline; then
+    printf 'The delayed candidate remains ready because the live baseline changed during verification.\n' >&2
     return 0
   fi
 
-  begin_transaction "$lane" "$expected_system" "$target_dir/ready-flake.lock"
-  install_live_lock "$target_dir/ready-flake.lock"
+  begin_transaction "$expected_system" "$delayed_dir/ready-flake.lock"
+  install_live_lock "$delayed_dir/ready-flake.lock"
   write_transaction_phase lock-installed
 
   if ! nix-env --profile /nix/var/nix/profiles/system --set "$expected_system"; then
-    printf 'Installing the %s-lane system profile failed; restoring the previous system.\n' "$lane" >&2
+    printf 'Installing the delayed system profile failed; restoring the previous system.\n' >&2
     rollback_transaction
     return 1
   fi
   write_transaction_phase profile-installed
 
   if ! "$expected_system/bin/switch-to-configuration" boot; then
-    printf 'Staging the %s-lane system for boot failed; restoring the previous boot target.\n' "$lane" >&2
+    printf 'Staging the delayed system for boot failed; restoring the previous boot target.\n' >&2
     rollback_transaction
     return 1
   fi
   write_transaction_phase switched
   finish_transaction
-  printf 'Installed the checked %s-lane update for the next boot; the active desktop was not switched.\n' "$lane"
+  printf 'Installed the checked delayed update for the next boot; the active desktop was not switched.\n'
 }
 
 run_delayed() {
   check_delayed auto
-  apply_lane delayed auto
+  apply_delayed auto
 }
 
 catch_up_delayed() {
-  if check_is_due delayed "$delayed_check_seconds"; then
+  if check_is_due; then
     run_delayed
   fi
 }
 
-catch_up() {
-  if check_is_due fast "$fast_check_seconds"; then
-    check_fast auto
-  fi
-  if check_is_due delayed "$delayed_check_seconds"; then
-    check_delayed auto
-  fi
-}
-
-apply_ready() {
-  apply_mode=${1:-manual}
-  apply_lane fast "$apply_mode"
-  apply_lane delayed "$apply_mode"
-}
-
 main() {
-  mkdir -p "$fast_dir" "$delayed_dir"
+  mkdir -p "$delayed_dir"
   trap cleanup EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
@@ -728,32 +624,25 @@ main() {
     printf 'Another NixOS update operation is already running.\n' >&2
     # Timer collisions are harmless skips, but baseline approval must not
     # report success when nothing was recorded.
-    if [ "${1:-catch-up}" = approve-current ]; then
+    if [ "${1:-catch-up-delayed}" = approve-current ]; then
       return 75
     fi
     return 0
   fi
   update_lock_acquired=1
-  if [ "${1:-catch-up}" = approve-current ]; then
+  if [ "${1:-catch-up-delayed}" = approve-current ]; then
     approve_current
     return
   fi
   recover_transaction
 
-  case "${1:-catch-up}" in
-    check-fast) check_fast "${2:-manual}" ;;
+  case "${1:-catch-up-delayed}" in
     check-delayed) check_delayed "${2:-manual}" ;;
     run-delayed) run_delayed ;;
     catch-up-delayed) catch_up_delayed ;;
-    catch-up) catch_up ;;
-    apply-auto-fast) apply_lane fast auto ;;
-    apply-auto-delayed) apply_lane delayed auto ;;
-    apply-auto) apply_ready auto ;;
-    apply-fast) apply_lane fast manual ;;
-    apply-delayed) apply_lane delayed manual ;;
-    apply-ready) apply_ready manual ;;
+    apply-delayed) apply_delayed manual ;;
     *)
-      printf 'Usage: %s approve-current | check-fast [auto|manual] | check-delayed [auto|manual] | run-delayed | catch-up-delayed | catch-up | apply-auto-fast | apply-auto-delayed | apply-auto | apply-fast | apply-delayed | apply-ready\n' "$0" >&2
+      printf 'Usage: %s approve-current | check-delayed [auto|manual] | run-delayed | catch-up-delayed | apply-delayed\n' "$0" >&2
       return 2
       ;;
   esac

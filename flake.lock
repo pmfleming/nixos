@@ -65,11 +65,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788391356,
-        "narHash": "sha256-Ev0ZvF+5VWuaQe/WUHF0rCnSn9ML+4pZtPDFcPA3lyc=",
+        "lastModified": 1788477040,
+        "narHash": "sha256-kuXa4UICqaE5GYmmrhwOHo2lr60xR74aJKGiVdyynY4=",
         "ref": "main",
-        "rev": "b400b319807dcf7e91b3dee8ee6c5af831a2fe67",
-        "revCount": 83,
+        "rev": "5a51df384e4eaa1b980a5f1e63235a095695b136",
+        "revCount": 85,
         "type": "git",
         "url": "file:///home/laufan/Projects/bar-daemon"
       },
@@ -109,11 +109,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788391356,
-        "narHash": "sha256-0OEzi5adpxAv7UwfGGyB/d7EIDgkgoN1Blq/qCu4IiY=",
+        "lastModified": 1788470692,
+        "narHash": "sha256-tUgPWVn2hJkU8yl8vPSBIIMD4oPa2dA8XxuVoqC+jjU=",
         "ref": "main",
-        "rev": "b6d56e97569dd70c492079723e28637ffe89dfa9",
-        "revCount": 80,
+        "rev": "35d64f5cc6ac9ed46e1215c2f0657f5005fefb49",
+        "revCount": 81,
         "type": "git",
         "url": "file:///home/laufan/Projects/clip-daemon"
       },
@@ -540,11 +540,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788450574,
-        "narHash": "sha256-nRsoq3z3f5yv7vXAnu8RsnnnNQ9O3f6iA3PzU7In3Zw=",
+        "lastModified": 1788530787,
+        "narHash": "sha256-JkTPxgWRKDf+t7V7OqOJ2vA0mIYNZ9gu0SaBXqtCgKs=",
         "ref": "main",
-        "rev": "be6f6350c8c45b7a270de31862ee942b6bd9e714",
-        "revCount": 112,
+        "rev": "5664bd7d37318b5d4a86724b86a491f3511fee67",
+        "revCount": 118,
         "type": "git",
         "url": "file:///home/laufan/Projects/nm-daemon"
       },
@@ -617,11 +617,11 @@
         "shelllist-hyprland": "shelllist-hyprland"
       },
       "locked": {
-        "lastModified": 1788449911,
-        "narHash": "sha256-3gIxLisJcSqFxoDyVH8IJj1FjqPppXL2m+9jVLgLTRM=",
+        "lastModified": 1788531265,
+        "narHash": "sha256-QRM6s2HWB5NB1MJ1j1Zh77BIYfnOiC6GV+jrUc0hB8M=",
         "ref": "main",
-        "rev": "c91d48e9d1034e83a6221609ecf60bf441ef96e7",
-        "revCount": 316,
+        "rev": "08c61b5ca8139ee4a79f48ea390128f84fea6bf2",
+        "revCount": 339,
         "type": "git",
         "url": "file:///home/laufan/Projects/shelllist"
       },

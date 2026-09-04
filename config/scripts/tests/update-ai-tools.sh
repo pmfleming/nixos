@@ -26,12 +26,12 @@ jq '.nodes.fast.locked.rev = "fast-b"' "$test_root/base.lock" > "$test_root/fast
 jq '.nodes.stable.locked.rev = "stable-b"' "$test_root/base.lock" > "$test_root/stable.lock"
 jq '.nodes.local.locked.rev = "local-b"' "$test_root/base.lock" > "$test_root/local.lock"
 
-non_fast_locks_match "$test_root/base.lock" "$test_root/fast.lock"
-if non_fast_locks_match "$test_root/base.lock" "$test_root/stable.lock"; then
+locks_match_except_managed_input "$test_root/base.lock" "$test_root/fast.lock"
+if locks_match_except_managed_input "$test_root/base.lock" "$test_root/stable.lock"; then
   printf 'A stable-input change was mistaken for an AI-only lock change.\n' >&2
   exit 1
 fi
-if non_fast_locks_match "$test_root/base.lock" "$test_root/local.lock"; then
+if locks_match_except_managed_input "$test_root/base.lock" "$test_root/local.lock"; then
   printf 'A local-input change was mistaken for an AI-only lock change.\n' >&2
   exit 1
 fi

@@ -8,23 +8,19 @@ let
 
   withPlaceholders = replacements: path: substitute replacements (builtins.readFile path);
 
-  mkShellApplication =
-    pkgs:
+in
+{
+  inherit substitute withPlaceholders;
+
+  mkScriptFrom =
+    pkgs: directory:
     {
       name,
       runtimeInputs ? [ ],
       replacements ? { },
-      path,
     }:
     pkgs.writeShellApplication {
       inherit name runtimeInputs;
-      text = withPlaceholders replacements path;
+      text = withPlaceholders replacements (directory + "/${name}.sh");
     };
-in
-{
-  inherit substitute withPlaceholders mkShellApplication;
-
-  mkScriptFrom =
-    pkgs: directory: attrs:
-    mkShellApplication pkgs (attrs // { path = directory + "/${attrs.name}.sh"; });
 }

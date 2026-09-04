@@ -44,17 +44,18 @@ fingerprint() {
   sha256sum "$legacy_monitors" "$legacy_workspaces" 2>/dev/null || true
 }
 
+lua_string_awk='
+function lua_string(value, escaped) {
+  escaped = value
+  gsub(/\\/, "\\\\", escaped)
+  gsub(/"/, "\\\"", escaped)
+  return "\"" escaped "\""
+}'
+
 convert_monitors() {
   tmp="$target_monitors_tmp"
 
-  if awk '
-    function lua_string(value, escaped) {
-      escaped = value
-      gsub(/\\/, "\\\\", escaped)
-      gsub(/"/, "\\\"", escaped)
-      return "\"" escaped "\""
-    }
-
+  if awk "$lua_string_awk"'
     function remember(output) {
       if (!(output in seen)) {
         seen[output] = 1
@@ -134,14 +135,7 @@ convert_monitors() {
 convert_workspaces() {
   tmp="$target_workspaces_tmp"
 
-  if awk '
-    function lua_string(value, escaped) {
-      escaped = value
-      gsub(/\\/, "\\\\", escaped)
-      gsub(/"/, "\\\"", escaped)
-      return "\"" escaped "\""
-    }
-
+  if awk "$lua_string_awk"'
     /^[[:space:]]*workspace[[:space:]]*=/ {
       line = $0
       sub(/^[[:space:]]*workspace[[:space:]]*=[[:space:]]*/, "", line)

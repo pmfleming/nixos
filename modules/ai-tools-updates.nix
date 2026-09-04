@@ -1,23 +1,8 @@
 { updateAiTools, ... }:
 
 let
-  commonService = {
-    wants = [ "network-online.target" ];
-    after = [ "network-online.target" ];
-    environment.NIX_CONFIG = ''
-      max-jobs = 1
-      cores = 2
-    '';
-    serviceConfig = {
-      Type = "oneshot";
-      StateDirectory = "nixos-ai-tools";
-      StateDirectoryMode = "0755";
-      UMask = "0022";
-      Nice = 10;
-      CPUWeight = 20;
-      IOWeight = 20;
-    };
-  };
+  systemdLib = import ../lib/systemd.nix;
+  commonService = systemdLib.nixBuildService "nixos-ai-tools";
 in
 {
   systemd.services = {
@@ -45,28 +30,20 @@ in
   };
 
   systemd.timers = {
-    nixos-ai-tools-update = {
-      description = "Check nixpkgs-unstable for AI coding-tool updates every 30 minutes";
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnBootSec = "2m";
-        OnCalendar = "*:0/30";
-        AccuracySec = "1m";
-        RandomizedDelaySec = "2m";
-        Persistent = true;
-        Unit = "nixos-ai-tools-update.service";
-      };
-    };
+    nixos-ai-tools-update =
+      systemdLib.timer "Check nixpkgs-unstable for AI coding-tool updates every 30 minutes"
+        {
+          OnBootSec = "2m";
+          OnCalendar = "*:0/30";
+          AccuracySec = "1m";
+          RandomizedDelaySec = "2m";
+          Unit = "nixos-ai-tools-update.service";
+        };
 
-    nixos-ai-tools-stale = {
-      description = "Check whether AI coding-tool updates have gone stale";
-      wantedBy = [ "timers.target" ];
-      timerConfig = {
-        OnCalendar = "*-*-* 00/3:20:00";
-        AccuracySec = "5m";
-        Persistent = true;
-        Unit = "nixos-ai-tools-stale.service";
-      };
+    nixos-ai-tools-stale = systemdLib.timer "Check whether AI coding-tool updates have gone stale" {
+      OnCalendar = "*-*-* 00/3:20:00";
+      AccuracySec = "5m";
+      Unit = "nixos-ai-tools-stale.service";
     };
   };
 }

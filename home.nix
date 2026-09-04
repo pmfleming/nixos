@@ -106,6 +106,21 @@ let
     Type=Application
     Hidden=true
   '';
+  daemonUnitOverride.text = ''
+    [Unit]
+    PartOf=graphical-session.target
+
+    [Service]
+    Slice=background-graphical.slice
+  '';
+  packagedUserService = name: package: {
+    "systemd/user/${name}.service".source = "${package}/share/systemd/user/${name}.service";
+    "systemd/user/graphical-session.target.wants/${name}.service".source =
+      "${package}/share/systemd/user/${name}.service";
+    "systemd/user/${name}.service.d/uwsm-session.conf" = daemonUnitOverride;
+  };
+  packagedUserServices =
+    packagedUserService "nm-daemon" nmDaemon // packagedUserService "bt-daemon" btDaemon;
 
   hyprlandConfig = themeText (
     scriptWith {
@@ -298,7 +313,7 @@ in
       };
     };
 
-    configFile = {
+    configFile = packagedUserServices // {
       # Override package-provided XDG autostart entries; Waybar and the custom
       # network/Bluetooth controls own these interfaces instead of tray applets.
       "autostart/blueman.desktop" = hiddenAutostart;
@@ -306,28 +321,7 @@ in
       # UWSM sources this before starting the compositor and exports the values
       # to the systemd and D-Bus activation environments for the whole session.
       "uwsm/env".text = uwsmEnvConfig;
-      # Install and enable the package-owned units instead of cloning their definitions.
-      # Direct unit links keep them discoverable by systemctl; wants links enable them.
-      "systemd/user/nm-daemon.service".source = "${nmDaemon}/share/systemd/user/nm-daemon.service";
-      "systemd/user/bt-daemon.service".source = "${btDaemon}/share/systemd/user/bt-daemon.service";
-      "systemd/user/graphical-session.target.wants/nm-daemon.service".source =
-        "${nmDaemon}/share/systemd/user/nm-daemon.service";
-      "systemd/user/graphical-session.target.wants/bt-daemon.service".source =
-        "${btDaemon}/share/systemd/user/bt-daemon.service";
-      "systemd/user/nm-daemon.service.d/uwsm-session.conf".text = ''
-        [Unit]
-        PartOf=graphical-session.target
-
-        [Service]
-        Slice=background-graphical.slice
-      '';
-      "systemd/user/bt-daemon.service.d/uwsm-session.conf".text = ''
-        [Unit]
-        PartOf=graphical-session.target
-
-        [Service]
-        Slice=background-graphical.slice
-      '';
+      # Link and enable package-owned units instead of cloning their definitions.
       "hypr/hyprland.lua".text = hyprlandConfig;
       "bar-daemon/activity.json".text = builtins.toJSON {
         weather_locations = [
@@ -408,119 +402,7 @@ in
       "swaync/style.css".text = themedConfig "swaync/style.css";
     };
 
-    desktopEntries = {
-      blueman-manager = {
-        name = "Bluetooth Manager";
-        genericName = "Bluetooth Manager";
-        comment = "Configure Bluetooth devices";
-        exec = "env GDK_BACKEND=x11 blueman-manager";
-        icon = "blueman";
-        categories = [
-          "GTK"
-          "GNOME"
-          "Settings"
-          "HardwareSettings"
-        ];
-        settings.StartupWMClass = ".blueman-manager-wrapped";
-      };
-
-      nwg-displays = {
-        name = "Displays Settings";
-        genericName = "Output configuration utility";
-        comment = "Configure monitor layouts and write the Lua-compatible Hyprland layout";
-        exec = "env GDK_BACKEND=x11 ${nwgDisplaysLua}/bin/nwg-displays-lua";
-        icon = "nwg-displays";
-        categories = [
-          "Settings"
-          "DesktopSettings"
-        ];
-        settings.StartupWMClass = "Nwg-displays";
-      };
-
-      qv4l2 = {
-        name = "Qt V4L2 test Utility";
-        comment = "Allow testing Video4Linux devices";
-        exec = "env QT_QPA_PLATFORM=xcb QT_OPENGL=software qv4l2";
-        icon = "qv4l2";
-        categories = [ "AudioVideo" ];
-        settings.StartupWMClass = "qv4l2";
-      };
-
-      qvidcap = {
-        name = "Qt V4L2 video capture utility";
-        comment = "Viewer for video capture";
-        exec = "env QT_QPA_PLATFORM=xcb QT_OPENGL=software qvidcap";
-        icon = "qvidcap";
-        categories = [ "AudioVideo" ];
-        settings.StartupWMClass = "qvidcap";
-      };
-
-      cups = {
-        name = "Manage Printing";
-        comment = "Open the CUPS web interface in the default browser";
-        exec = "xdg-open http://localhost:631/";
-        icon = "cups";
-        categories = [
-          "System"
-          "Settings"
-          "Printing"
-        ];
-        settings."X-Shelllist-LaunchOnly" = "true";
-      };
-
-      nixos-manual = {
-        name = "NixOS Manual";
-        genericName = "System Manual";
-        comment = "View NixOS documentation in the default browser";
-        exec = "nixos-help";
-        icon = "nix-snowflake";
-        categories = [ "System" ];
-        settings."X-Shelllist-LaunchOnly" = "true";
-      };
-
-      yazi = {
-        name = "Yazi";
-        genericName = "Terminal File Manager";
-        comment = "Browse files in Yazi";
-        # Keep Yazi on the active workspace instead of matching the regular
-        # Ghostty-to-workspace-1 window rule.
-        exec = "ghostty --class=com.laufan.yazi -e yazi %f";
-        icon = "${pkgs.adwaita-icon-theme}/share/icons/Adwaita/symbolic/legacy/system-file-manager-symbolic.svg";
-        mimeType = [
-          "inode/directory"
-        ];
-        categories = [
-          "System"
-          "FileManager"
-        ];
-        settings.StartupWMClass = "com.laufan.yazi";
-      };
-
-      pi = {
-        name = "Pi";
-        genericName = "AI Coding Assistant";
-        comment = "Open Pi coding assistant";
-        exec = "ghostty --class=com.laufan.pi -e pi";
-        icon = "${./assets/pi-logo-on-dark.svg}";
-        categories = [
-          "Development"
-          "Utility"
-        ];
-        settings.StartupWMClass = "com.laufan.pi";
-      };
-
-      captive-portal-browser = {
-        name = "Captive Portal Browser";
-        genericName = "Captive Portal Browser";
-        comment = "Open Shelllist's temporary captive-portal browser with a fallback HTTP probe";
-        exec = "shelllist-captive-portal --manual --fallback";
-        categories = [
-          "Network"
-          "WebBrowser"
-        ];
-        settings.StartupWMClass = "shelllist-captive-portal";
-      };
-    };
+    desktopEntries = import ./modules/home/desktop-entries.nix { inherit nwgDisplaysLua pkgs; };
   };
 
   services.hypridle = {

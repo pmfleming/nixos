@@ -7,6 +7,7 @@
 }:
 
 let
+  systemdLib = import ../lib/systemd.nix;
   mkScript = (import ../lib/scripts.nix).mkScriptFrom pkgs ../config/scripts;
   pruneNixosGenerations = mkScript {
     name = "prune-nixos-generations";
@@ -20,15 +21,12 @@ let
     "home-manager"
     "profile"
   ];
-  mkTimer = description: OnCalendar: {
-    inherit description;
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
+  mkTimer =
+    description: OnCalendar:
+    systemdLib.timer description {
       inherit OnCalendar;
-      Persistent = true;
       RandomizedDelaySec = "1h";
     };
-  };
 in
 {
   # This bounded policy handles system-profile garbage collection.
@@ -54,12 +52,9 @@ in
 
       nix-store-gc = {
         description = "Garbage collect unreferenced Nix store paths";
-        serviceConfig = {
+        serviceConfig = systemdLib.lowPriority // {
           Type = "oneshot";
           ExecStart = "${config.nix.package}/bin/nix-store --gc";
-          Nice = 10;
-          CPUWeight = 20;
-          IOWeight = 20;
         };
       };
     };
