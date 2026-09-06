@@ -166,6 +166,18 @@
                 ${self}/config/scripts/hypr-monitor-auto.sh
             '';
 
+        deployment-lock =
+          mkCheck "deployment-lock-tests"
+            (with pkgs; [
+              bash
+              coreutils
+              util-linux
+            ])
+            ''
+              bash ${self}/config/scripts/tests/deployment-lock.sh \
+                ${self}/config/scripts
+            '';
+
         updater-state =
           mkCheck "delayed-updater-state-tests"
             (with pkgs; [
@@ -203,6 +215,7 @@
               bash
               coreutils
               gawk
+              util-linux
             ])
             ''
               bash ${self}/config/scripts/tests/prune-nixos-generations.sh \

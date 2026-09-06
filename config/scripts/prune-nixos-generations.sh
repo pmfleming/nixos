@@ -1,6 +1,9 @@
 set -euo pipefail
 export LC_ALL=C
 
+# shellcheck source=/dev/null
+source "${NIXOS_DEPLOYMENT_LOCK_HELPER:-@DEPLOYMENT_LOCK_HELPER@}"
+
 profile=/nix/var/nix/profiles/system
 refresh_boot=1
 keep_recent=5
@@ -23,6 +26,9 @@ while (( $# )); do
       ;;
   esac
 done
+
+acquire_deployment_lock
+trap release_deployment_lock EXIT
 
 # Resolve the intended boot generation before pruning. The running system may
 # be older after an unattended `boot` update, and must not replace that default.

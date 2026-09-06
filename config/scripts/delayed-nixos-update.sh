@@ -1,6 +1,9 @@
 set -euo pipefail
 export GIT_OPTIONAL_LOCKS=0
 
+# shellcheck source=/dev/null
+source "${NIXOS_DEPLOYMENT_LOCK_HELPER:-@DEPLOYMENT_LOCK_HELPER@}"
+
 flake_dir=${NIXOS_UPDATE_FLAKE_DIR:-/etc/nixos}
 flake_attr=${NIXOS_UPDATE_FLAKE_ATTR:-@FLAKE_ATTR@}
 state_dir=${NIXOS_UPDATE_STATE_DIR:-/var/lib/nixos-delayed-updates-v2}
@@ -45,6 +48,7 @@ cleanup() {
   if ((${#temporary_dirs[@]} > 0)); then
     rm -rf "${temporary_dirs[@]}"
   fi
+  release_deployment_lock
   notify_waybar_updates
   exit "$exit_status"
 }
@@ -615,6 +619,22 @@ catch_up_delayed() {
 }
 
 main() {
+  local lock_status
+
+  # Lock order is deployment -> updater state. Approval changes only metadata
+  # and is invoked by rebuild while that caller holds the deployment lock.
+  if [ "${1:-catch-up-delayed}" != approve-current ]; then
+    if acquire_deployment_lock; then
+      :
+    else
+      lock_status=$?
+      if ((lock_status == 75)); then
+        return 0
+      fi
+      return "$lock_status"
+    fi
+  fi
+
   mkdir -p "$delayed_dir"
   trap cleanup EXIT
   trap 'exit 130' INT

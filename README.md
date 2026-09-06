@@ -10,7 +10,8 @@ Daily ThinkPad rebuild:
 rebuild
 ```
 
-Equivalent explicit command:
+Low-level command (bypasses the `rebuild` wrapper's deployment lock, checks,
+local-input updates, service recovery, and baseline approval):
 
 ```sh
 sudo nixos-rebuild switch --flake /etc/nixos#thinkpad
@@ -19,6 +20,17 @@ sudo nixos-rebuild switch --flake /etc/nixos#thinkpad
 Home Manager is integrated as a NixOS module, so home changes in `home.nix` are applied by the same rebuild.
 
 `rebuild` rejects every untracked file, advances the `machine.localProjects` inputs to their committed branch heads in one lock operation, and verifies that they exactly match the root `git+file` inputs. It then runs the complete flake checks, switches the NixOS and integrated Home Manager generations, and restarts Shelllist plus `app-daemon`, `bar-daemon`, `bt-daemon`, `clip-daemon`, and `nm-daemon` when the graphical session is active. This explicit restart is intentional: Home Manager normally restarts only units whose unit files changed. Extra arguments are passed to `nixos-rebuild`.
+
+`rebuild`, `rollback`, unattended NixOS staging, and generation pruning share the root-owned
+`/run/lock/nixos-deployment/lock` inode. Contention makes interactive rebuilds fail
+with exit 75 and timer jobs skip, rather than racing the live lock file, profile,
+or boot entries. The lock is held through rebuild's baseline approval; that
+service takes only the updater-state lock to avoid a nested-lock deadlock.
+Direct `nixos-rebuild` calls do not participate: run them only when
+no deployment/pruning job is active. On the first upgrade introducing this lock,
+let existing jobs finish and pause the update/pruning timers before the rebuild;
+the new tmpfiles rule provisions the lock at activation. Re-enable the timers
+afterwards. Older running scripts cannot participate in the new protocol.
 
 Every invocation records its command output under `~/.local/state/nixos-rebuild/`. `latest.log` points to the most recent run and `latest-failed.log` to the most recent failure; completed files are marked `.success.log` or `.failed.log`. Logs older than 30 days are removed when the next rebuild starts. A concise completion overview reports the outcome, elapsed time, derivations built, store paths and data copied, closure and store-size changes, active system, graphical-session recovery, baseline approval, log path, and package changes.
 
@@ -75,7 +87,7 @@ Review and commit automatic `flake.lock` changes intentionally. After changing a
 
 ## Generation Retention
 
-`prune-nixos-generations.service` runs daily for both the system and Home Manager profiles. It retains the newest five generations, the newest generation from each of the current and previous seven ISO weeks, and the newest generation from each of the current and previous eleven calendar months. These sets may overlap, and active system/profile targets are always protected. `nix-store-gc.timer` separately removes unreferenced store paths once per week.
+`prune-nixos-generations.service` runs daily for both the system and Home Manager profiles. It retains the newest five generations, the newest generation from each of the current and previous seven ISO weeks, and the newest generation from each of the current and previous eleven calendar months. These sets may overlap, and active system/profile targets are always protected. Boot entries are refreshed from the system profile target, preserving any update staged for the next boot rather than reselecting the older running system. `nix-store-gc.timer` separately removes unreferenced store paths once per week.
 
 ## Secrets and Login Recovery
 

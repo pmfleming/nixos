@@ -8,6 +8,7 @@
 
 let
   systemdLib = import ../lib/systemd.nix;
+  deploymentLock = import ../lib/deployment-lock.nix { inherit pkgs; };
   mkScript = (import ../lib/scripts.nix).mkScriptFrom pkgs ../config/scripts;
   pruneNixosGenerations = mkScript {
     name = "prune-nixos-generations";
@@ -15,7 +16,9 @@ let
       config.nix.package
       pkgs.coreutils
       pkgs.gawk
+      pkgs.util-linux
     ];
+    replacements."@DEPLOYMENT_LOCK_HELPER@" = "${deploymentLock.helper}";
   };
   userProfiles = map (name: "${machine.homeDirectory}/.local/state/nix/profiles/${name}") [
     "home-manager"
@@ -36,7 +39,11 @@ in
     services = {
       prune-nixos-generations = {
         description = "Prune system and Home Manager generations with bounded retention";
-        serviceConfig.Type = "oneshot";
+        serviceConfig = {
+          Type = "oneshot";
+          # Lock contention is a harmless skip; try again at the next timer run.
+          SuccessExitStatus = [ 75 ];
+        };
         script = ''
           ${pruneNixosGenerations}/bin/prune-nixos-generations
           for profile in ${lib.escapeShellArgs userProfiles}; do

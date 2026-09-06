@@ -7,6 +7,7 @@
 
 let
   systemdLib = import ../lib/systemd.nix;
+  deploymentLock = import ../lib/deployment-lock.nix { inherit pkgs; };
   mkScript = (import ../lib/scripts.nix).mkScriptFrom pkgs ../config/scripts;
 
   delayedNixosUpdate = mkScript {
@@ -22,6 +23,7 @@ let
       util-linux
     ];
     replacements = {
+      "@DEPLOYMENT_LOCK_HELPER@" = "${deploymentLock.helper}";
       "@FLAKE_ATTR@" = machine.hostName;
       "@MANUAL_INPUTS@" = lib.concatStringsSep " " machine.localProjects;
     };

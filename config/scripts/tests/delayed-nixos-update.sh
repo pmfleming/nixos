@@ -3,6 +3,8 @@ set -euo pipefail
 script_path=$1
 test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
+NIXOS_DEPLOYMENT_LOCK_HELPER="$(dirname "$script_path")/deployment-lock.sh"
+export NIXOS_DEPLOYMENT_LOCK_HELPER
 
 export NIXOS_UPDATE_FLAKE_DIR="$test_root/flake"
 export NIXOS_UPDATE_STATE_DIR="$test_root/state"

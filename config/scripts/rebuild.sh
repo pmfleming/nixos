@@ -1,5 +1,8 @@
 set -euo pipefail
 
+# shellcheck source=/dev/null
+source "${NIXOS_DEPLOYMENT_LOCK_HELPER:-@DEPLOYMENT_LOCK_HELPER@}"
+
 flake_dir=@CONFIG_DIRECTORY@
 flake_attr=@FLAKE_ATTR@
 local_inputs=( @LOCAL_INPUTS@ )
@@ -81,6 +84,7 @@ finish() {
 
   trap - EXIT HUP INT TERM
   set +e
+  release_deployment_lock
   [[ -z $temporary_file ]] || rm -f -- "$temporary_file"
 
   # Close the pipe and wait for tee so every final build event is available to
@@ -228,6 +232,9 @@ fi
 stage 'Authorizing the generation switch'
 /run/wrappers/bin/sudo -v
 
+stage 'Acquiring the shared deployment lock'
+acquire_deployment_lock
+
 # A single update both adds newly declared locks and advances all configured
 # local projects. Validate the resulting lock so the manual and automatic
 # updater input sets cannot silently drift apart.
@@ -315,6 +322,8 @@ if ((stack_status != 0)); then
   exit "$stack_status"
 fi
 
+# Keep the deployment lock through approval. The approval service takes only
+# the updater's state lock, so it cannot deadlock against this caller.
 stage 'Recording the update baseline'
 if /run/wrappers/bin/sudo systemctl start --wait nixos-update-approve-baseline.service; then
   baseline_result=recorded

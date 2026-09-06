@@ -10,6 +10,7 @@
 
 let
   theme = import ./theme.nix { inherit lib; };
+  deploymentLock = import ./lib/deployment-lock.nix { inherit pkgs; };
   mkScript = (import ./lib/scripts.nix).mkScriptFrom pkgs ./config/scripts;
   locale = "en_IE.UTF-8";
   shelllistPackage = inputs.shelllist.packages.${pkgs.stdenv.hostPlatform.system}.default;
@@ -53,6 +54,7 @@ let
       util-linux
     ];
     replacements = {
+      "@DEPLOYMENT_LOCK_HELPER@" = "${deploymentLock.helper}";
       "@CONFIG_DIRECTORY@" = machine.configDirectory;
       "@FLAKE_ATTR@" = machine.hostName;
       "@LOCAL_INPUTS@" = lib.escapeShellArgs machine.localProjects;
@@ -80,6 +82,7 @@ in
   nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) unfreePackageNames;
 
   systemd.packages = [ shelllistPackage ];
+  systemd.tmpfiles.rules = deploymentLock.tmpfilesRules;
 
   boot = {
     loader = {
@@ -303,7 +306,11 @@ in
 
     (mkScript {
       name = "rollback";
-      runtimeInputs = [ nixos-rebuild ];
+      runtimeInputs = [
+        nixos-rebuild
+        util-linux
+      ];
+      replacements."@DEPLOYMENT_LOCK_HELPER@" = "${deploymentLock.helper}";
     })
 
     adwaita-icon-theme
