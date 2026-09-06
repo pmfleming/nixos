@@ -24,12 +24,26 @@ while (( $# )); do
   esac
 done
 
+# Resolve the intended boot generation before pruning. The running system may
+# be older after an unattended `boot` update, and must not replace that default.
+boot_system=
+if (( refresh_boot )); then
+  boot_system="$(readlink -e "$profile")" || {
+    printf 'Cannot resolve boot profile: %s\n' "$profile" >&2
+    exit 1
+  }
+  if [[ ! -x "$boot_system/bin/switch-to-configuration" ]]; then
+    printf 'Boot profile is not a switchable NixOS system: %s\n' "$boot_system" >&2
+    exit 1
+  fi
+fi
+
 refresh_boot_entries() {
   local status
 
   (( refresh_boot )) || return 0
-  echo "Refreshing systemd-boot entries"
-  if /run/current-system/bin/switch-to-configuration boot; then
+  echo "Refreshing systemd-boot entries from $boot_system"
+  if "$boot_system/bin/switch-to-configuration" boot; then
     return 0
   else
     status=$?
