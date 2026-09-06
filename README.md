@@ -114,6 +114,17 @@ sudo SOPS_AGE_KEY_FILE=/var/lib/sops-nix/key.txt \
   nix shell nixpkgs#sops -c sops secrets.yaml
 ```
 
+## Desktop Input Access
+
+The desktop user intentionally does not belong to `input`. Hyprland obtains
+session-scoped device access through logind; ordinary applications must not get
+permanent access to raw keyboard events. If a specific device needs extra
+permissions, use a narrowly scoped device rule rather than restoring this group.
+
+After deploying the removal of `input` membership, reboot to discard the old
+supplementary groups in all existing user processes. Changing `/etc/group`
+alone does not revoke access from already-running processes.
+
 ## Clipboard
 
 Ringboard and `clip-daemon` are the only clipboard-history stack; `Super+V` opens its Shelllist frontend. Ringboard captures content before its source exits, although the live Wayland selection can remain empty until an item is copied again.

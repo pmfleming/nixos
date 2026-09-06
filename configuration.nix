@@ -280,9 +280,10 @@ in
       isNormalUser = true;
       description = "Paul Fleming";
       hashedPasswordFile = config.sops.secrets."${machine.username}-password".path;
+      # Do not grant permanent raw input access: it lets any user process read
+      # keyboard events outside Wayland's focus and lock-screen isolation.
       extraGroups = [
         "audio"
-        "input"
         "kvm"
         "networkmanager"
         "plugdev"
