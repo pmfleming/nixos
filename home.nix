@@ -398,8 +398,6 @@ in
         X-XFCE-Commands=ghostty
         X-XFCE-CommandsWithParameter=ghostty --working-directory=%s
       '';
-      "swaync/config.json".source = configPath "swaync/config.json";
-      "swaync/style.css".text = themedConfig "swaync/style.css";
     };
 
     desktopEntries = import ./modules/home/desktop-entries.nix { inherit nwgDisplaysLua pkgs; };

@@ -348,7 +348,6 @@ in
     ripgrep
     slurp
     spotify
-    swaynotificationcenter
     satty
     tree
     unzip

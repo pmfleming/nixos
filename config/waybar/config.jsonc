@@ -18,7 +18,6 @@
     "backlight",
     "battery",
     "power-profiles-daemon",
-    "custom/notifications",
     "custom/timezone",
     "clock"
   ],
@@ -133,16 +132,6 @@
       "balanced": "",
       "power-saver": ""
     }
-  },
-  "custom/notifications": {
-    "exec": "swaync-client --subscribe-waybar",
-    "return-type": "json",
-    "escape": true,
-    "format": " {}",
-    "tooltip": true,
-    "tooltip-format": "Notifications: {}\nLeft click: open history\nRight click: toggle do not disturb",
-    "on-click": "swaync-client --toggle-panel --skip-wait",
-    "on-click-right": "swaync-client --toggle-dnd --skip-wait"
   },
   "custom/timezone": {
     "interval": 300,

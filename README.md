@@ -125,6 +125,12 @@ After deploying the removal of `input` membership, reboot to discard the old
 supplementary groups in all existing user processes. Changing `/etc/group`
 alone does not revoke access from already-running processes.
 
+## Notifications
+
+Shelllist's bar-daemon is the sole notification server and owns
+`org.freedesktop.Notifications`. Notification presentation and history belong
+to Shelllist; no separate notification daemon or legacy Waybar client is needed.
+
 ## Clipboard
 
 Ringboard and `clip-daemon` are the only clipboard-history stack; `Super+V` opens its Shelllist frontend. Ringboard captures content before its source exits, although the live Wayland selection can remain empty until an item is copied again.
