@@ -185,8 +185,12 @@ in
       pulse.enable = true;
     };
     power-profiles-daemon.enable = true;
+    # Check and apply Lenovo firmware updates through fwupd/LVFS on demand.
+    fwupd.enable = true;
     logind.settings.Login = {
-      HandlePowerKey = "suspend";
+      # Avoid re-suspending an already-awake laptop during black-screen recovery.
+      # Firmware still handles waking the laptop with the power button.
+      HandlePowerKey = "ignore";
       HandleLidSwitch = "suspend";
       HandleLidSwitchDocked = "ignore";
     };
