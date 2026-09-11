@@ -92,6 +92,9 @@ in
     # Show normal boot/startup status while diagnosing login/startup issues.
     consoleLogLevel = 4;
     initrd = {
+      # Resume from the swapfile using systemd's HibernateLocation EFI variable.
+      # No fixed resume device or swapfile offset is needed on this UEFI system.
+      systemd.enable = true;
       verbose = true;
       # Load the display driver in the initrd for an earlier, smoother framebuffer handoff.
       kernelModules = [ "amdgpu" ];
@@ -238,6 +241,16 @@ in
   };
 
   zramSwap.enable = true;
+
+  # Persistent hibernation storage; prefer zram (priority 5) for normal swapping.
+  # Root is unencrypted, so this file also stores memory contents unencrypted.
+  swapDevices = [
+    {
+      device = "/swapfile";
+      size = 64 * 1024; # MiB: 64 GiB for approximately 59 GiB of usable RAM.
+      priority = 0;
+    }
+  ];
 
   # Enable fingerprint login for greetd/tuigreet. The patched tuigreet package
   # filters fprintd's instructional PAM info messages from the visible prompt.
