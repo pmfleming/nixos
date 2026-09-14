@@ -21,6 +21,8 @@ Home Manager is integrated as a NixOS module, so home changes in `home.nix` are 
 
 `rebuild` rejects every untracked file, advances the `machine.localProjects` inputs to their committed branch heads in one lock operation, and verifies that they exactly match the root `git+file` inputs. It then runs the complete flake checks, switches the NixOS and integrated Home Manager generations, and restarts Shelllist plus `app-daemon`, `bar-daemon`, `bt-daemon`, `clip-daemon`, and `nm-daemon` when the graphical session is active. This explicit restart is intentional: Home Manager normally restarts only units whose unit files changed. Extra arguments are passed to `nixos-rebuild`.
 
+`daemon-framework` is a shared machine-local root input, updated by `rebuild` alongside its consumers. Shelllist and the framework-backed daemons (`nm-daemon`, `bt-daemon`, `clip-daemon`, and `bar-daemon`) follow that single input, so their Nix builds use the same committed framework revision.
+
 `rebuild`, `rollback`, unattended NixOS staging, and generation pruning share the root-owned
 `/run/lock/nixos-deployment/lock` inode. Contention makes interactive rebuilds fail
 with exit 75 and timer jobs skip, rather than racing the live lock file, profile,

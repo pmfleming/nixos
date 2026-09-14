@@ -2,18 +2,16 @@
   "nodes": {
     "app-daemon": {
       "inputs": {
-        "daemonFramework": "daemonFramework",
-        "hyprlandIpc": "hyprlandIpc",
         "nixpkgs": [
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1788391356,
-        "narHash": "sha256-awCKNOX69CTKGK84+pNOgAwm49Pfzk+dtMVr6SwsXGE=",
+        "lastModified": 1789311392,
+        "narHash": "sha256-mdRYAxRejvxjWfNXS9g68EdOdSlLDNHfarMLa7yviQ8=",
         "ref": "main",
-        "rev": "d63621142c39840988e210abe74f5f85542ca552",
-        "revCount": 57,
+        "rev": "2eaced144455708eb03290bfc87fa8037ec560d3",
+        "revCount": 91,
         "type": "git",
         "url": "file:///home/laufan/Projects/app-daemon"
       },
@@ -58,18 +56,20 @@
     },
     "bar-daemon": {
       "inputs": {
-        "daemonFramework": "daemonFramework_2",
-        "hyprlandIpc": "hyprlandIpc_2",
+        "daemonFramework": [
+          "daemon-framework"
+        ],
+        "hyprlandIpc": "hyprlandIpc",
         "nixpkgs": [
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1788477040,
-        "narHash": "sha256-kuXa4UICqaE5GYmmrhwOHo2lr60xR74aJKGiVdyynY4=",
+        "lastModified": 1789146854,
+        "narHash": "sha256-1R8m9sRGnA2HbrYDSreNWO5rF2t1x9TVGhxP/7FkaEs=",
         "ref": "main",
-        "rev": "5a51df384e4eaa1b980a5f1e63235a095695b136",
-        "revCount": 85,
+        "rev": "bcbab3a2957a55f637372c031a6b963ab3a8ce29",
+        "revCount": 103,
         "type": "git",
         "url": "file:///home/laufan/Projects/bar-daemon"
       },
@@ -81,17 +81,19 @@
     },
     "bt-daemon": {
       "inputs": {
-        "daemonFramework": "daemonFramework_3",
+        "daemonFramework": [
+          "daemon-framework"
+        ],
         "nixpkgs": [
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1788384763,
-        "narHash": "sha256-WYHTlbTBmZkVoCKl1fIvfG6qMYr8EYtLDutvw3EuoK8=",
+        "lastModified": 1788899913,
+        "narHash": "sha256-T0RdsHviczuXtY0EWWhcjB/LaPM4KXKIaDeMIrstDzg=",
         "ref": "main",
-        "rev": "fab8f38b0dbc8f8ad16e90b12b40b3fa9dea0ff7",
-        "revCount": 77,
+        "rev": "8a206e16fa30d3aadb01392a627e431014c222e7",
+        "revCount": 109,
         "type": "git",
         "url": "file:///home/laufan/Projects/bt-daemon"
       },
@@ -103,17 +105,19 @@
     },
     "clip-daemon": {
       "inputs": {
-        "daemonFramework": "daemonFramework_4",
+        "daemonFramework": [
+          "daemon-framework"
+        ],
         "nixpkgs": [
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1788470692,
-        "narHash": "sha256-tUgPWVn2hJkU8yl8vPSBIIMD4oPa2dA8XxuVoqC+jjU=",
+        "lastModified": 1789311392,
+        "narHash": "sha256-GWvH2ItRnKkmPSda/Dz8NJ862Dh/NmttYo80gSxKuSM=",
         "ref": "main",
-        "rev": "35d64f5cc6ac9ed46e1215c2f0657f5005fefb49",
-        "revCount": 81,
+        "rev": "b5c782a1f2134dd8ee9004fe10898acebb891ddd",
+        "revCount": 104,
         "type": "git",
         "url": "file:///home/laufan/Projects/clip-daemon"
       },
@@ -126,133 +130,22 @@
     "daemon-framework": {
       "inputs": {
         "nixpkgs": [
-          "shelllist",
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1788384005,
-        "narHash": "sha256-b+tVRRctw4KIo69/c6sxshBsKmgRrVcOMGVzuwf5gPo=",
+        "lastModified": 1789311358,
+        "narHash": "sha256-zrwkoWL+CtYRCOCLvRx9ek0zKdGtg+rZ6jcUnuiRYSo=",
         "ref": "main",
-        "rev": "c90883428ed83baa8e451dec5b598ad4e3141d25",
-        "revCount": 28,
+        "rev": "cd261278a587a38efa44d41f4f7291acbafb8b80",
+        "revCount": 34,
         "type": "git",
-        "url": "file:../daemon-framework"
+        "url": "file:///home/laufan/Projects/daemon-framework"
       },
       "original": {
         "ref": "main",
         "type": "git",
-        "url": "file:../daemon-framework"
-      }
-    },
-    "daemonFramework": {
-      "inputs": {
-        "nixpkgs": [
-          "app-daemon",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1788384005,
-        "narHash": "sha256-b+tVRRctw4KIo69/c6sxshBsKmgRrVcOMGVzuwf5gPo=",
-        "ref": "main",
-        "rev": "c90883428ed83baa8e451dec5b598ad4e3141d25",
-        "revCount": 28,
-        "type": "git",
-        "url": "file:../daemon-framework"
-      },
-      "original": {
-        "ref": "main",
-        "type": "git",
-        "url": "file:../daemon-framework"
-      }
-    },
-    "daemonFramework_2": {
-      "inputs": {
-        "nixpkgs": [
-          "bar-daemon",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1788384005,
-        "narHash": "sha256-b+tVRRctw4KIo69/c6sxshBsKmgRrVcOMGVzuwf5gPo=",
-        "ref": "main",
-        "rev": "c90883428ed83baa8e451dec5b598ad4e3141d25",
-        "revCount": 28,
-        "type": "git",
-        "url": "file:../daemon-framework"
-      },
-      "original": {
-        "ref": "main",
-        "type": "git",
-        "url": "file:../daemon-framework"
-      }
-    },
-    "daemonFramework_3": {
-      "inputs": {
-        "nixpkgs": [
-          "bt-daemon",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1788384005,
-        "narHash": "sha256-b+tVRRctw4KIo69/c6sxshBsKmgRrVcOMGVzuwf5gPo=",
-        "ref": "main",
-        "rev": "c90883428ed83baa8e451dec5b598ad4e3141d25",
-        "revCount": 28,
-        "type": "git",
-        "url": "file:../daemon-framework"
-      },
-      "original": {
-        "ref": "main",
-        "type": "git",
-        "url": "file:../daemon-framework"
-      }
-    },
-    "daemonFramework_4": {
-      "inputs": {
-        "nixpkgs": [
-          "clip-daemon",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1788384005,
-        "narHash": "sha256-b+tVRRctw4KIo69/c6sxshBsKmgRrVcOMGVzuwf5gPo=",
-        "ref": "main",
-        "rev": "c90883428ed83baa8e451dec5b598ad4e3141d25",
-        "revCount": 28,
-        "type": "git",
-        "url": "file:../daemon-framework"
-      },
-      "original": {
-        "ref": "main",
-        "type": "git",
-        "url": "file:../daemon-framework"
-      }
-    },
-    "daemonFramework_5": {
-      "inputs": {
-        "nixpkgs": [
-          "nm-daemon",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1788384005,
-        "narHash": "sha256-b+tVRRctw4KIo69/c6sxshBsKmgRrVcOMGVzuwf5gPo=",
-        "ref": "main",
-        "rev": "c90883428ed83baa8e451dec5b598ad4e3141d25",
-        "revCount": 28,
-        "type": "git",
-        "url": "file:../daemon-framework"
-      },
-      "original": {
-        "ref": "main",
-        "type": "git",
-        "url": "file:../daemon-framework"
+        "url": "file:///home/laufan/Projects/daemon-framework"
       }
     },
     "home-manager": {
@@ -335,38 +228,16 @@
     "hyprlandIpc": {
       "inputs": {
         "nixpkgs": [
-          "app-daemon",
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1788384196,
-        "narHash": "sha256-QxDFv7aC4uvLrDpE5nDV8XTnL8mqkX1SFNx+S9w+GN4=",
-        "ref": "main",
-        "rev": "d667023032344adb3e4526414a63527520357c2f",
-        "revCount": 1,
-        "type": "git",
-        "url": "file:../shelllist-hyprland"
-      },
-      "original": {
-        "ref": "main",
-        "type": "git",
-        "url": "file:../shelllist-hyprland"
-      }
-    },
-    "hyprlandIpc_2": {
-      "inputs": {
-        "nixpkgs": [
           "bar-daemon",
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1788384196,
-        "narHash": "sha256-QxDFv7aC4uvLrDpE5nDV8XTnL8mqkX1SFNx+S9w+GN4=",
+        "lastModified": 1789146826,
+        "narHash": "sha256-ksGjX5YP5mNfwXhk/hNJPUQrXC4PEa2H2myX71ErdZk=",
         "ref": "main",
-        "rev": "d667023032344adb3e4526414a63527520357c2f",
-        "revCount": 1,
+        "rev": "00044fe7517d6632d9cbd9e7aa712aa771f6577d",
+        "revCount": 3,
         "type": "git",
         "url": "file:../shelllist-hyprland"
       },
@@ -534,17 +405,19 @@
     },
     "nm-daemon": {
       "inputs": {
-        "daemonFramework": "daemonFramework_5",
+        "daemonFramework": [
+          "daemon-framework"
+        ],
         "nixpkgs": [
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1788530787,
-        "narHash": "sha256-JkTPxgWRKDf+t7V7OqOJ2vA0mIYNZ9gu0SaBXqtCgKs=",
+        "lastModified": 1789032065,
+        "narHash": "sha256-RKAcc/2bQ5C4hbh2WdYfbYVHwNWfHokWoCPPRg0k4mc=",
         "ref": "main",
-        "rev": "5664bd7d37318b5d4a86724b86a491f3511fee67",
-        "revCount": 118,
+        "rev": "0bddfcc532ed011314970b1971a9585a7169d71a",
+        "revCount": 130,
         "type": "git",
         "url": "file:///home/laufan/Projects/nm-daemon"
       },
@@ -560,6 +433,7 @@
         "bar-daemon": "bar-daemon",
         "bt-daemon": "bt-daemon",
         "clip-daemon": "clip-daemon",
+        "daemon-framework": "daemon-framework",
         "home-manager": "home-manager",
         "hyprland-guiutils": "hyprland-guiutils",
         "nixpkgs": "nixpkgs",
@@ -579,11 +453,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788449993,
-        "narHash": "sha256-gFd/3QhbWz0jjzutMPykC1NHG8am7Jgj5mNSqaAUWyY=",
+        "lastModified": 1789249896,
+        "narHash": "sha256-J4fiMQerzahdGliiDEk57nXZVvk1vUP7Gil0vNOLn6U=",
         "ref": "master",
-        "rev": "c17c92ae4b3024f8be2c1da80a3ebaf53b083123",
-        "revCount": 164,
+        "rev": "0b4faa6bcc6a8f648bd976ee77ea60752c9fd595",
+        "revCount": 176,
         "type": "git",
         "url": "file:///home/laufan/Projects/scratchpad"
       },
@@ -607,7 +481,9 @@
         "clip-daemon": [
           "clip-daemon"
         ],
-        "daemon-framework": "daemon-framework",
+        "daemon-framework": [
+          "daemon-framework"
+        ],
         "nixpkgs": [
           "nixpkgs"
         ],
@@ -617,11 +493,11 @@
         "shelllist-hyprland": "shelllist-hyprland"
       },
       "locked": {
-        "lastModified": 1788531265,
-        "narHash": "sha256-QRM6s2HWB5NB1MJ1j1Zh77BIYfnOiC6GV+jrUc0hB8M=",
+        "lastModified": 1789311392,
+        "narHash": "sha256-gow64k+JdwJm2+CIQFDt5ytZTN+IIOkVU1F95TDQNWY=",
         "ref": "main",
-        "rev": "08c61b5ca8139ee4a79f48ea390128f84fea6bf2",
-        "revCount": 339,
+        "rev": "327fbe1da148719e9d3fa35e13dc2560314446b8",
+        "revCount": 422,
         "type": "git",
         "url": "file:///home/laufan/Projects/shelllist"
       },
@@ -639,11 +515,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1788384196,
-        "narHash": "sha256-QxDFv7aC4uvLrDpE5nDV8XTnL8mqkX1SFNx+S9w+GN4=",
+        "lastModified": 1789146826,
+        "narHash": "sha256-ksGjX5YP5mNfwXhk/hNJPUQrXC4PEa2H2myX71ErdZk=",
         "ref": "main",
-        "rev": "d667023032344adb3e4526414a63527520357c2f",
-        "revCount": 1,
+        "rev": "00044fe7517d6632d9cbd9e7aa712aa771f6577d",
+        "revCount": 3,
         "type": "git",
         "url": "file:../shelllist-hyprland"
       },
@@ -695,11 +571,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1787399148,
-        "narHash": "sha256-HP8ua41/c50pNQf0OFssUgvr0j7djBy3TfsA4/6zy7o=",
+        "lastModified": 1788957706,
+        "narHash": "sha256-e6B8wFs8MtgVyraVFrXfu4ums5KGL2Nq+PoIStA/3Eo=",
         "ref": "main",
-        "rev": "aebb62caf02228cca074f726bc4ba8e772ee3d6d",
-        "revCount": 22,
+        "rev": "8091f2062ee68f1404d6281b50359727ddcf08b4",
+        "revCount": 28,
         "type": "git",
         "url": "file:///home/laufan/Projects/ts-react-quality-lens"
       },

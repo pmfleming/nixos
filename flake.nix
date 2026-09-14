@@ -15,21 +15,45 @@
     zen-browser.inputs.nixpkgs.follows = "nixpkgs";
 
     # Automatic updates never advance these machine-local inputs.
-    nm-daemon.url = "git+file:///home/laufan/Projects/nm-daemon?ref=main";
-    nm-daemon.inputs.nixpkgs.follows = "nixpkgs";
-    bt-daemon.url = "git+file:///home/laufan/Projects/bt-daemon?ref=main";
-    bt-daemon.inputs.nixpkgs.follows = "nixpkgs";
-    clip-daemon.url = "git+file:///home/laufan/Projects/clip-daemon?ref=main";
-    clip-daemon.inputs.nixpkgs.follows = "nixpkgs";
+    daemon-framework.url = "git+file:///home/laufan/Projects/daemon-framework?ref=main";
+    daemon-framework.inputs.nixpkgs.follows = "nixpkgs";
+
+    nm-daemon = {
+      url = "git+file:///home/laufan/Projects/nm-daemon?ref=main";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        daemonFramework.follows = "daemon-framework";
+      };
+    };
+    bt-daemon = {
+      url = "git+file:///home/laufan/Projects/bt-daemon?ref=main";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        daemonFramework.follows = "daemon-framework";
+      };
+    };
+    clip-daemon = {
+      url = "git+file:///home/laufan/Projects/clip-daemon?ref=main";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        daemonFramework.follows = "daemon-framework";
+      };
+    };
     app-daemon.url = "git+file:///home/laufan/Projects/app-daemon?ref=main";
     app-daemon.inputs.nixpkgs.follows = "nixpkgs";
-    bar-daemon.url = "git+file:///home/laufan/Projects/bar-daemon?ref=main";
-    bar-daemon.inputs.nixpkgs.follows = "nixpkgs";
+    bar-daemon = {
+      url = "git+file:///home/laufan/Projects/bar-daemon?ref=main";
+      inputs = {
+        nixpkgs.follows = "nixpkgs";
+        daemonFramework.follows = "daemon-framework";
+      };
+    };
 
     shelllist = {
       url = "git+file:///home/laufan/Projects/shelllist?ref=main";
       inputs = {
         nixpkgs.follows = "nixpkgs";
+        daemon-framework.follows = "daemon-framework";
         nm-daemon.follows = "nm-daemon";
         bt-daemon.follows = "bt-daemon";
         clip-daemon.follows = "clip-daemon";
@@ -63,6 +87,7 @@
           "bar-daemon"
           "bt-daemon"
           "clip-daemon"
+          "daemon-framework"
           "nm-daemon"
           "scratchpad"
           "shelllist"
