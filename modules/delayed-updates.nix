@@ -1,5 +1,6 @@
 {
   lib,
+  inputs,
   machine,
   pkgs,
   ...
@@ -20,12 +21,14 @@ let
       jq
       nix
       procps
+      python3
       util-linux
     ];
     replacements = {
       "@DEPLOYMENT_LOCK_HELPER@" = "${deploymentLock.helper}";
       "@FLAKE_ATTR@" = machine.hostName;
       "@MANUAL_INPUTS@" = lib.concatStringsSep " " machine.localProjects;
+      "@LOCAL_BUILD_HELPER@" = "${inputs.daemon-framework}/tools/local-build.py";
     };
   };
 

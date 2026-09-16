@@ -51,13 +51,14 @@ let
       jq
       nix
       nixos-rebuild
+      python3
       util-linux
     ];
     replacements = {
       "@DEPLOYMENT_LOCK_HELPER@" = "${deploymentLock.helper}";
       "@CONFIG_DIRECTORY@" = machine.configDirectory;
       "@FLAKE_ATTR@" = machine.hostName;
-      "@LOCAL_INPUTS@" = lib.escapeShellArgs machine.localProjects;
+      "@LOCAL_BUILD_HELPER@" = "${inputs.daemon-framework}/tools/local-build.py";
     };
   };
 in
@@ -80,6 +81,9 @@ in
   };
 
   nixpkgs.config.allowUnfreePredicate = pkg: builtins.elem (lib.getName pkg) unfreePackageNames;
+
+  # Expose the new wrapper for bootstrapping before the installed rebuild updates.
+  system.build.rebuild = rebuild;
 
   systemd.packages = [ shelllistPackage ];
   systemd.tmpfiles.rules = deploymentLock.tmpfilesRules;
@@ -321,6 +325,7 @@ in
     })
 
     rebuild
+    inputs.daemon-framework.packages.${pkgs.stdenv.hostPlatform.system}.localBuild
 
     (mkScript {
       name = "rollback";

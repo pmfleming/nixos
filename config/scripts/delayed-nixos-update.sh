@@ -8,6 +8,7 @@ flake_dir=${NIXOS_UPDATE_FLAKE_DIR:-/etc/nixos}
 flake_attr=${NIXOS_UPDATE_FLAKE_ATTR:-@FLAKE_ATTR@}
 state_dir=${NIXOS_UPDATE_STATE_DIR:-/var/lib/nixos-delayed-updates-v2}
 late_input=nixpkgs-unstable
+local_build_helper=${NIXOS_LOCAL_BUILD_HELPER:-@LOCAL_BUILD_HELPER@}
 read -r -a manual_inputs <<< "${NIXOS_UPDATE_MANUAL_INPUTS:-@MANUAL_INPUTS@}"
 delay_seconds=${NIXOS_UPDATE_DELAY_SECONDS:-$((3 * 24 * 60 * 60))}
 check_seconds=${NIXOS_UPDATE_DELAYED_CHECK_SECONDS:-$((24 * 60 * 60))}
@@ -195,6 +196,21 @@ create_stage() {
   cp "$flake_dir/flake.lock" "$staged_flake/flake.lock"
 }
 
+# Automatic remote updates must not reinstall stale local project pins either.
+# Snapshot current worktrees for every build/verification, but persist ONLY the
+# remote lock projection. Verification rejects a candidate if local edits have
+# changed its resulting system since it was built.
+prepare_local_stage() {
+  make_temp_dir
+  local snapshot_json
+  snapshot_json=$(python3 "$local_build_helper" prepare "$staged_flake" "$tmp_dir/sources" --root-is-snapshot)
+  staged_flake=$(jq -er '.flake | ltrimstr("path:")' <<< "$snapshot_json")
+}
+
+prune_local_lock() {
+  python3 "$local_build_helper" prune-lock "$staged_flake" "$1"
+}
+
 lock_without_late_input() {
   jq --arg input "$late_input" '
     .nodes.root.inputs[$input] as $node
@@ -240,11 +256,12 @@ build_ready() {
   apply_mode=${4:-manual}
 
   cp "$candidate_lock" "$staged_flake/flake.lock"
+  prepare_local_stage
   nix flake check "path:$staged_flake" --no-update-lock-file
   # Keep the stable out-link pathname registered as the indirect GC root. Nix
   # replaces it only after the complete system build succeeds.
   nix build \
-    --out-link "$delayed_dir/system" \
+    --out-link "$delayed_dir/system" --no-update-lock-file \
     "path:$staged_flake#nixosConfigurations.$flake_attr.config.system.build.toplevel"
 
   cp "$candidate_lock" "$delayed_dir/ready-flake.lock.new"
@@ -292,9 +309,11 @@ seed_delayed_queue() {
     return 0
   fi
 
+  prepare_local_stage
   nix flake update "${update_inputs[@]}" \
     --flake "path:$staged_flake" \
     --output-lock-file "$updated_lock"
+  prune_local_lock "$updated_lock"
 
   if cmp -s "$base_lock" "$updated_lock"; then
     clear_delayed_queue
@@ -361,9 +380,11 @@ check_delayed() {
   create_stage
   cp "$delayed_dir/queued-flake.lock" "$staged_flake/flake.lock"
   rebased_lock="$tmp_dir/rebased-flake.lock"
+  prepare_local_stage
   nix flake update "$late_input" \
     --flake "path:$staged_flake" \
     --output-lock-file "$rebased_lock"
+  prune_local_lock "$rebased_lock"
 
   clear_ready
   build_ready "$rebased_lock" "$revision" "$current_hash" "$apply_mode"
@@ -397,10 +418,11 @@ verify_candidate_system() {
 
   create_stage
   cp "$delayed_dir/ready-flake.lock" "$staged_flake/flake.lock"
+  prepare_local_stage
   build_output="$(
     nix build \
       --no-link \
-      --print-out-paths \
+      --print-out-paths --no-update-lock-file \
       "path:$staged_flake#nixosConfigurations.$flake_attr.config.system.build.toplevel"
   )"
   mapfile -t verified_systems <<< "$build_output"

@@ -5,7 +5,16 @@ source "${NIXOS_DEPLOYMENT_LOCK_HELPER:-@DEPLOYMENT_LOCK_HELPER@}"
 
 flake_dir=@CONFIG_DIRECTORY@
 flake_attr=@FLAKE_ATTR@
-local_inputs=( @LOCAL_INPUTS@ )
+local_build_helper=${NIXOS_LOCAL_BUILD_HELPER:-@LOCAL_BUILD_HELPER@}
+# CLI arguments may tune the build, but must not replace the frozen source graph.
+for argument in "$@"; do
+  case "${argument%%=*}" in
+    --flake|--override-input|--update-input|--recreate-lock-file|--override-flake)
+      printf 'rebuild owns source selection; unsupported argument: %s\n' "$argument" >&2
+      exit 2
+      ;;
+  esac
+done
 shelllist_daemons=(
   app-daemon.service
   bar-daemon.service
@@ -35,6 +44,7 @@ rebuild_stage=initialization
 session_result='not reached'
 baseline_result='not reached'
 temporary_file=
+snapshot_dir=
 
 human_duration() {
   local seconds=$1
@@ -86,6 +96,7 @@ finish() {
   set +e
   release_deployment_lock
   [[ -z $temporary_file ]] || rm -f -- "$temporary_file"
+  [[ -z $snapshot_dir ]] || rm -rf -- "$snapshot_dir"
 
   # Close the pipe and wait for tee so every final build event is available to
   # the summary parser. Summary output is appended with a separate tee below.
@@ -223,11 +234,6 @@ if ((${#untracked_files[@]})); then
   printf 'Add or ignore these files before rebuilding.\n' >&2
   exit 1
 fi
-if ((${#local_inputs[@]} == 0)); then
-  printf 'No machine-local flake inputs are configured.\n' >&2
-  exit 1
-fi
-
 # Fail before doing expensive evaluation if privilege elevation is unavailable.
 stage 'Authorizing the generation switch'
 /run/wrappers/bin/sudo -v
@@ -235,35 +241,18 @@ stage 'Authorizing the generation switch'
 stage 'Acquiring the shared deployment lock'
 acquire_deployment_lock
 
-# A single update both adds newly declared locks and advances all configured
-# local projects. Validate the resulting lock so the manual and automatic
-# updater input sets cannot silently drift apart.
-stage "Updating ${#local_inputs[@]} machine-local flake inputs"
-nix flake update "${local_inputs[@]}" --flake "$flake_dir"
+# CO-DEVELOPMENT INVARIANT: every daemon uses ONE current local framework.
+# Include tracked uncommitted edits. Snapshot once so edits during a long check
+# cannot change the graph subsequently deployed. Never persist local-project
+# pins or replace this with flake update / --no-write-lock-file alone.
+stage 'Snapshotting current local worktrees'
+snapshot_dir=$(mktemp -d)
+snapshot_json=$(python3 "$local_build_helper" prepare "$flake_dir" "$snapshot_dir/sources")
+printf '%s\n' "$snapshot_json" | jq .
+snapshot_flake=$(jq -er .flake <<< "$snapshot_json")
 
-stage 'Validating machine-local flake inputs'
-configured_inputs_json=$(jq -cn '$ARGS.positional | sort' --args "${local_inputs[@]}")
-locked_inputs_json=$(jq -c '
-  .nodes as $nodes
-  | [
-      $nodes.root.inputs
-      | to_entries[]
-      | select(.value | type == "string")
-      | select($nodes[.value].original.type == "git")
-      | select($nodes[.value].original.url | startswith("file:"))
-      | .key
-    ]
-  | sort
-' "$flake_dir/flake.lock")
-if [[ $configured_inputs_json != "$locked_inputs_json" ]]; then
-  printf 'machine.localProjects does not match the root git+file inputs.\n' >&2
-  printf '  configured: %s\n' "$(jq -r 'join(" ")' <<< "$configured_inputs_json")" >&2
-  printf '  lock file:  %s\n' "$(jq -r 'join(" ")' <<< "$locked_inputs_json")" >&2
-  exit 1
-fi
-
-stage 'Running flake checks'
-nix flake check "$flake_dir"
+stage 'Running framework, daemon, Shelllist, and configuration checks'
+nix flake check "$snapshot_flake" --no-update-lock-file --keep-going
 
 # Activation can fail after Home Manager has stopped graphical services. Save
 # the switch status, then make a best effort to put the complete stack back in
@@ -271,7 +260,7 @@ nix flake check "$flake_dir"
 switch_status=0
 failed_stage=
 stage 'Building and switching the NixOS generation'
-if /run/wrappers/bin/sudo nixos-rebuild switch --flake "$flake_dir#$flake_attr" "$@"; then
+if /run/wrappers/bin/sudo nixos-rebuild switch --flake "$snapshot_flake#$flake_attr" --no-update-lock-file "$@"; then
   :
 else
   switch_status=$?

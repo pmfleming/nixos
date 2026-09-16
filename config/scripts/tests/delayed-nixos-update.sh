@@ -15,6 +15,11 @@ export NIXOS_UPDATE_MANUAL_INPUTS=shelllist
 # shellcheck source=/dev/null
 source "$script_path"
 
+# Graph snapshotting/pruning has its own real-Git tests in daemon-framework.
+# Keep this state-machine suite independent of Nix and sibling worktrees.
+prepare_local_stage() { printf 'snapshot\n' >> "$test_root/local-source-operations"; }
+prune_local_lock() { printf 'prune %s\n' "$1" >> "$test_root/local-source-operations"; }
+
 test_flake_dir=$NIXOS_UPDATE_FLAKE_DIR
 test_delayed_dir=$NIXOS_UPDATE_STATE_DIR/delayed
 test_applied_lock_hash=$NIXOS_UPDATE_STATE_DIR/applied-lock-hash
@@ -170,6 +175,8 @@ apply_delayed manual
 approve_current
 
 seed_delayed_queue
+[ "$(grep -c '^snapshot$' "$test_root/local-source-operations")" -ge 4 ]
+grep -q '^prune ' "$test_root/local-source-operations"
 queued_hash="$(hash_file "$test_delayed_dir/queued-flake.lock")"
 first_seen="$(cat "$test_delayed_dir/first-seen")"
 mock_delayed_rev=stable-c

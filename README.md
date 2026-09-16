@@ -10,18 +10,29 @@ Daily ThinkPad rebuild:
 rebuild
 ```
 
-Low-level command (bypasses the `rebuild` wrapper's deployment lock, checks,
-local-input updates, service recovery, and baseline approval):
+Use `rebuild`, not a direct `nixos-rebuild --flake` invocation: the wrapper
+owns current-worktree selection, compatibility checks, service recovery, and
+baseline approval. Direct Nix commands can recreate stale local-project pins.
+
+For the first deployment of this policy, the installed `rebuild` still has the
+old behavior. Bootstrap the new wrapper without using old project pins:
 
 ```sh
-sudo nixos-rebuild switch --flake /etc/nixos#thinkpad
+python3 /home/laufan/Projects/daemon-framework/tools/local-build.py run --attr rebuild /etc/nixos
 ```
+
+After that successful switch, use `rebuild` normally. No source commits are
+required, but new files must be registered with Git (`git add` or `git add -N`).
 
 Home Manager is integrated as a NixOS module, so home changes in `home.nix` are applied by the same rebuild.
 
-`rebuild` rejects every untracked file, advances the `machine.localProjects` inputs to their committed branch heads in one lock operation, and verifies that they exactly match the root `git+file` inputs. It then runs the complete flake checks, switches the NixOS and integrated Home Manager generations, and restarts Shelllist plus `app-daemon`, `bar-daemon`, `bt-daemon`, `clip-daemon`, and `nm-daemon` when the graphical session is active. This explicit restart is intentional: Home Manager normally restarts only units whose unit files changed. Extra arguments are passed to `nixos-rebuild`.
+`rebuild` snapshots the current Git worktrees of the configuration and every local input, including tracked uncommitted edits. Add or ignore untracked files first. Ignored build artifacts are excluded. It does not fetch, push, change branches, or write local-project deployment pins. Nix resolves a disposable build graph once; checks and deployment reuse it even if editing continues during the build. Persistent locks retain third-party inputs only.
 
-`daemon-framework` is a shared machine-local root input, updated by `rebuild` alongside its consumers. Shelllist and the framework-backed daemons (`nm-daemon`, `bt-daemon`, `clip-daemon`, and `bar-daemon`) follow that single input, so their Nix builds use the same committed framework revision.
+**Co-development invariant:** all five daemons, including `app-daemon`, consume exactly one current local `daemon-framework` snapshot. No vendored framework or per-daemon revision pin is allowed. The source helper validates this before building, and regression tests protect the policy.
+
+The mandatory checks include framework workspace tests, all five daemon packages/tests, and Shelllist contracts. After success, `rebuild` switches NixOS/Home Manager and restarts Shelllist and all five daemons when the graphical session is active. Restarting is intentional even when unit files have not changed. Extra build arguments are forwarded, but source-selection overrides are rejected.
+
+Standalone development uses `local-build check /path/to/project`, `local-build build /path/to/project`, or `local-build develop /path/to/project`. Before installing that command, invoke `python3 /home/laufan/Projects/daemon-framework/tools/local-build.py` with the same arguments. This is the supported Nix development path; ordinary `nix build`/`flake check` can create and reuse local lock entries.
 
 `rebuild`, `rollback`, unattended NixOS staging, and generation pruning share the root-owned
 `/run/lock/nixos-deployment/lock` inode. Contention makes interactive rebuilds fail
@@ -41,7 +52,7 @@ Every invocation records its command output under `~/.local/state/nixos-rebuild/
 Check the flake before applying it:
 
 ```sh
-nix flake check /etc/nixos
+local-build check /etc/nixos
 ```
 
 ## Automatic Updates
@@ -63,7 +74,7 @@ readlink -f /var/lib/nixos-ai-tools/current
 
 ### NixOS and other remote inputs
 
-Machine-local `git+file` inputs remain local-first and are never advanced by the scheduled updater. `rebuild` advances them to their local committed branch heads, checks the complete flake, switches the machine, and then records the exact local configuration revision, lock hash, and active system path as the unattended-update baseline. Those commits do not need to be pushed to GitHub. Uncommitted `/etc/nixos` files other than `flake.lock` deliberately prevent approval, while unpushed commits in the local project repositories are supported.
+Machine-local `git+file` inputs always come from current tracked worktrees, never persistent revision pins. Manual rebuilds and unattended builds both snapshot them afresh. The updater persists only remote dependency locks and re-evaluates local sources before applying a candidate; a changed resulting system invalidates that candidate. `rebuild` records the configuration revision, remote lock hash, and active system as the unattended-update baseline. Uncommitted `/etc/nixos` files other than `flake.lock` still prevent automatic approval; dirty or unpushed local project worktrees are supported. Nothing is pushed to GitHub.
 
 Other remote inputs are checked daily on AC power. A lightweight 30-minute catch-up timer retries an overdue check after AC power becomes available. A discovered lock snapshot is frozen for three days, checked, and built against the approved local baseline. A successful candidate updates the live lock and system profile but uses `switch-to-configuration boot`, so Home Manager and the graphical session are not activated or restarted. The update takes effect on the next reboot. `nixpkgs-unstable` is refreshed when the matured system candidate is built, but the independently newer AI-tools profile continues to shadow its fallback packages.
 
