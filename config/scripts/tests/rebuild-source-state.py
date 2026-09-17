@@ -128,18 +128,32 @@ class IdentityTests(unittest.TestCase):
 
     def test_prepare_captures_before_disposable_lock_rewrite(self):
         class Helper:
+            remote = "before"
+
+            @staticmethod
+            def read_inputs(root):
+                return {}
+
+            @staticmethod
+            def prune_lock(lock, names):
+                return {"remote": lock["remote"]}
+
             def snapshot(inner, source, target):
                 shutil.copytree(source, target, ignore=shutil.ignore_patterns(".git"))
 
             def prepare(inner, root, destination):
                 inner.snapshot(root, destination)
-                (destination / "flake.lock").write_text("disposable\n")
+                (destination / "flake.lock").write_text(json.dumps({"remote": inner.remote, "local": "disposable"}))
                 return {"flake": "path:" + str(destination)}
 
         helper = Helper()
         state.prepare(helper, self.root, self.base / "frozen", self.manifest)
         state.verify(self.root, self.manifest)
         self.assertEqual(json.loads(self.manifest.read_text())["lock"], state.file_identity(self.root / "flake.lock"))
+        helper.remote = "changed"
+        state.prepare(helper, self.root, self.base / "changed", self.manifest)
+        with self.assertRaisesRegex(ValueError, "remote pins changed during snapshot resolution"):
+            state.verify(self.root, self.manifest)
 
 
 if __name__ == "__main__":

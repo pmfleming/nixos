@@ -21,6 +21,7 @@ approved_revision_file="$state_dir/approved-revision"
 approved_system_file="$state_dir/approved-system"
 transaction_dir="$state_dir/apply-transaction"
 update_lock_acquired=0
+approval_only=0
 temporary_dirs=()
 
 git_at_flake() {
@@ -44,7 +45,7 @@ cleanup() {
   exit_status=$?
   trap - EXIT
 
-  if ((exit_status != 0 && update_lock_acquired == 1)) && [ -d "$transaction_dir" ]; then
+  if ((exit_status != 0 && update_lock_acquired == 1 && approval_only == 0)) && [ -d "$transaction_dir" ]; then
     if ! rollback_transaction; then
       printf 'Automatic rollback failed; the persistent transaction will be retried on the next updater run.\n' >&2
     fi
@@ -660,7 +661,10 @@ main() {
 
   # Lock order is deployment -> updater state. Approval changes only metadata
   # and is invoked by rebuild while that caller holds the deployment lock.
-  if [ "${1:-catch-up-delayed}" != approve-current ]; then
+  if [ "${1:-catch-up-delayed}" = approve-current ]; then
+    # A rejected approval must not roll back an unrelated pending transaction.
+    approval_only=1
+  else
     if acquire_deployment_lock; then
       :
     else

@@ -33,9 +33,12 @@ fi
 bash -c '
   export NIXOS_UPDATE_LIB_ONLY=1
   source "$1/delayed-nixos-update.sh"
-  approve_current() { touch "$NIXOS_UPDATE_STATE_DIR/approved"; }
+  approve_current() {
+    [ "$1" = private-manifest.json ]
+    touch "$NIXOS_UPDATE_STATE_DIR/approved"
+  }
   notify_waybar_updates() { :; }
-  main approve-current
+  main approve-current private-manifest.json
 ' bash "$scripts_dir"
 [ -f "$NIXOS_UPDATE_STATE_DIR/approved" ]
 release_deployment_lock

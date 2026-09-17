@@ -18,6 +18,7 @@ with tempfile.TemporaryDirectory() as temporary:
     subprocess.run(["git", "-C", str(flake), "add", "."], check=True)
     subprocess.run(["git", "-C", str(flake), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
                     "commit", "-qm", "initial"], check=True)
+    initial_revision = subprocess.check_output(["git", "-C", str(flake), "rev-parse", "HEAD"], text=True).strip()
     binaries = root / "bin"
     binaries.mkdir()
     events = root / "events"
@@ -28,7 +29,15 @@ with tempfile.TemporaryDirectory() as temporary:
         path.chmod(0o755)
         return path
 
-    sudo = executable("sudo", 'printf "%s\\n" "$*" >> "$SUDO_EVENTS"\nif [ "$1" = -v ]; then exit 0; fi\nexec "$@"\n')
+    sudo = executable("sudo", '''
+printf '%s\\n' "$*" >> "$SUDO_EVENTS"
+if [ "$1" = -v ]; then
+  if [ "${LATE_UNTRACKED:-0}" = 1 ]; then touch "$FLAKE_DIR/late.txt"; fi
+  exit "${AUTH_STATUS:-0}"
+fi
+exec "$@"
+''')
+    executable("pkill", 'exit 0\n')  # Never signal the real desktop from tests.
     executable("systemctl", '''
 printf '%s\\n' "$*" >> "$STACK_EVENTS"
 case "$*" in
@@ -48,6 +57,8 @@ if [ "$1" = path-info ]; then exit 1; fi
 source=${3#path:}
 [ "$(< "$source/flake.nix")" = before ]
 printf 'check %s\n' "$3" >> "$EVENTS"
+printf '%s\\n' "${@:5}" > "$CHECK_ARGUMENTS"
+exit "${CHECK_STATUS:-0}"
 ''')
     executable("nixos-rebuild", '''
 [ "$1" = switch ]
@@ -57,10 +68,11 @@ source=${3#path:}
 source=${source%#thinkpad}
 [ "$(< "$source/flake.nix")" = before ]
 printf 'switch %s\n' "$3" >> "$EVENTS"
+printf '%s\\n' "${@:5}" > "$SWITCH_ARGUMENTS"
 exit "${SWITCH_STATUS:-0}"
 ''')
     helper = root / "local-build.py"
-    helper.write_text('''import shutil
+    helper.write_text('''import os, pathlib, shutil, subprocess
 
 def read_inputs(root):
     return {}
@@ -68,19 +80,42 @@ def read_inputs(root):
 def merge(left, right):
     return dict(left, **right)
 
+def prune_lock(lock, names):
+    return lock
+
 def snapshot(source, target):
+    untracked = subprocess.check_output(["git", "-C", str(source), "ls-files", "--others", "--exclude-standard"])
+    if untracked:
+        raise ValueError("Git-add or ignore untracked files: " + untracked.decode())
     target.mkdir(parents=True)
     for name in ("flake.nix", "flake.lock"):
         shutil.copyfile(source / name, target / name)
 
 def prepare(source, destination):
     staged = destination / "root"
+    pathlib.Path(os.environ["SNAPSHOT_PATH"]).write_text(str(destination.parent))
     snapshot(source, staged)
-    # Simulate an edit after capture: neither check nor switch may consume it.
-    (source / "flake.nix").write_text("later edit\\n")
+    # Simulate edits after capture: checks and switch must use frozen sources.
+    mutation = os.environ.get("MUTATION", "edit")
+    if mutation in ("edit", "commit"):
+        (source / "flake.nix").write_text("later edit\\n")
+    if mutation == "commit":
+        subprocess.run(["git", "-C", str(source), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                        "commit", "-qam", "changed during build"], check=True, stdout=subprocess.DEVNULL)
+    if mutation == "lock":
+        (source / "flake.lock").write_text('{"changed": true}\\n')
     return {"flake": "path:" + str(staged)}
 ''')
-    approval = executable("approval", f'python3 {scripts / "rebuild-source-state.py"} verify {flake} "$2"\n')
+    approval = executable("approval", f'''
+export NIXOS_DEPLOYMENT_LOCK_HELPER={scripts / "deployment-lock.sh"}
+exec bash {scripts / "delayed-nixos-update.sh"} "$@"
+''')
+    active_system = root / "active-system"
+    (active_system / "bin").mkdir(parents=True)
+    switch_program = active_system / "bin/switch-to-configuration"
+    switch_program.write_text("#!/bin/sh\nexit 0\n")
+    switch_program.chmod(0o755)
+    updater_state = root / "updater-state"
     rendered = (scripts / "rebuild.sh").read_text()
     for old, new in {
         "@CONFIG_DIRECTORY@": str(flake),
@@ -99,7 +134,15 @@ def prepare(source, destination):
     environment = dict(os.environ, PATH=str(binaries) + ":" + os.environ["PATH"],
                        HOME=str(root), XDG_STATE_HOME=str(root / "state"),
                        NIXOS_DEPLOYMENT_LOCK_FILE=str(lock), EVENTS=str(events),
-                       STACK_EVENTS=str(root / "stack-events"), SUDO_EVENTS=str(root / "sudo-events"))
+                       STACK_EVENTS=str(root / "stack-events"), SUDO_EVENTS=str(root / "sudo-events"),
+                       CHECK_ARGUMENTS=str(root / "check-arguments"), SWITCH_ARGUMENTS=str(root / "switch-arguments"),
+                       SNAPSHOT_PATH=str(root / "snapshot-path"), FLAKE_DIR=str(flake),
+                       NIXOS_UPDATE_FLAKE_DIR=str(flake), NIXOS_UPDATE_STATE_DIR=str(updater_state),
+                       NIXOS_SOURCE_STATE_HELPER=str(scripts / "rebuild-source-state.py"),
+                       NIXOS_UPDATE_ACTIVE_SYSTEM_LINK=str(active_system))
+    for name in ("MUTATION", "AUTH_STATUS", "LATE_UNTRACKED", "CHECK_STATUS", "SWITCH_STATUS",
+                 "GRAPHICAL_STATUS", "INACTIVE_UNIT", "DAEMON_RESTART_STATUS", "NIXOS_UPDATE_LIB_ONLY"):
+        environment.pop(name, None)
     environment.pop("NIXOS_LOCAL_BUILD_HELPER", None)
     environment.pop("NIXOS_DEPLOYMENT_LOCK_HELPER", None)
     result = subprocess.run(["bash", str(script)], env=environment, text=True, capture_output=True)
@@ -140,6 +183,10 @@ def prepare(source, destination):
         result = subprocess.run(["bash", str(script), *arguments],
                                 env=environment, text=True, capture_output=True)
         assert result.returncode == 0, result.stdout + result.stderr
+        check_arguments = (root / "check-arguments").read_text().splitlines()
+        switch_arguments = (root / "switch-arguments").read_text().splitlines()
+        assert check_arguments == ["--keep-going", *switch_arguments]
+        assert "--cores" in switch_arguments and "--max-jobs" in switch_arguments
     before_sudo = (root / "sudo-events").read_text()
     with (logs / "rebuild.lock").open("r+") as held:
         fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -178,4 +225,69 @@ def prepare(source, destination):
             assert "Graphical service is not active: bt-daemon.service" in result.stdout
         if expected:
             assert "Recording the update baseline" not in result.stdout
-print("rebuild source-identity, argument guard, and service recovery tests passed")
+    def scenario(**overrides):
+        # This repository exists only inside TemporaryDirectory.
+        subprocess.run(["git", "-C", str(flake), "reset", "--hard", "-q", initial_revision], check=True)
+        events.write_text("")
+        (root / "snapshot-path").unlink(missing_ok=True)
+        (root / "stack-events").write_text("")
+        result = subprocess.run(["bash", str(script)], env=dict(environment, **overrides),
+                                text=True, capture_output=True, timeout=20)
+        snapshot_marker = root / "snapshot-path"
+        if snapshot_marker.exists():
+            assert not Path(snapshot_marker.read_text()).exists(), "snapshot leaked on exit"
+        return result
+
+    result = scenario(MUTATION="none")
+    assert result.returncode == 0 and "Baseline:   recorded" in result.stdout, result.stdout + result.stderr
+    assert "SUCCESS WITH WARNINGS" not in result.stdout
+    assert (updater_state / "approved-revision").read_text().strip() == initial_revision
+    assert (updater_state / "approved-system").read_text().strip() == str(active_system)
+    approved = {name: (updater_state / name).read_bytes()
+                for name in ("approved-revision", "approved-system", "applied-lock-hash")}
+    # A stale approval may neither overwrite metadata nor recover an unrelated
+    # pending transaction. Automatic staging owns transaction recovery.
+    transaction = updater_state / "apply-transaction"
+    transaction.mkdir()
+    (transaction / "sentinel").write_text("retain\n")
+    for mutation in ("edit", "commit", "lock"):
+        result = scenario(MUTATION=mutation)
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "baseline not approved: sources changed during build" in result.stdout
+        assert "SUCCESS WITH WARNINGS" in result.stdout
+        assert "Automatic rollback" not in result.stdout
+        assert list(transaction.iterdir()) == [transaction / "sentinel"]
+        assert (transaction / "sentinel").read_text() == "retain\n"
+        for name, contents in approved.items():
+            assert (updater_state / name).read_bytes() == contents
+    shutil.rmtree(transaction)
+
+    with (updater_state / "update.lock").open("r+") as held:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        result = scenario(MUTATION="none")
+    assert result.returncode == 0 and "SUCCESS WITH WARNINGS" in result.stdout
+    assert "Another NixOS update operation" in result.stdout
+
+    for overrides, expected, stage in [
+        ({"AUTH_STATUS": "9"}, 9, "Authorizing the generation switch"),
+        ({"CHECK_STATUS": "11"}, 11, "Running framework, daemon, Shelllist, and configuration checks"),
+        ({"LATE_UNTRACKED": "1"}, 1, "Snapshotting current local worktrees"),
+    ]:
+        result = scenario(**overrides)
+        assert result.returncode == expected, result.stdout + result.stderr
+        assert f"Failed at:  {stage} (exit {expected})" in result.stdout
+        assert "switch " not in events.read_text(), "failure reached deployment"
+        assert "Recording the update baseline" not in result.stdout
+        (flake / "late.txt").unlink(missing_ok=True)
+
+    with lock.open("r+") as held:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        result = scenario()
+    assert result.returncode == 75 and "Acquiring the shared deployment lock" in result.stdout
+    assert not events.read_text(), "deployment lock contention reached checks or switch"
+
+    result = subprocess.run([str(approval), "approve-current"], env=environment, text=True, capture_output=True)
+    assert result.returncode == 1 and "requires the source manifest" in result.stderr
+    for name, contents in approved.items():
+        assert (updater_state / name).read_bytes() == contents
+print("rebuild source identity, argument, approval, recovery, logging, and contention tests passed")
