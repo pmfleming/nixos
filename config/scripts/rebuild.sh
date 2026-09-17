@@ -253,23 +253,11 @@ if ! flock -n 9; then
   exit 75
 fi
 
-stage 'Checking the configuration worktree'
+stage 'Checking all local worktrees'
 cd "$flake_dir"
-temporary_file=$(mktemp "$log_dir/untracked.XXXXXXXX")
-if ! git ls-files --others --exclude-standard -z > "$temporary_file"; then
-  printf 'Could not inspect the configuration Git worktree.\n' >&2
-  exit 1
-fi
-mapfile -d '' -t untracked_files < "$temporary_file"
-rm -f -- "$temporary_file"
-temporary_file=
-if ((${#untracked_files[@]})); then
-  printf 'Refusing to rebuild with files that Git flakes cannot see:\n' >&2
-  printf '  %s\n' "${untracked_files[@]}" >&2
-  printf 'Add or ignore these files before rebuilding.\n' >&2
-  exit 1
-fi
-# Fail before doing expensive evaluation if privilege elevation is unavailable.
+python3 "$source_state_helper" preflight "$local_build_helper" "$flake_dir"
+# The preflight above only discovers sources; authenticate before snapshot
+# resolution, compatibility checks, and the expensive system build.
 stage 'Authorizing the generation switch'
 /run/wrappers/bin/sudo -v
 

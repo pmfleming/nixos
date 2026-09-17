@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory() as temporary:
         path.chmod(0o755)
         return path
 
-    sudo = executable("sudo", 'if [ "$1" = -v ]; then exit 0; fi\nexec "$@"\n')
+    sudo = executable("sudo", 'printf "%s\\n" "$*" >> "$SUDO_EVENTS"\nif [ "$1" = -v ]; then exit 0; fi\nexec "$@"\n')
     executable("systemctl", '''
 printf '%s\\n' "$*" >> "$STACK_EVENTS"
 case "$*" in
@@ -61,6 +61,12 @@ exit "${SWITCH_STATUS:-0}"
     helper = root / "local-build.py"
     helper.write_text('''import shutil
 
+def read_inputs(root):
+    return {}
+
+def merge(left, right):
+    return dict(left, **right)
+
 def snapshot(source, target):
     target.mkdir(parents=True)
     for name in ("flake.nix", "flake.lock"):
@@ -92,7 +98,7 @@ def prepare(source, destination):
     environment = dict(os.environ, PATH=str(binaries) + ":" + os.environ["PATH"],
                        HOME=str(root), XDG_STATE_HOME=str(root / "state"),
                        NIXOS_DEPLOYMENT_LOCK_FILE=str(lock), EVENTS=str(events),
-                       STACK_EVENTS=str(root / "stack-events"))
+                       STACK_EVENTS=str(root / "stack-events"), SUDO_EVENTS=str(root / "sudo-events"))
     environment.pop("NIXOS_LOCAL_BUILD_HELPER", None)
     environment.pop("NIXOS_DEPLOYMENT_LOCK_HELPER", None)
     result = subprocess.run(["bash", str(script)], env=environment, text=True, capture_output=True)
@@ -125,6 +131,15 @@ def prepare(source, destination):
         result = subprocess.run(["bash", str(script), *arguments],
                                 env=environment, text=True, capture_output=True)
         assert result.returncode == 0, result.stdout + result.stderr
+    (flake / "untracked.txt").write_text("do not stage or delete\n")
+    before_sudo = (root / "sudo-events").read_text()
+    result = subprocess.run(["bash", str(script)], env=environment, text=True, capture_output=True)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "Untracked files in" in result.stdout and "untracked.txt" in result.stdout
+    assert (root / "sudo-events").read_text() == before_sudo, "preflight prompted for sudo"
+    assert (flake / "untracked.txt").read_text() == "do not stage or delete\n"
+    (flake / "untracked.txt").unlink()
+
     for overrides, expected in [
         ({"GRAPHICAL_STATUS": "0"}, 0),
         ({"GRAPHICAL_STATUS": "0", "INACTIVE_UNIT": "bt-daemon.service"}, 3),

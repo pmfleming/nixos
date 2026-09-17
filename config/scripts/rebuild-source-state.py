@@ -117,6 +117,57 @@ def prepare(helper, root, destination, manifest):
     return result
 
 
+def preflight(helper, root):
+    """Inspect the live graph for diagnostics only; prepare still revalidates it."""
+    definitions = {}
+    problems = []
+    walked = set()
+
+    def inspect(source):
+        if source in definitions:
+            return definitions[source]
+        definitions[source] = None
+        try:
+            top = Path(os.fsdecode(git(source, "rev-parse", "--show-toplevel")).strip()).resolve()
+            if top != source:
+                raise ValueError(f"not a repository root: {source}")
+            untracked = git(source, "ls-files", "--others", "--exclude-standard", "-z")
+            if untracked:
+                names = [os.fsdecode(name) for name in untracked.split(b"\0") if name]
+                problems.append(f"Untracked files in {source}:\n" + "\n".join(f"  {name!r}" for name in names))
+            definitions[source] = helper.read_inputs(source)
+        except (ValueError, OSError, subprocess.CalledProcessError) as error:
+            problems.append(f"Cannot inspect {source}: {error}")
+        return definitions[source]
+
+    def walk(source, overlay, ancestors):
+        if source in ancestors:
+            problems.append(f"Local input cycle at {source}")
+            return
+        key = (source, json.dumps(overlay, sort_keys=True))
+        if key in walked:
+            return
+        walked.add(key)
+        inputs = inspect(source)
+        if inputs is None:
+            return
+        for name, spec in helper.merge(inputs, overlay).items():
+            if "follows" in spec:
+                continue
+            try:
+                child = helper.local_path(spec, source)
+                if child is not None:
+                    walk(child, spec.get("inputs", {}), ancestors | {source})
+            except (ValueError, OSError) as error:
+                problems.append(f"Cannot inspect {source}/{name}: {error}")
+
+    walk(root, {}, set())
+    if problems:
+        raise ValueError("Local worktree preflight failed:\n\n" + "\n\n".join(problems)
+                         + "\n\nAdd or ignore untracked files explicitly; rebuild never changes Git tracking.")
+    return {"repositories": [str(source) for source in definitions]}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -125,12 +176,17 @@ def main():
     child.add_argument("root", type=Path)
     child.add_argument("destination", type=Path)
     child.add_argument("manifest", type=Path)
+    child = commands.add_parser("preflight")
+    child.add_argument("helper", type=Path)
+    child.add_argument("root", type=Path)
     child = commands.add_parser("verify")
     child.add_argument("root", type=Path)
     child.add_argument("manifest", type=Path)
     args = parser.parse_args()
     if args.command == "prepare":
         result = prepare(load_helper(args.helper), args.root.resolve(), args.destination.resolve(), args.manifest)
+    elif args.command == "preflight":
+        result = preflight(load_helper(args.helper), args.root.resolve())
     else:
         result = verify(args.root.resolve(), args.manifest)
     print(json.dumps(result))

@@ -83,6 +83,49 @@ class IdentityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "sources changed during build"):
             state.verify(self.root, self.manifest)
 
+    def test_preflight_aggregates_repositories_and_respects_follows(self):
+        sibling = self.base / "sibling"
+        sibling.mkdir()
+        subprocess.run(["git", "init", "-q", str(sibling)], check=True)
+        (sibling / "flake.nix").write_text("{}\n")
+        (sibling / ".gitignore").write_text("ignored/\n")
+        state.git(sibling, "add", ".")
+        (sibling / "ignored").mkdir()
+        (sibling / "ignored/output").write_text("ignored\n")
+        (sibling / "image.png").write_text("untracked\n")
+        (self.root / "forgotten.nix").write_text("untracked\n")
+        missing = self.base / "missing"
+        definitions = {
+            self.root: {"sibling": {"url": str(sibling)}, "again": {"url": str(sibling)},
+                        "followed": {"follows": "sibling", "url": str(missing)}},
+            sibling: {},
+        }
+        inspected = []
+
+        class Helper:
+            @staticmethod
+            def read_inputs(root):
+                inspected.append(root)
+                return definitions[root]
+
+            @staticmethod
+            def local_path(spec, root):
+                return Path(spec["url"])
+
+            @staticmethod
+            def merge(left, right):
+                return dict(left, **right)
+
+        with self.assertRaises(ValueError) as failure:
+            state.preflight(Helper, self.root)
+        message = str(failure.exception)
+        self.assertIn("forgotten.nix", message)
+        self.assertIn("image.png", message)
+        self.assertNotIn("ignored/output", message)
+        self.assertNotIn(str(missing), message)
+        self.assertEqual(inspected, [self.root, sibling])
+        self.assertEqual(state.git(sibling, "ls-files", "--others", "--exclude-standard").decode(), "image.png\n")
+
     def test_prepare_captures_before_disposable_lock_rewrite(self):
         class Helper:
             def snapshot(inner, source, target):

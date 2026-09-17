@@ -26,7 +26,7 @@ required, but new files must be registered with Git (`git add` or `git add -N`).
 
 Home Manager is integrated as a NixOS module, so home changes in `home.nix` are applied by the same rebuild.
 
-`rebuild` snapshots the current Git worktrees of the configuration and every local input, including tracked uncommitted edits. Add or ignore untracked files first. Ignored build artifacts are excluded. It does not fetch, push, change branches, or write local-project deployment pins. Nix resolves a disposable build graph once; checks and deployment reuse it even if editing continues during the build. Persistent locks retain third-party inputs only.
+`rebuild` snapshots the current Git worktrees of the configuration and every local input, including tracked uncommitted edits. Before requesting sudo, a preflight lists untracked files across all discoverable local repositories together. Add or ignore them explicitly; rebuild never changes Git tracking. Snapshotting repeats validation to catch changes after preflight. Ignored build artifacts are excluded. It does not fetch, push, change branches, or write local-project deployment pins. Nix resolves a disposable build graph once; checks and deployment reuse it even if editing continues during the build. Persistent locks retain third-party inputs only.
 
 **Co-development invariant:** all five daemons, including `app-daemon`, consume exactly one current local `daemon-framework` snapshot. No vendored framework or per-daemon revision pin is allowed. The source helper validates this before building, and regression tests protect the policy.
 
