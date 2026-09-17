@@ -1,5 +1,6 @@
 """Exercise the real rebuild control flow with fake Nix/systemd/sudo commands."""
 import shutil
+import fcntl
 import os
 from pathlib import Path
 import subprocess
@@ -108,6 +109,10 @@ def prepare(source, destination):
     assert (flake / "flake.nix").read_text() == "later edit\n"
     assert (flake / "flake.lock").read_text() == "{}\n"
     assert "baseline not approved: sources changed during build" in result.stdout
+    assert "REBUILD SUCCESS WITH WARNINGS" in result.stdout
+    logs = root / "state/nixos-rebuild"
+    assert (logs / "latest.log").resolve().name.endswith(".success.log")
+    assert "SUCCESS WITH WARNINGS" in (logs / "latest.log").read_text()
     assert not Path(checked.removeprefix("check path:")).exists(), "snapshot leaked after exit"
     forbidden = [
         ["--override-input", "daemon-framework", "old"], ["--flake", "other"],
@@ -124,6 +129,10 @@ def prepare(source, destination):
                                 env=environment, text=True, capture_output=True)
         assert result.returncode == 2, (arguments, result.stdout, result.stderr)
         assert len(events.read_text().splitlines()) == 2, "override reached build commands"
+        failed_log = (logs / "latest.log").resolve()
+        assert failed_log.name.endswith(".failed.log")
+        assert failed_log == (logs / "latest-failed.log").resolve()
+        assert "Failed at:  Validating rebuild arguments (exit 2)" in failed_log.read_text()
 
     for arguments in (["-L", "--show-trace", "--cores=2", "-j4"],
                       ["--max-jobs", "auto", "--cores", "0", "--offline"]):
@@ -131,6 +140,16 @@ def prepare(source, destination):
         result = subprocess.run(["bash", str(script), *arguments],
                                 env=environment, text=True, capture_output=True)
         assert result.returncode == 0, result.stdout + result.stderr
+    before_sudo = (root / "sudo-events").read_text()
+    with (logs / "rebuild.lock").open("r+") as held:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        result = subprocess.run(["bash", str(script)], env=environment, text=True, capture_output=True)
+    assert result.returncode == 75, result.stdout + result.stderr
+    assert "This log records only the rejected attempt" in result.stdout
+    assert "see " + str(logs / "latest.log") not in result.stdout
+    assert "Acquiring the interactive rebuild lock (exit 75)" in (logs / "latest.log").read_text()
+    assert (root / "sudo-events").read_text() == before_sudo
+
     (flake / "untracked.txt").write_text("do not stage or delete\n")
     before_sudo = (root / "sudo-events").read_text()
     result = subprocess.run(["bash", str(script)], env=environment, text=True, capture_output=True)

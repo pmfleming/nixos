@@ -47,7 +47,7 @@ let existing jobs finish and pause the update/pruning timers before the rebuild;
 the new tmpfiles rule provisions the lock at activation. Re-enable the timers
 afterwards. Older running scripts cannot participate in the new protocol.
 
-Every invocation records its command output under `~/.local/state/nixos-rebuild/`. `latest.log` points to the most recent run and `latest-failed.log` to the most recent failure; completed files are marked `.success.log` or `.failed.log`. Logs older than 30 days are removed when the next rebuild starts. A concise completion overview reports the outcome, elapsed time, derivations built, store paths and data copied, closure and store-size changes, active system, graphical-session recovery, baseline approval, log path, and package changes.
+Every invocation records its command output under `~/.local/state/nixos-rebuild/`, including argument rejection and lock contention. `latest.log` points to the most recent attempt (not necessarily the running build) and `latest-failed.log` to the most recent failure; completed files are marked `.success.log` or `.failed.log`. A successful deployment with skipped baseline approval exits zero, keeps a `.success.log`, and reports `SUCCESS WITH WARNINGS` with the approval reason above the summary. Logs older than 30 days are removed when the next rebuild starts. A concise completion overview reports the outcome, elapsed time, derivations built, store paths and data copied, closure and store-size changes, active system, graphical-session recovery, baseline approval, log path, and package changes.
 
 ## Validate Changes
 

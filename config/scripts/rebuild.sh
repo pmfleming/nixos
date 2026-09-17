@@ -49,7 +49,6 @@ parse_build_arguments() {
     esac
   done
 }
-parse_build_arguments "$@"
 shelllist_daemons=(
   app-daemon.service
   bar-daemon.service
@@ -167,10 +166,14 @@ finish() {
 
   if ((status == 0)); then
     outcome=SUCCESS
+    suffix=success
+    if [[ $baseline_result == 'not approved '* ]]; then
+      outcome='SUCCESS WITH WARNINGS'
+    fi
   else
     outcome=FAILED
+    suffix=failed
   fi
-  suffix=${outcome,,}
   final_log=${log_file%.running.log}.$suffix.log
   if mv -- "$log_file" "$final_log"; then
     log_file=$final_log
@@ -231,14 +234,6 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-if [[ -n $system_before ]]; then
-  closure_before=$(closure_bytes "$system_before") || closure_before=
-fi
-disk_before=$(df -B1 --output=used /nix/store 2>/dev/null | tail -n 1) || disk_before=
-if [[ $disk_before =~ ^[[:space:]]*([0-9]+)[[:space:]]*$ ]]; then
-  store_used_before=${BASH_REMATCH[1]}
-fi
-
 printf 'Rebuild started; full log: %s\n' "$log_file"
 if (($#)); then
   printf 'nixos-rebuild arguments:'
@@ -246,11 +241,25 @@ if (($#)); then
   printf '\n'
 fi
 
-# Do not let two interactive rebuilds update the lock and switch concurrently.
+stage 'Validating rebuild arguments'
+parse_build_arguments "$@"
+
+# Every invocation keeps its own log, including invalid arguments/contention.
+# latest.log means latest attempt, not the owner of this lock.
+stage 'Acquiring the interactive rebuild lock'
 exec 9>"$log_dir/rebuild.lock"
 if ! flock -n 9; then
-  printf 'Another rebuild is already running (see %s/latest.log).\n' "$log_dir" >&2
+  printf 'Another rebuild is already running. This log records only the rejected attempt.\n' >&2
+  printf 'Inspect the other rebuild-*.running.log files in %s for the running build.\n' "$log_dir" >&2
   exit 75
+fi
+
+if [[ -n $system_before ]]; then
+  closure_before=$(closure_bytes "$system_before") || closure_before=
+fi
+disk_before=$(df -B1 --output=used /nix/store 2>/dev/null | tail -n 1) || disk_before=
+if [[ $disk_before =~ ^[[:space:]]*([0-9]+)[[:space:]]*$ ]]; then
+  store_used_before=${BASH_REMATCH[1]}
 fi
 
 stage 'Checking all local worktrees'
