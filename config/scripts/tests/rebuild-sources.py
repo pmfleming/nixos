@@ -79,8 +79,26 @@ print(json.dumps({"flake": "path:" + str(staged)}))
     assert (flake / "flake.nix").read_text() == "later edit\n"
     assert not (flake / "flake.lock").exists()
     assert not Path(checked.removeprefix("check path:")).exists(), "snapshot leaked after exit"
-    result = subprocess.run(["bash", str(script), "--override-input", "daemon-framework", "old"],
-                            env=environment, text=True, capture_output=True)
-    assert result.returncode == 2
-    assert len(events.read_text().splitlines()) == 2, "override reached build commands"
+    forbidden = [
+        ["--override-input", "daemon-framework", "old"], ["--flake", "other"],
+        ["--flake=other"], ["-F", "other"], ["-Fother"], ["-F=other"],
+        ["--no-flake"], ["--rollback"], ["--target-host", "other"],
+        ["--target-host=other"], ["--build-host", "other"], ["--profile-name", "other"],
+        ["--specialisation", "other"], ["--file", "other"], ["--store-path", "other"],
+        ["--option", "eval-store", "other"], ["--impure"], ["--"], ["boot"],
+        ["--cores"], ["--cores="], ["--cores", "-Fother"], ["--cores=auto"],
+        ["--max-jobs", "other"], ["-j-Fother"], ["--verbose=true"],
+    ]
+    for arguments in forbidden:
+        result = subprocess.run(["bash", str(script), *arguments],
+                                env=environment, text=True, capture_output=True)
+        assert result.returncode == 2, (arguments, result.stdout, result.stderr)
+        assert len(events.read_text().splitlines()) == 2, "override reached build commands"
+
+    for arguments in (["-L", "--show-trace", "--cores=2", "-j4"],
+                      ["--max-jobs", "auto", "--cores", "0", "--offline"]):
+        (flake / "flake.nix").write_text("before\n")
+        result = subprocess.run(["bash", str(script), *arguments],
+                                env=environment, text=True, capture_output=True)
+        assert result.returncode == 0, result.stdout + result.stderr
 print("rebuild source-identity and override-guard tests passed")

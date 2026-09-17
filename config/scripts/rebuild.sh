@@ -6,15 +6,48 @@ source "${NIXOS_DEPLOYMENT_LOCK_HELPER:-@DEPLOYMENT_LOCK_HELPER@}"
 flake_dir=@CONFIG_DIRECTORY@
 flake_attr=@FLAKE_ATTR@
 local_build_helper=${NIXOS_LOCAL_BUILD_HELPER:-@LOCAL_BUILD_HELPER@}
-# CLI arguments may tune the build, but must not replace the frozen source graph.
-for argument in "$@"; do
-  case "${argument%%=*}" in
-    --flake|--override-input|--update-input|--recreate-lock-file|--override-flake)
-      printf 'rebuild owns source selection; unsupported argument: %s\n' "$argument" >&2
-      exit 2
-      ;;
-  esac
-done
+# Fail closed: nixos-rebuild has aliases and deployment modes that bypass our
+# checked snapshot. Only accept build tuning, never arbitrary Nix options.
+build_arguments=()
+parse_build_arguments() {
+  local argument value
+
+  while (($#)); do
+    argument=$1
+    shift
+    case "$argument" in
+      --verbose|-v|--quiet|--print-build-logs|-L|--show-trace|--keep-going|-k|--keep-failed|-K|--fallback|--repair|--offline)
+        build_arguments+=( "$argument" )
+        ;;
+      --max-jobs|-j|--cores|--max-jobs=*|--cores=*|-j?*)
+        case "$argument" in
+          *=*) value=${argument#*=}; argument=${argument%%=*} ;;
+          -j?*) value=${argument#-j}; argument=--max-jobs ;;
+          *)
+            if (($# == 0)); then
+              printf 'Missing value for %s.\n' "$argument" >&2
+              return 2
+            fi
+            value=$1
+            shift
+            ;;
+        esac
+        [[ $argument != -j ]] || argument=--max-jobs
+        if [[ ! $value =~ ^[0-9]+$ ]] && [[ $argument != --max-jobs || $value != auto ]]; then
+          printf 'Invalid value for %s: %s\n' "$argument" "$value" >&2
+          return 2
+        fi
+        build_arguments+=( "$argument" "$value" )
+        ;;
+      *)
+        printf 'rebuild owns source selection and local deployment; unsupported argument: %s\n' "$argument" >&2
+        printf 'Supported: -v, --quiet, -L, --show-trace, -k, -K, --fallback, --repair, --offline, -j/--max-jobs N|auto, --cores N.\n' >&2
+        return 2
+        ;;
+    esac
+  done
+}
+parse_build_arguments "$@"
 shelllist_daemons=(
   app-daemon.service
   bar-daemon.service
@@ -252,7 +285,7 @@ printf '%s\n' "$snapshot_json" | jq .
 snapshot_flake=$(jq -er .flake <<< "$snapshot_json")
 
 stage 'Running framework, daemon, Shelllist, and configuration checks'
-nix flake check "$snapshot_flake" --no-update-lock-file --keep-going
+nix flake check "$snapshot_flake" --no-update-lock-file --keep-going "${build_arguments[@]}"
 
 # Activation can fail after Home Manager has stopped graphical services. Save
 # the switch status, then make a best effort to put the complete stack back in
@@ -260,7 +293,7 @@ nix flake check "$snapshot_flake" --no-update-lock-file --keep-going
 switch_status=0
 failed_stage=
 stage 'Building and switching the NixOS generation'
-if /run/wrappers/bin/sudo nixos-rebuild switch --flake "$snapshot_flake#$flake_attr" --no-update-lock-file "$@"; then
+if /run/wrappers/bin/sudo nixos-rebuild switch --flake "$snapshot_flake#$flake_attr" --no-update-lock-file "${build_arguments[@]}"; then
   :
 else
   switch_status=$?
