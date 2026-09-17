@@ -28,7 +28,18 @@ with tempfile.TemporaryDirectory() as temporary:
         return path
 
     sudo = executable("sudo", 'if [ "$1" = -v ]; then exit 0; fi\nexec "$@"\n')
-    executable("systemctl", 'case "$*" in *is-active*) exit 1;; *) exit 0;; esac\n')
+    executable("systemctl", '''
+printf '%s\\n' "$*" >> "$STACK_EVENTS"
+case "$*" in
+  *is-active*graphical-session.target) exit "${GRAPHICAL_STATUS:-1}" ;;
+  *is-active*bar-battery-helper.service) exit 1 ;;
+  *restart*app-daemon.service*) exit "${DAEMON_RESTART_STATUS:-0}" ;;
+  *is-active*)
+    # Match systemctl's real any-active semantics for a multi-unit query.
+    if [ "$#" -eq 4 ] && [ "${4}" = "${INACTIVE_UNIT:-}" ]; then exit 3; fi
+    exit 0 ;;
+esac
+''')
     executable("nix", '''
 if [ "$1" = path-info ]; then exit 1; fi
 [ "$1 $2" = 'flake check' ]
@@ -45,6 +56,7 @@ source=${3#path:}
 source=${source%#thinkpad}
 [ "$(< "$source/flake.nix")" = before ]
 printf 'switch %s\n' "$3" >> "$EVENTS"
+exit "${SWITCH_STATUS:-0}"
 ''')
     helper = root / "local-build.py"
     helper.write_text('''import shutil
@@ -79,7 +91,8 @@ def prepare(source, destination):
     lock.touch()
     environment = dict(os.environ, PATH=str(binaries) + ":" + os.environ["PATH"],
                        HOME=str(root), XDG_STATE_HOME=str(root / "state"),
-                       NIXOS_DEPLOYMENT_LOCK_FILE=str(lock), EVENTS=str(events))
+                       NIXOS_DEPLOYMENT_LOCK_FILE=str(lock), EVENTS=str(events),
+                       STACK_EVENTS=str(root / "stack-events"))
     environment.pop("NIXOS_LOCAL_BUILD_HELPER", None)
     environment.pop("NIXOS_DEPLOYMENT_LOCK_HELPER", None)
     result = subprocess.run(["bash", str(script)], env=environment, text=True, capture_output=True)
@@ -112,4 +125,23 @@ def prepare(source, destination):
         result = subprocess.run(["bash", str(script), *arguments],
                                 env=environment, text=True, capture_output=True)
         assert result.returncode == 0, result.stdout + result.stderr
-print("rebuild source-identity and override-guard tests passed")
+    for overrides, expected in [
+        ({"GRAPHICAL_STATUS": "0"}, 0),
+        ({"GRAPHICAL_STATUS": "0", "INACTIVE_UNIT": "bt-daemon.service"}, 3),
+        ({"GRAPHICAL_STATUS": "0", "DAEMON_RESTART_STATUS": "7"}, 7),
+        ({"GRAPHICAL_STATUS": "0", "SWITCH_STATUS": "42", "INACTIVE_UNIT": "bt-daemon.service"}, 42),
+    ]:
+        (flake / "flake.nix").write_text("before\n")
+        (root / "stack-events").write_text("")
+        result = subprocess.run(["bash", str(script)], env=dict(environment, **overrides),
+                                text=True, capture_output=True)
+        assert result.returncode == expected, result.stdout + result.stderr
+        stack = (root / "stack-events").read_text()
+        assert "--user restart shelllist.service\n" in stack, "frontend recovery was skipped"
+        for unit in ("app-daemon", "bar-daemon", "bt-daemon", "clip-daemon", "nm-daemon", "shelllist"):
+            assert f"--user --quiet is-active {unit}.service\n" in stack
+        if "INACTIVE_UNIT" in overrides:
+            assert "Graphical service is not active: bt-daemon.service" in result.stdout
+        if expected:
+            assert "Recording the update baseline" not in result.stdout
+print("rebuild source-identity, argument guard, and service recovery tests passed")

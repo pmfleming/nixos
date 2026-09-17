@@ -312,6 +312,9 @@ remember_stack_failure() {
   "$@" && return 0
   status=$?
   ((stack_status != 0)) || stack_status=$status
+  printf 'Graphical recovery command failed (exit %d):' "$status" >&2
+  printf ' %q' "$@" >&2
+  printf '\n' >&2
   return 0
 }
 if /run/wrappers/bin/sudo systemctl --quiet is-active bar-battery-helper.service; then
@@ -325,7 +328,17 @@ if systemctl --user --quiet is-active graphical-session.target; then
   remember_stack_failure systemctl --user restart "${shelllist_daemons[@]}"
   # Always restart the frontend, even if a daemon failed.
   remember_stack_failure systemctl --user restart shelllist.service
-  remember_stack_failure systemctl --user --quiet is-active "${shelllist_units[@]}"
+  # systemctl is-active with multiple units succeeds if ANY unit is active.
+  # Check individually so a running frontend cannot mask a crashed daemon.
+  for unit in "${shelllist_units[@]}"; do
+    if systemctl --user --quiet is-active "$unit"; then
+      :
+    else
+      unit_status=$?
+      ((stack_status != 0)) || stack_status=$unit_status
+      printf 'Graphical service is not active: %s (exit %d)\n' "$unit" "$unit_status" >&2
+    fi
+  done
 
   if ((stack_status == 0)); then
     session_result='Shelllist stack restarted'
