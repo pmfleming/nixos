@@ -188,6 +188,7 @@
               ])
               ''
                 python3 ${self}/config/scripts/tests/rebuild-sources.py ${self}/config/scripts
+                python3 ${self}/config/scripts/tests/rebuild-source-state.py ${self}/config/scripts
               '';
           nix =
             mkCheck "nix-quality-check"
@@ -240,6 +241,7 @@
                 coreutils
                 git
                 jq
+                python3
               ])
               ''
                 bash ${self}/config/scripts/tests/delayed-nixos-update.sh \

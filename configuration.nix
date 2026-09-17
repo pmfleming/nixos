@@ -59,6 +59,8 @@ let
       "@CONFIG_DIRECTORY@" = machine.configDirectory;
       "@FLAKE_ATTR@" = machine.hostName;
       "@LOCAL_BUILD_HELPER@" = "${inputs.daemon-framework}/tools/local-build.py";
+      "@SOURCE_STATE_HELPER@" = "${./config/scripts/rebuild-source-state.py}";
+      "@APPROVAL_HELPER@" = "${config.system.build.delayedNixosUpdate}/bin/delayed-nixos-update";
     };
   };
 in

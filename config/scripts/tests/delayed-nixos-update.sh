@@ -5,6 +5,8 @@ test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
 NIXOS_DEPLOYMENT_LOCK_HELPER="$(dirname "$script_path")/deployment-lock.sh"
 export NIXOS_DEPLOYMENT_LOCK_HELPER
+NIXOS_SOURCE_STATE_HELPER="$(dirname "$script_path")/rebuild-source-state.py"
+export NIXOS_SOURCE_STATE_HELPER
 
 export NIXOS_UPDATE_FLAKE_DIR="$test_root/flake"
 export NIXOS_UPDATE_STATE_DIR="$test_root/state"
@@ -27,6 +29,23 @@ test_approved_revision=$NIXOS_UPDATE_STATE_DIR/approved-revision
 test_approved_system=$NIXOS_UPDATE_STATE_DIR/approved-system
 test_transaction_dir=$NIXOS_UPDATE_STATE_DIR/apply-transaction
 test_late_input=nixpkgs-unstable
+# Model the private identity captured by a successful manual rebuild.
+approve_test_current() {
+  python3 - "$NIXOS_SOURCE_STATE_HELPER" "$test_flake_dir" "$test_root/manifest.json" <<'PY'
+import importlib.util, json, pathlib, sys
+sys.dont_write_bytecode = True
+spec = importlib.util.spec_from_file_location("state", sys.argv[1])
+state = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(state)
+root, manifest = map(pathlib.Path, sys.argv[2:])
+manifest.write_text(json.dumps({
+    "version": 1, "eligible": state.clean_configuration(root),
+    "revision": state.revision(root), "configuration": state.configuration_identity(root, tracked=True),
+    "lock": state.file_identity(root / "flake.lock"),
+}))
+PY
+  approve_current "$test_root/manifest.json"
+}
 staged_flake=
 
 mkdir -p "$test_flake_dir" "$test_delayed_dir" "$test_root/initial-system/bin"
@@ -50,7 +69,7 @@ printf '%s\n' '{
 printf 'test\n' > "$test_flake_dir/README.md"
 git -C "$test_flake_dir" add flake.lock README.md
 git -C "$test_flake_dir" commit -qm initial
-approve_current
+approve_test_current
 [ "$(cat "$test_approved_revision")" = "$(git -C "$test_flake_dir" rev-parse HEAD)" ]
 [ "$(cat "$test_approved_system")" = "$test_root/initial-system" ]
 [ "$(cat "$test_applied_lock_hash")" = "$(hash_file "$test_flake_dir/flake.lock")" ]
@@ -172,7 +191,7 @@ nix-env() { return 0; }
 apply_delayed manual
 [ "$(cat "$test_root/switch-operation")" = boot ]
 [ ! -d "$test_transaction_dir" ]
-approve_current
+approve_test_current
 
 seed_delayed_queue
 [ "$(grep -c '^snapshot$' "$test_root/local-source-operations")" -ge 4 ]

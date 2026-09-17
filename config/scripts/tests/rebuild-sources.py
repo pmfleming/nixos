@@ -12,8 +12,11 @@ with tempfile.TemporaryDirectory() as temporary:
     flake = root / "flake"
     flake.mkdir()
     (flake / "flake.nix").write_text("before\n")
+    (flake / "flake.lock").write_text("{}\n")
     subprocess.run(["git", "init", "-q", str(flake)], check=True)
     subprocess.run(["git", "-C", str(flake), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(flake), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                    "commit", "-qm", "initial"], check=True)
     binaries = root / "bin"
     binaries.mkdir()
     events = root / "events"
@@ -44,21 +47,28 @@ source=${source%#thinkpad}
 printf 'switch %s\n' "$3" >> "$EVENTS"
 ''')
     helper = root / "local-build.py"
-    helper.write_text('''import json, pathlib, shutil, sys
-assert sys.argv[1] == "prepare"
-source, destination = map(pathlib.Path, sys.argv[2:4])
-staged = destination / "root"
-staged.mkdir(parents=True)
-shutil.copyfile(source / "flake.nix", staged / "flake.nix")
-# Simulate an edit after capture: neither check nor switch may consume it.
-(source / "flake.nix").write_text("later edit\\n")
-print(json.dumps({"flake": "path:" + str(staged)}))
+    helper.write_text('''import shutil
+
+def snapshot(source, target):
+    target.mkdir(parents=True)
+    for name in ("flake.nix", "flake.lock"):
+        shutil.copyfile(source / name, target / name)
+
+def prepare(source, destination):
+    staged = destination / "root"
+    snapshot(source, staged)
+    # Simulate an edit after capture: neither check nor switch may consume it.
+    (source / "flake.nix").write_text("later edit\\n")
+    return {"flake": "path:" + str(staged)}
 ''')
+    approval = executable("approval", f'python3 {scripts / "rebuild-source-state.py"} verify {flake} "$2"\n')
     rendered = (scripts / "rebuild.sh").read_text()
     for old, new in {
         "@CONFIG_DIRECTORY@": str(flake),
         "@FLAKE_ATTR@": "thinkpad",
         "@LOCAL_BUILD_HELPER@": str(helper),
+        "@SOURCE_STATE_HELPER@": str(scripts / "rebuild-source-state.py"),
+        "@APPROVAL_HELPER@": str(approval),
         "@DEPLOYMENT_LOCK_HELPER@": str(scripts / "deployment-lock.sh"),
         "/run/wrappers/bin/sudo": str(sudo),
     }.items():
@@ -77,7 +87,8 @@ print(json.dumps({"flake": "path:" + str(staged)}))
     checked, switched = events.read_text().splitlines()
     assert switched == "switch " + checked.removeprefix("check ") + "#thinkpad"
     assert (flake / "flake.nix").read_text() == "later edit\n"
-    assert not (flake / "flake.lock").exists()
+    assert (flake / "flake.lock").read_text() == "{}\n"
+    assert "baseline not approved: sources changed during build" in result.stdout
     assert not Path(checked.removeprefix("check path:")).exists(), "snapshot leaked after exit"
     forbidden = [
         ["--override-input", "daemon-framework", "old"], ["--flake", "other"],

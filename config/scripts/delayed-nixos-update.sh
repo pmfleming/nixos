@@ -1,4 +1,6 @@
 set -euo pipefail
+# Approval also runs directly under sudo, outside the systemd service's UMask.
+umask 022
 export GIT_OPTIONAL_LOCKS=0
 
 # shellcheck source=/dev/null
@@ -9,6 +11,7 @@ flake_attr=${NIXOS_UPDATE_FLAKE_ATTR:-@FLAKE_ATTR@}
 state_dir=${NIXOS_UPDATE_STATE_DIR:-/var/lib/nixos-delayed-updates-v2}
 late_input=nixpkgs-unstable
 local_build_helper=${NIXOS_LOCAL_BUILD_HELPER:-@LOCAL_BUILD_HELPER@}
+source_state_helper=${NIXOS_SOURCE_STATE_HELPER:-@SOURCE_STATE_HELPER@}
 read -r -a manual_inputs <<< "${NIXOS_UPDATE_MANUAL_INPUTS:-@MANUAL_INPUTS@}"
 delay_seconds=${NIXOS_UPDATE_DELAY_SECONDS:-$((3 * 24 * 60 * 60))}
 check_seconds=${NIXOS_UPDATE_DELAYED_CHECK_SECONDS:-$((24 * 60 * 60))}
@@ -130,6 +133,16 @@ write_approved_system() {
 }
 
 approve_current() {
+  local manifest=${1:-} identity approved_revision approved_hash
+
+  if [[ -z $manifest ]]; then
+    printf 'Baseline approval requires the source manifest from a successful rebuild.\n' >&2
+    return 1
+  fi
+  identity=$(python3 "$source_state_helper" verify "$flake_dir" "$manifest") || return 1
+  approved_revision=$(jq -er .revision <<< "$identity") || return 1
+  approved_hash=$(jq -er .lockHash <<< "$identity") || return 1
+
   status="$(worktree_status)"
   while IFS= read -r line; do
     if [ -n "$line" ] && [ "${line:3}" != "flake.lock" ]; then
@@ -145,9 +158,11 @@ approve_current() {
     return 1
   fi
 
-  write_approved_revision "$(git_at_flake rev-parse --verify HEAD)"
+  write_approved_revision "$approved_revision"
   write_approved_system "$current_system"
-  write_applied_lock_hash
+  printf '%s\n' "$approved_hash" > "$applied_lock_hash.new"
+  chmod 0644 "$applied_lock_hash.new"
+  mv -f "$applied_lock_hash.new" "$applied_lock_hash"
   clear_ready
   clear_delayed_queue
   rm -rf "$transaction_dir" "$transaction_dir.new"
@@ -673,7 +688,7 @@ main() {
   fi
   update_lock_acquired=1
   if [ "${1:-catch-up-delayed}" = approve-current ]; then
-    approve_current
+    approve_current "${2:-}"
     return
   fi
   recover_transaction
@@ -684,7 +699,7 @@ main() {
     catch-up-delayed) catch_up_delayed ;;
     apply-delayed) apply_delayed manual ;;
     *)
-      printf 'Usage: %s approve-current | check-delayed [auto|manual] | run-delayed | catch-up-delayed | apply-delayed\n' "$0" >&2
+      printf 'Usage: %s approve-current MANIFEST | check-delayed [auto|manual] | run-delayed | catch-up-delayed | apply-delayed\n' "$0" >&2
       return 2
       ;;
   esac

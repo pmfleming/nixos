@@ -29,6 +29,7 @@ let
       "@FLAKE_ATTR@" = machine.hostName;
       "@MANUAL_INPUTS@" = lib.concatStringsSep " " machine.localProjects;
       "@LOCAL_BUILD_HELPER@" = "${inputs.daemon-framework}/tools/local-build.py";
+      "@SOURCE_STATE_HELPER@" = "${../config/scripts/rebuild-source-state.py}";
     };
   };
 
@@ -46,6 +47,10 @@ let
   onACPower = service: service // { unitConfig.ConditionACPower = true; };
 in
 {
+  # Rebuild invokes approval directly to pass its private source manifest. The
+  # updater still owns serialization of approval metadata through its state lock.
+  system.build.delayedNixosUpdate = delayedNixosUpdate;
+
   systemd = {
     services = {
       # One process discovers, matures, builds, and stages the delayed lane.
@@ -62,16 +67,6 @@ in
 
       nixos-update-apply-delayed = mkService "Stage a checked NixOS update for next boot" "apply-delayed";
 
-      nixos-update-approve-baseline = {
-        description = "Record a successful manual rebuild as the unattended-update baseline";
-        serviceConfig = {
-          Type = "oneshot";
-          StateDirectory = "nixos-delayed-updates-v2";
-          StateDirectoryMode = "0755";
-          UMask = "0022";
-          ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update approve-current";
-        };
-      };
     };
 
     timers = {

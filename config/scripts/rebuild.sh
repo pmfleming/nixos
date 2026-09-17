@@ -6,6 +6,8 @@ source "${NIXOS_DEPLOYMENT_LOCK_HELPER:-@DEPLOYMENT_LOCK_HELPER@}"
 flake_dir=@CONFIG_DIRECTORY@
 flake_attr=@FLAKE_ATTR@
 local_build_helper=${NIXOS_LOCAL_BUILD_HELPER:-@LOCAL_BUILD_HELPER@}
+source_state_helper=@SOURCE_STATE_HELPER@
+approval_helper=@APPROVAL_HELPER@
 # Fail closed: nixos-rebuild has aliases and deployment modes that bypass our
 # checked snapshot. Only accept build tuning, never arbitrary Nix options.
 build_arguments=()
@@ -280,7 +282,8 @@ acquire_deployment_lock
 # pins or replace this with flake update / --no-write-lock-file alone.
 stage 'Snapshotting current local worktrees'
 snapshot_dir=$(mktemp -d)
-snapshot_json=$(python3 "$local_build_helper" prepare "$flake_dir" "$snapshot_dir/sources")
+snapshot_json=$(python3 "$source_state_helper" prepare "$local_build_helper" \
+  "$flake_dir" "$snapshot_dir/sources" "$snapshot_dir/baseline.json")
 printf '%s\n' "$snapshot_json" | jq .
 snapshot_flake=$(jq -er .flake <<< "$snapshot_json")
 
@@ -344,14 +347,14 @@ if ((stack_status != 0)); then
   exit "$stack_status"
 fi
 
-# Keep the deployment lock through approval. The approval service takes only
-# the updater's state lock, so it cannot deadlock against this caller.
+# Keep the deployment lock through approval. The updater takes only its state
+# lock for this command. Pass the captured identity explicitly, not via global
+# systemd environment or a mutable shared request file.
 stage 'Recording the update baseline'
-if /run/wrappers/bin/sudo systemctl start --wait nixos-update-approve-baseline.service; then
+if /run/wrappers/bin/sudo "$approval_helper" approve-current "$snapshot_dir/baseline.json"; then
   baseline_result=recorded
 else
-  baseline_result='not recorded (unattended updates remain paused)'
-  printf 'Warning: inspect nixos-update-approve-baseline.service.\n' >&2
-  /run/wrappers/bin/sudo systemctl reset-failed nixos-update-approve-baseline.service || true
+  baseline_result='not approved (see reason above; deployment succeeded)'
+  printf 'Warning: deployment succeeded, but no new unattended-update baseline was approved.\n' >&2
 fi
 rebuild_stage=complete

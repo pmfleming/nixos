@@ -37,8 +37,10 @@ Standalone development uses `local-build check /path/to/project`, `local-build b
 `rebuild`, `rollback`, unattended NixOS staging, and generation pruning share the root-owned
 `/run/lock/nixos-deployment/lock` inode. Contention makes interactive rebuilds fail
 with exit 75 and timer jobs skip, rather than racing the live lock file, profile,
-or boot entries. The lock is held through rebuild's baseline approval; that
-service takes only the updater-state lock to avoid a nested-lock deadlock.
+or boot entries. The lock is held through rebuild's baseline approval; the
+privileged updater command takes only the updater-state lock to avoid a nested-lock deadlock.
+Rebuild passes a private source-identity manifest directly to that command; approval
+without a manifest is refused.
 Direct `nixos-rebuild` calls do not participate: run them only when
 no deployment/pruning job is active. On the first upgrade introducing this lock,
 let existing jobs finish and pause the update/pruning timers before the rebuild;
@@ -74,7 +76,7 @@ readlink -f /var/lib/nixos-ai-tools/current
 
 ### NixOS and other remote inputs
 
-Machine-local `git+file` inputs always come from current tracked worktrees, never persistent revision pins. Manual rebuilds and unattended builds both snapshot them afresh. The updater persists only remote dependency locks and re-evaluates local sources before applying a candidate; a changed resulting system invalidates that candidate. `rebuild` records the configuration revision, remote lock hash, and active system as the unattended-update baseline. Uncommitted `/etc/nixos` files other than `flake.lock` still prevent automatic approval; dirty or unpushed local project worktrees are supported. Nothing is pushed to GitHub.
+Machine-local `git+file` inputs always come from current tracked worktrees, never persistent revision pins. Manual rebuilds and unattended builds both snapshot them afresh. The updater persists only remote dependency locks and re-evaluates local sources before applying a candidate; a changed resulting system invalidates that candidate. `rebuild` records the captured configuration revision, input lock hash, and active system as the unattended-update baseline. Approval verifies that the live configuration still matches the actual snapshot (before disposable lock resolution). A commit or lock change during the build skips approval without failing the successful deployment. Uncommitted `/etc/nixos` files other than `flake.lock` still prevent automatic approval; dirty or unpushed local project worktrees are supported. Nothing is pushed to GitHub.
 
 Other remote inputs are checked daily on AC power. A lightweight 30-minute catch-up timer retries an overdue check after AC power becomes available. A discovered lock snapshot is frozen for three days, checked, and built against the approved local baseline. A successful candidate updates the live lock and system profile but uses `switch-to-configuration boot`, so Home Manager and the graphical session are not activated or restarted. The update takes effect on the next reboot. `nixpkgs-unstable` is refreshed when the matured system candidate is built, but the independently newer AI-tools profile continues to shadow its fallback packages.
 
