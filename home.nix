@@ -135,6 +135,7 @@ let
       coreutils
       gnugrep
       hyprland
+      jq
       procps
       socat
     ];

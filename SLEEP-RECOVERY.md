@@ -1,0 +1,93 @@
+# Sleep and hibernation recovery review — 2026-09-17
+
+The failure predates the firmware update. The latest reported failure occurred
+after the update, but its recorded signature differs from the earlier failed
+hibernation. A kernel message saying it returned from suspend is not evidence
+that the user regained a working display/session.
+
+## Confirmed history (Europe/Amsterdam)
+
+| Date | Evidence | Interpretation |
+| --- | --- | --- |
+| September 2 and 7 | Suspend entries without a subsequent return in those boots, followed by new boots. | Consistent with the recurring recovery problem; missing journal entries alone cannot identify the cause. |
+| September 7 | Configuration commit `cf8d680` enabled fwupd and changed `HandlePowerKey` to `ignore`. | Accidental re-suspend while trying to recover a black screen was already addressed. |
+| September 11 | Configuration commit `8333bee` enabled a 64-GiB swapfile and systemd initrd EFI resume. | Persistent swap and boot resume integration were already added. |
+| September 13, 17:26–18:02 | Suspend-then-hibernate woke after 30 minutes and entered hibernation. AMD SMU commands failed; the kernel logged `Wakeup pending. Abort CPU freeze`, followed by `amdgpu_device_ip_resume failed (-62)` and `PM: failed to restore async: error -62`. ACPI methods then timed out. | Confirmed platform/device failure during hibernation and its abort/recovery, before the firmware update. |
+| September 15, 00:38 | The initrd read the EFI hibernation location and attempted resume at offset 1832960. It logged `PM: Image not found (code -22)` and continued a fresh boot. | Resume discovery ran, but no valid image was restored. This does not establish that the offset was wrong; the preceding hibernation had failed. |
+| September 15, 02:03 onward | Boot DMI reports BIOS `R2LET41W (1.22)`, replacing `R2LET38W (1.19)`. fwupd history records the 1.19 → 1.22 update. | Firmware update is confirmed applied. The published release description mentions intermittent fan spin during sleep, not a confirmed fix for these recovery failures. |
+| September 16, 15:09 → September 17, 01:19:48 | Ordinary s2idle suspend returned after roughly ten hours. AMD SMU logged successful resume. Hypridle ran its DPMS-on command. | The kernel and user processes resumed; this does not prove the desktop was usable. |
+| September 17, 01:19:49–01:20:00 | HDMI output was repeatedly removed/recreated; Qt twice reported no outputs. Shelllist rebuilt surfaces and reported an overlay binding loop. | Display topology was unstable after wake. The bar cannot repair missing compositor outputs. |
+| September 17, 01:20:08–01:20:59 | Fingerprint verification matched; power-button events were processed; application sampling continued. The next boot starts at 01:22:10. | The latest failure left substantial userspace functioning. Display/compositor recovery is the strongest current lead; the journal does not prove precisely which component kept the screen unusable. |
+
+No post-update hibernation attempt was found in the journal reviewed through
+September 17, 16:17. The pre-update hibernation fault must not be presented as
+proof that the same fault persists on BIOS 1.22.
+
+## Concrete monitor-policy defect and prepared fix
+
+`config/scripts/hypr-monitor-auto.sh` previously treated a DRM connector's
+`connected` status as sufficient to disable `eDP-1`. It neither checked for an
+active external output in Hyprland nor retained a fallback on command failure.
+It reacted only to monitor/config events, so a missed event could leave a stale
+layout indefinitely. It also forced rule application on events caused by its
+own monitor changes.
+
+The prepared change:
+
+- Requires an enabled, nonzero-size DP/HDMI output in Hyprland before selecting
+  an external-only layout or disabling the laptop panel.
+- Enables the internal panel while the cable is connected but the compositor
+  output is absent, then rechecks every two seconds when the event stream is
+  quiet. Normal idle DPMS blanking does not trigger this fallback.
+- Bounds compositor calls, keeps failed operations retryable, and avoids
+  reapplying unchanged layouts in response to their own events.
+- Restores saved layouts after recovery and resets cached policy on config
+  reload or socket reconnect.
+
+This fixes a reproducible policy defect consistent with the latest output-loss
+logs. It is not proof of the underlying hardware cause, and it cannot repair an
+AMD GPU that has failed to restore. The change is prepared in the source tree;
+no system/Home Manager activation or live monitor mutation was performed during
+this review.
+
+Validation passed: the Nix `monitor-auto` regression check, the repository-wide
+ShellCheck check, and `git diff --check`. Tests cover missing external outputs,
+missing IPC replies, saved-layout restoration, failed commands, periodic retry,
+config reload, and settling after self-generated monitor events. These are
+automated policy checks, not physical suspend/hibernate validation.
+
+## Remaining validation
+
+After activating the monitor fix, compare internal-panel-only and HDMI-connected
+suspend recovery on the current firmware, recording DRM connector status,
+Hyprland monitor state, DPMS state, and compositor logs across wake. The current
+logs show output loss but do not contain enough compositor detail to separate
+driver output loss from monitor-policy effects.
+
+Test hibernation separately from suspend-then-hibernate on the current firmware.
+If AMD restore errors recur, investigate the device/platform stages using the
+[kernel power-management debugging procedure](https://www.kernel.org/doc/html/latest/power/basic-pm-debugging.html).
+Its staged tests distinguish device restoration from platform callbacks; a
+`shutdown` versus `platform` comparison is an experiment, not an established fix.
+No sleep cycle, firmware flash, GPU reset, driver unload, or boot-parameter
+change was performed during this review.
+
+## Reproduce the evidence
+
+```sh
+# Failed hibernation before the firmware update.
+journalctl -b 3e931bcbbd8049bab2414948c8bc00eb -k \
+  --since '2026-09-13 17:56:15' --no-pager
+
+# Subsequent boot attempted EFI-based resume but found no valid image.
+journalctl -b a5df33edd33740e0ad13848c1b60dc7f --no-pager \
+  -g 'hibernation image|Unable to resume|Image not found'
+
+# Latest post-update recovery failure; userspace continued running.
+journalctl -b c6cf84f5eff2448aa4cd65a74ad2705b \
+  --since '2026-09-17 01:19:40' --no-pager
+
+# Concise firmware history, avoiding unrelated machine metadata.
+fwupdmgr get-history --json | jq '.Devices[] |
+  {Name, Version, UpdateState, releases: [.Releases[] | {Version, Description}]}'
+```

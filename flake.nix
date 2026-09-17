@@ -214,6 +214,7 @@
                 bash
                 coreutils
                 gnugrep
+                jq
               ])
               ''
                 bash ${self}/config/scripts/tests/hypr-monitor-auto.sh \
