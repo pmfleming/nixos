@@ -15,7 +15,10 @@
   worker and private transaction helpers. Existing service/timer names remain;
   Shelllist reads structured progress, failures and AI-tool freshness. Quarantine,
   approval, deployment locks and next-boot-only system staging remain intact.
-- **Cleanup:** both update helpers no longer signal Waybar or require `procps`.
+  AI-profile updates and freshness checks are now native Python, not a private
+  Bash helper. The system quarantine/approval/rollback transaction is the remaining
+  updater Bash implementation; it is deliberately unchanged in this step.
+- **Cleanup:** update jobs no longer signal Waybar or require `procps`.
 
 **Keep `config/hypr/monitors.lua`, its Home Manager link and its Lua import.**
 Activated generations can reference the source through an out-of-store symlink;
