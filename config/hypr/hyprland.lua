@@ -147,15 +147,9 @@ hl.bind("SUPER + L", hl.dsp.exec_cmd(session_app("hyprlock")))
 hl.bind("SUPER + Q", hl.dsp.window.close())
 hl.bind("SUPER + F", hl.dsp.window.float())
 hl.bind("SUPER + SHIFT + F", hl.dsp.window.fullscreen())
-hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd(app("screenshot-annotate")))
-hl.bind(
-    "SUPER + CTRL + S",
-    hl.dsp.exec_cmd(app([=[sh -lc 'grim -g "$(slurp)" - | wl-copy --type image/png']=]))
-)
-hl.bind(
-    "SUPER + ALT + S",
-    hl.dsp.exec_cmd(app([=[sh -lc 'grim - | wl-copy --type image/png']=]))
-)
+hl.bind("SUPER + SHIFT + S", hl.dsp.exec_cmd(app("clip-daemon screenshot --annotate")))
+hl.bind("SUPER + CTRL + S", hl.dsp.exec_cmd(app("clip-daemon screenshot")))
+hl.bind("SUPER + ALT + S", hl.dsp.exec_cmd(app("clip-daemon screenshot --screen")))
 hl.bind("SUPER + SHIFT + Escape", hl.dsp.exec_cmd(app("wlogout")))
 hl.bind("SUPER + K", hl.dsp.exec_cmd("hyprctl switchxkblayout all next"))
 

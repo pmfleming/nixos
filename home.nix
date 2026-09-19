@@ -150,18 +150,6 @@ let
     };
   };
 
-  screenshotAnnotate = mkScript {
-    name = "screenshot-annotate";
-    runtimeInputs = with pkgs; [
-      coreutils
-      grim
-      libnotify
-      slurp
-      satty
-      wl-clipboard
-    ];
-  };
-
 in
 {
   imports = [
@@ -192,7 +180,6 @@ in
       btDaemon
       clipDaemon
       nmDaemon
-      screenshotAnnotate
       shelllistPortalBrowser
       nwgDisplaysLua
       scratchpad
