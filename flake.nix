@@ -209,19 +209,6 @@
               -exec shellcheck -s bash -x -e SC1091 {} +
           '';
 
-          monitor-auto =
-            mkCheck "monitor-auto-tests"
-              (with pkgs; [
-                bash
-                coreutils
-                gnugrep
-                jq
-              ])
-              ''
-                bash ${self}/config/scripts/tests/hypr-monitor-auto.sh \
-                  ${self}/config/scripts/hypr-monitor-auto.sh
-              '';
-
           deployment-lock =
             mkCheck "deployment-lock-tests"
               (with pkgs; [

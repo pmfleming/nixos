@@ -135,21 +135,6 @@ let
     } ./config/hypr/hyprland.lua
   );
 
-  hyprMonitorAuto = mkScript {
-    name = "hypr-monitor-auto";
-    runtimeInputs = with pkgs; [
-      coreutils
-      gnugrep
-      hyprland
-      jq
-      procps
-      socat
-    ];
-    replacements = {
-      "@MONITOR_SCALE@" = theme.appearance.monitorScale;
-    };
-  };
-
   nwgDisplaysLua = mkScript {
     name = "nwg-displays-lua";
     runtimeInputs = with pkgs; [
@@ -195,6 +180,7 @@ in
     enable = true;
     package = shelllist;
     systemd.target = "graphical-session.target";
+    displays.enable = true;
   };
 
   home = {
@@ -208,7 +194,6 @@ in
       nmDaemon
       screenshotAnnotate
       shelllistPortalBrowser
-      hyprMonitorAuto
       nwgDisplaysLua
       scratchpad
       tsReactQualityLens
@@ -449,11 +434,6 @@ in
       description = "Hyprland PolicyKit authentication agent";
       execStart = "${pkgs.hyprpolkitagent}/libexec/hyprpolkitagent";
       restart = "on-failure";
-    };
-
-    hypr-monitor-auto = mkUserService {
-      description = "Hyprland monitor auto-switcher";
-      execStart = "${hyprMonitorAuto}/bin/hypr-monitor-auto";
     };
 
     app-daemon = mkUserService {

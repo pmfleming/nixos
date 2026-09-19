@@ -56,6 +56,43 @@ missing IPC replies, saved-layout restoration, failed commands, periodic retry,
 config reload, and settling after self-generated monitor events. These are
 automated policy checks, not physical suspend/hibernate validation.
 
+## September 19 follow-up: daemon-owned docking policy
+
+In boot `c952e2193dd444d089594d2cac35fdcc`, ordinary suspend returned at
+06:46:51 and AMD SMU reported successful resume. HDMI appeared and disappeared;
+Qt reported no outputs at 06:46:57 and 06:47:13. A USB-C connector-status query
+also timed out at 06:46:54. Closing the lid at 06:47:17 triggered another ordinary
+suspend at 06:47:18. This attempt is evidence of an unstable display/session
+handoff, not proof of a hibernation failure or a fully recovered GPU.
+
+The earlier script fix was installed, but still switched to external-only as
+soon as an output appeared, cached successful fallback-rule submission without
+verifying the resulting panel, and reconciled periodically only when the event
+stream was quiet. These behaviours are now replaced by bar-daemon's display
+policy, with its regression tests in `bar-daemon/src/display_policy/`:
+
+- Keep the internal panel as a fallback until external topology is stable for
+  five seconds; reset that evidence on resume and output replacement/loss.
+- Reconcile every two seconds regardless of window/workspace event traffic.
+- Recheck topology and sleep state before disabling the laptop panel, and retry
+  missing fallback outputs rather than trusting the last policy label.
+- Leave a working external mode alone rather than reapplying wildcard rules.
+- Persist the external-only preference in the daemon and expose it in Battery
+  & Power; Nix only sets `programs.shelllist.displays.enable = true`.
+
+The old script, its tests, package, service and Nix test wiring have been removed
+from this repository. Unit ordering/conflicts plus a daemon runtime ownership
+check prevent the old service and new daemon from managing outputs together.
+Activate the updated daemon/UI/Home Manager configuration together. This source
+migration does not itself stop the running old service or change live displays.
+The pre-existing deployment lockfile edits were not changed by this migration.
+
+This does not establish a fix for the USB-C timeout or all physical wake cases.
+External-only with a closed lid still depends on the compositor/driver restoring
+the external connector; opening the lid remains the usable fallback when that
+connector cannot be restored. No sleep, display-switch, GPU-reset or firmware
+experiment was performed during this follow-up.
+
 ## Remaining validation
 
 After activating the monitor fix, compare internal-panel-only and HDMI-connected
