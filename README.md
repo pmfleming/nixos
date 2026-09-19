@@ -150,6 +150,8 @@ to Shelllist; no separate notification daemon or legacy Waybar client is needed.
 
 Ringboard and `clip-daemon` are the only clipboard-history stack; `Super+V` opens its Shelllist frontend. Ringboard captures content before its source exits, although the live Wayland selection can remain empty until an item is copied again.
 
+All three clipboard services use the unit files shipped by `clip-daemon`. These select its policy-enabled Ringboard package and retain the startup readiness, retention initialization, and privacy checks. Do not substitute `pkgs.ringboard-wayland`: the stock server cannot perform safe edits, deletes, or favorite changes. Before activating an engine change, back up history and review retention settings; startup applies those limits.
+
 ## Notes
 
 - `hardware-configuration.nix` is machine-specific.

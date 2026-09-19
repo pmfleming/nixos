@@ -119,8 +119,14 @@ let
       "${package}/share/systemd/user/${name}.service";
     "systemd/user/${name}.service.d/uwsm-session.conf" = daemonUnitOverride;
   };
+  # Keep the clipboard engine and facade together: stock Ringboard cannot
+  # perform safe edits. The packaged units also own readiness and privacy gates.
   packagedUserServices =
-    packagedUserService "nm-daemon" nmDaemon // packagedUserService "bt-daemon" btDaemon;
+    packagedUserService "nm-daemon" nmDaemon
+    // packagedUserService "bt-daemon" btDaemon
+    // packagedUserService "clip-daemon" clipDaemon
+    // packagedUserService "ringboard-server" clipDaemon
+    // packagedUserService "ringboard-wayland" clipDaemon;
 
   hyprlandConfig = themeText (
     scriptWith {
@@ -143,21 +149,6 @@ let
       "@MONITOR_SCALE@" = theme.appearance.monitorScale;
     };
   };
-
-  # After= only waits for ringboard-server's process to start. Probe the server
-  # before launching clients so a stale socket from the previous session cannot
-  # make the Wayland watcher fail and restart during login.
-  ringboardWaitReady = pkgs.writeShellScript "wait-for-ringboard-server" ''
-    for _ in {1..100}; do
-      if ${pkgs.ringboard-wayland}/bin/ringboard debug stats >/dev/null 2>&1; then
-        exit 0
-      fi
-      ${pkgs.coreutils}/bin/sleep 0.1
-    done
-
-    echo "ringboard server did not become ready within 10 seconds" >&2
-    exit 1
-  '';
 
   nwgDisplaysLua = mkScript {
     name = "nwg-displays-lua";
@@ -469,37 +460,6 @@ in
       description = "Shelllist application catalog and activation service";
       execStart = "${appDaemon}/bin/app-daemon daemon";
       restart = "on-failure";
-    };
-
-    ringboard-server = mkUserService {
-      description = "Ringboard clipboard history server";
-      execStart = "${pkgs.ringboard-wayland}/bin/ringboard-server";
-    };
-
-    ringboard-wayland = mkUserService {
-      description = "Ringboard Wayland clipboard watcher";
-      execStart = "${pkgs.ringboard-wayland}/bin/ringboard-wayland";
-      execStartPre = [ ringboardWaitReady ];
-      after = [ "ringboard-server.service" ];
-      requires = [ "ringboard-server.service" ];
-      partOf = [ "ringboard-server.service" ];
-    };
-
-    clip-daemon = mkUserService {
-      description = "Shelllist clipboard policy service";
-      execStart = "${clipDaemon}/bin/clip-daemon daemon";
-      after = [
-        "ringboard-server.service"
-        "ringboard-wayland.service"
-      ];
-      requires = [
-        "ringboard-server.service"
-        "ringboard-wayland.service"
-      ];
-      partOf = [
-        "ringboard-server.service"
-        "ringboard-wayland.service"
-      ];
     };
   };
 
