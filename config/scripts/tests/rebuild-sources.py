@@ -38,7 +38,6 @@ if [ "$1" = -v ]; then
 fi
 exec "$@"
 ''')
-    executable("pkill", 'exit 0\n')  # Never signal the real desktop from tests.
     executable("systemctl", '''
 printf '%s\\n' "$*" >> "$STACK_EVENTS"
 case "$*" in

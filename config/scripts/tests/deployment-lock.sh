@@ -38,7 +38,6 @@ bash -c '
     [ "$1" = private-manifest.json ]
     touch "$NIXOS_UPDATE_STATE_DIR/approved"
   }
-  notify_waybar_updates() { :; }
   main approve-current private-manifest.json
 ' bash "$updater"
 [ -f "$NIXOS_UPDATE_STATE_DIR/approved" ]
