@@ -49,34 +49,28 @@ Observed from `/sys/class/drm` while HDMI is connected:
 
 ## Config Changes Already Present
 
-Display automation in `home.nix`:
+Display ownership (activate the updated daemon/UI/NixOS configuration together):
 
-- Added `hypr-monitor-auto`.
-- It checks `/sys/class/drm/card*-DP-*/status` and `/sys/class/drm/card*-HDMI-A-*/status`.
-- When an external display is connected, it applies these rules with
-  `hyprctl eval` and the Lua API:
-  - `hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1.25 })`
-  - `hl.monitor({ output = "eDP-1", disabled = true })`
-- When no external display is connected, it applies:
-  - `hl.monitor({ output = "eDP-1", mode = "preferred", position = "auto", scale = 1.25 })`
+- `programs.shelllist.displays.enable` opts into bar-daemon ownership.
+- External-only policy waits for a stable external topology and restores the
+  laptop fallback on disconnect/resume. Neither legacy monitor script remains.
+- `SUPER+P` or `shelllist open displays` opens native layout settings. Mode,
+  scale, position and rotation changes require confirmation within 20 seconds.
+- Saved layouts and durable preview rollback live in
+  `$XDG_CONFIG_HOME/bar-daemon/display-layout.json`, not version-controlled Lua.
+- Workspace assignments remain declarative in `config/hypr/workspaces.lua`.
 
 Hyprland config in `config/hypr/hyprland.lua`:
 
 - Default monitor rule currently:
   - `hl.monitor({ output = "", mode = "preferred", position = "auto", scale = 1.25 })`
-- `hypr-monitor-auto` runs as a Home Manager systemd user service attached to
-  `graphical-session.target`.
-- The Lua-aware `nwg-displays-lua` wrapper can be launched with:
-  - `SUPER+P`
-- It translates nwg-displays' legacy output into `monitors.lua` and
-  `workspaces.lua` before reloading Hyprland.
+- There is no nwg-displays conversion process or configuration-file polling.
 - Hyprland color management/HDR settings currently include:
   - `cm_enabled = false`
   - `cm_auto_hdr = 0`
 
 System packages:
 
-- `nwg-displays` is installed.
 - DRM diagnostic tools are installed:
   - `drm_info`
   - `modetest` from `libdrm`

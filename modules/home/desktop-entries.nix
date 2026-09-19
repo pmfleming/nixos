@@ -1,5 +1,4 @@
 {
-  nwgDisplaysLua,
   pkgs,
 }:
 
@@ -29,17 +28,16 @@ in
     settings.StartupWMClass = ".blueman-manager-wrapped";
   };
 
-  nwg-displays = {
+  shelllist-displays = {
     name = "Displays Settings";
     genericName = "Output configuration utility";
-    comment = "Configure monitor layouts and write the Lua-compatible Hyprland layout";
-    exec = "env GDK_BACKEND=x11 ${nwgDisplaysLua}/bin/nwg-displays-lua";
-    icon = "nwg-displays";
+    comment = "Configure daemon-owned display layouts with automatic preview rollback";
+    exec = "shelllist open displays";
+    icon = "video-display";
     categories = [
       "Settings"
       "DesktopSettings"
     ];
-    settings.StartupWMClass = "Nwg-displays";
   };
 
   qv4l2 = v4lEntry "qv4l2" "Qt V4L2 test Utility" "Allow testing Video4Linux devices";

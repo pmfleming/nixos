@@ -135,21 +135,6 @@ let
     } ./config/hypr/hyprland.lua
   );
 
-  nwgDisplaysLua = mkScript {
-    name = "nwg-displays-lua";
-    runtimeInputs = with pkgs; [
-      coreutils
-      gawk
-      hyprland
-      util-linux
-    ];
-    replacements = {
-      "@NWG_DISPLAYS@" = "${pkgs.nwg-displays}";
-      "@MONITORS_LUA@" = "${machine.configDirectory}/config/hypr/monitors.lua";
-      "@WORKSPACES_LUA@" = "${machine.configDirectory}/config/hypr/workspaces.lua";
-    };
-  };
-
 in
 {
   imports = [
@@ -181,7 +166,6 @@ in
       clipDaemon
       nmDaemon
       shelllistPortalBrowser
-      nwgDisplaysLua
       scratchpad
       tsReactQualityLens
       zenBrowser
@@ -364,7 +348,7 @@ in
       '';
     };
 
-    desktopEntries = import ./modules/home/desktop-entries.nix { inherit nwgDisplaysLua pkgs; };
+    desktopEntries = import ./modules/home/desktop-entries.nix { inherit pkgs; };
   };
 
   services.hypridle = {

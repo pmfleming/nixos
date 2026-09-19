@@ -209,6 +209,10 @@
               -exec shellcheck -s bash -x -e SC1091 {} +
           '';
 
+          display-layout-compatibility = mkCheck "display-layout-compatibility" [ pkgs.bash pkgs.gnugrep ] ''
+            bash ${self}/config/scripts/tests/display-layout-compatibility.sh ${self}
+          '';
+
           deployment-lock =
             mkCheck "deployment-lock-tests"
               (with pkgs; [

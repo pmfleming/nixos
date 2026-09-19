@@ -10,8 +10,8 @@ local function session_app(command)
     return uwsm_app .. " -s s -- " .. command
 end
 
--- Fallback for outputs without a more specific rule. The generated monitors
--- module below contains the version-controlled nwg-displays layout.
+-- Startup fallback for outputs without a more specific rule. Keep the
+-- monitors module available to both existing and updated configurations.
 hl.monitor({
     output = "",
     mode = "preferred",
@@ -140,7 +140,7 @@ hl.bind("SUPER + T", hl.dsp.global("shelllist:time-weather"))
 hl.bind("SUPER + W", hl.dsp.exec_cmd(app(browser)))
 hl.bind("SUPER + B", hl.dsp.global("shelllist:bluetooth"))
 hl.bind("SUPER + E", hl.dsp.exec_cmd(app("ghostty --class=com.laufan.yazi -e yazi")))
-hl.bind("SUPER + P", hl.dsp.exec_cmd(app("nwg-displays-lua")))
+hl.bind("SUPER + P", hl.dsp.global("shelllist:displays"))
 hl.bind("SUPER + N", hl.dsp.global("shelllist:wifi"))
 hl.bind("SUPER + V", hl.dsp.global("shelllist:clipboard"))
 hl.bind("SUPER + L", hl.dsp.exec_cmd(session_app("hyprlock")))

@@ -364,7 +364,6 @@ in
     libnotify
     neovim
     nodejs
-    nwg-displays
     pavucontrol
     unstablePkgs.pi-coding-agent
     unstablePkgs.t3code
