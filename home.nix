@@ -93,7 +93,6 @@ let
 
   scriptLib = import ./lib/scripts.nix;
   scriptWith = scriptLib.withPlaceholders;
-  mkScript = scriptLib.mkScriptFrom pkgs ./config/scripts;
   configPath = path: ./config + "/${path}";
   readConfig = path: builtins.readFile (configPath path);
   themedConfig = path: themeText (readConfig path);

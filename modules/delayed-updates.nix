@@ -1,38 +1,7 @@
-{
-  lib,
-  inputs,
-  machine,
-  pkgs,
-  ...
-}:
+{ updateWorker, ... }:
 
 let
   systemdLib = import ../lib/systemd.nix;
-  deploymentLock = import ../lib/deployment-lock.nix { inherit pkgs; };
-  mkScript = (import ../lib/scripts.nix).mkScriptFrom pkgs ../config/scripts;
-
-  delayedNixosUpdate = mkScript {
-    name = "delayed-nixos-update";
-    runtimeInputs = with pkgs; [
-      coreutils
-      diffutils
-      git
-      gnutar
-      jq
-      nix
-      procps
-      python3
-      util-linux
-    ];
-    replacements = {
-      "@DEPLOYMENT_LOCK_HELPER@" = "${deploymentLock.helper}";
-      "@FLAKE_ATTR@" = machine.hostName;
-      "@MANUAL_INPUTS@" = lib.concatStringsSep " " machine.localProjects;
-      "@LOCAL_BUILD_HELPER@" = "${inputs.daemon-framework}/tools/local-build.py";
-      "@SOURCE_STATE_HELPER@" = "${../config/scripts/rebuild-source-state.py}";
-    };
-  };
-
   commonService = systemdLib.nixBuildService "nixos-delayed-updates-v2";
   mkService =
     description: command:
@@ -40,8 +9,10 @@ let
     // {
       inherit description;
       serviceConfig = commonService.serviceConfig // {
-        ExecStart = "${delayedNixosUpdate}/bin/delayed-nixos-update ${command}";
+        ExecStart = "${updateWorker}/bin/update-worker ${command}";
         TimeoutStartSec = "6h";
+        TimeoutStopSec = "3min";
+        KillMode = "mixed";
       };
     };
   onACPower = service: service // { unitConfig.ConditionACPower = true; };
@@ -49,7 +20,7 @@ in
 {
   # Rebuild invokes approval directly to pass its private source manifest. The
   # updater still owns serialization of approval metadata through its state lock.
-  system.build.delayedNixosUpdate = delayedNixosUpdate;
+  system.build.delayedNixosUpdate = updateWorker;
 
   systemd = {
     services = {

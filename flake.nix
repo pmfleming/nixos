@@ -20,6 +20,7 @@
     # persistent local-project locks. Checks and deployment use the same snapshot.
     daemon-framework.url = "git+file:///home/laufan/Projects/daemon-framework";
     daemon-framework.inputs.nixpkgs.follows = "nixpkgs";
+    update-daemon.url = "git+file:///home/laufan/Projects/update-daemon";
 
     nm-daemon = {
       url = "git+file:///home/laufan/Projects/nm-daemon";
@@ -115,22 +116,13 @@
           ];
       };
       connectParityProbe = inputs.nm-daemon.packages.${system}.connectParityProbe;
-      updateAiTools = (import ./lib/scripts.nix).mkScriptFrom pkgs ./config/scripts {
-        name = "update-ai-tools";
-        runtimeInputs = with pkgs; [
-          coreutils
-          diffutils
-          git
-          gnutar
-          jq
-          libnotify
-          nix
-          procps
-          util-linux
-        ];
-        replacements = {
-          "@USERNAME@" = machine.username;
-        };
+      updateWorker = inputs.update-daemon.lib.mkPackage {
+        inherit pkgs;
+        inherit (machine) hostName username;
+        manualInputs = machine.localProjects;
+        deploymentLockHelper = (import ./lib/deployment-lock.nix { inherit pkgs; }).helper;
+        localBuildHelper = "${inputs.daemon-framework}/tools/local-build.py";
+        sourceStateHelper = ./config/scripts/rebuild-source-state.py;
       };
       aiTools = pkgs.buildEnv {
         name = "ai-coding-tools";
@@ -147,7 +139,7 @@
           inputs
           machine
           unstablePkgs
-          updateAiTools
+          updateWorker
           ;
       };
       homeManagerModule = {
@@ -187,7 +179,8 @@
                 util-linux
               ])
               ''
-                python3 ${self}/config/scripts/tests/rebuild-sources.py ${self}/config/scripts
+                python3 ${self}/config/scripts/tests/rebuild-sources.py ${self}/config/scripts \
+                  ${inputs.update-daemon}/helpers/delayed-nixos-update.sh
                 python3 ${self}/config/scripts/tests/rebuild-source-state.py ${self}/config/scripts
               '';
           nix =
@@ -222,39 +215,14 @@
               ])
               ''
                 bash ${self}/config/scripts/tests/deployment-lock.sh \
-                  ${self}/config/scripts
+                  ${self}/config/scripts ${inputs.update-daemon}/helpers/delayed-nixos-update.sh
               '';
 
-          updater-state =
-            mkCheck "delayed-updater-state-tests"
-              (with pkgs; [
-                bash
-                coreutils
-                git
-                jq
-                python3
-              ])
-              ''
-                bash ${self}/config/scripts/tests/delayed-nixos-update.sh \
-                  ${self}/config/scripts/delayed-nixos-update.sh
-              '';
-
-          ai-tools-updater-state =
-            mkCheck "ai-tools-updater-state-tests"
-              (with pkgs; [
-                bash
-                coreutils
-                diffutils
-                jq
-              ])
-              ''
-                bash ${self}/config/scripts/tests/update-ai-tools.sh \
-                  ${self}/config/scripts/update-ai-tools.sh
-              '';
+          updater-state = updateWorker.tests;
 
           ai-tools-updater-runtime = mkCheck "ai-tools-updater-runtime-test" [ ] ''
             ${pkgs.coreutils}/bin/env -i PATH=/missing \
-              ${updateAiTools}/bin/update-ai-tools check-runtime
+              ${updateWorker}/bin/update-worker check-runtime
           '';
 
           generation-retention =

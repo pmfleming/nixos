@@ -1,6 +1,7 @@
 set -euo pipefail
 
 scripts_dir=$1
+updater=${2:?private updater helper required}
 test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
 export NIXOS_DEPLOYMENT_LOCK_HELPER="$scripts_dir/deployment-lock.sh"
@@ -13,7 +14,7 @@ source "$NIXOS_DEPLOYMENT_LOCK_HELPER"
 # Model rebuild holding the shared lock. Timer jobs must skip before touching
 # either the updater state or the system profile, not wait and deadlock.
 acquire_deployment_lock
-bash "$scripts_dir/delayed-nixos-update.sh" run-delayed
+bash "$updater" run-delayed
 [ ! -e "$NIXOS_UPDATE_STATE_DIR" ]
 if bash "$scripts_dir/prune-nixos-generations.sh" --profile "$test_root/missing-profile"; then
   printf 'Pruning ignored deployment lock contention.\n' >&2
@@ -32,14 +33,14 @@ fi
 # only the approval work; keep the actual main() lock ordering and cleanup.
 bash -c '
   export NIXOS_UPDATE_LIB_ONLY=1
-  source "$1/delayed-nixos-update.sh"
+  source "$1"
   approve_current() {
     [ "$1" = private-manifest.json ]
     touch "$NIXOS_UPDATE_STATE_DIR/approved"
   }
   notify_waybar_updates() { :; }
   main approve-current private-manifest.json
-' bash "$scripts_dir"
+' bash "$updater"
 [ -f "$NIXOS_UPDATE_STATE_DIR/approved" ]
 release_deployment_lock
 

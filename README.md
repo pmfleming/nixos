@@ -38,7 +38,8 @@ Standalone development uses `local-build check /path/to/project`, `local-build b
 `/run/lock/nixos-deployment/lock` inode. Contention makes interactive rebuilds fail
 with exit 75 and timer jobs skip, rather than racing the live lock file, profile,
 or boot entries. The lock is held through rebuild's baseline approval; the
-privileged updater command takes only the updater-state lock to avoid a nested-lock deadlock.
+privileged updater command skips reacquiring the deployment lock during approval.
+Its worker-family and updater-state locks are nonblocking, avoiding nested-lock deadlocks.
 Rebuild passes a private source-identity manifest directly to that command; approval
 without a manifest is refused.
 Direct `nixos-rebuild` calls do not participate: run them only when
@@ -60,6 +61,21 @@ local-build check /etc/nixos
 ## Automatic Updates
 
 Updates are split by activation risk rather than by one shared system switch.
+The `update-daemon` local project now packages the privileged `update-worker`.
+Existing systemd services/timers invoke finite worker jobs; no additional resident
+process or privileged API is added to bar-daemon. The old NixOS update scripts
+have moved into the worker package as private, tested transaction helpers.
+
+Structured progress and outcomes are written atomically under
+`/var/lib/nixos-delayed-updates-v2/jobs/`. Shelllist shows running, failed,
+interrupted and stale-AI-tool jobs, and its update indicator opens the relevant
+journals. A completed/skipped check is not presented as an installed update.
+The reader verifies boot/PID/start identity before calling a job running.
+
+Activate worker, daemon and UI changes together after checks. Existing quarantine,
+approval, dirty-lock protection, profile roots and next-boot staging remain in
+force. `monitors.lua` and its compatibility link remain present; do not remove
+out-of-store linked configuration merely because a future activation replaces it.
 
 ### AI coding tools
 

@@ -8,6 +8,7 @@ import sys
 import tempfile
 
 scripts = Path(sys.argv[1]).resolve()
+updater = Path(sys.argv[2]).resolve()
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
     flake = root / "flake"
@@ -108,7 +109,7 @@ def prepare(source, destination):
 ''')
     approval = executable("approval", f'''
 export NIXOS_DEPLOYMENT_LOCK_HELPER={scripts / "deployment-lock.sh"}
-exec bash {scripts / "delayed-nixos-update.sh"} "$@"
+exec bash {updater} "$@"
 ''')
     active_system = root / "active-system"
     (active_system / "bin").mkdir(parents=True)

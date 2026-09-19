@@ -1,4 +1,4 @@
-{ updateAiTools, ... }:
+{ updateWorker, ... }:
 
 let
   systemdLib = import ../lib/systemd.nix;
@@ -9,8 +9,14 @@ in
     nixos-ai-tools-update = commonService // {
       description = "Build and atomically activate current AI coding tools";
       serviceConfig = commonService.serviceConfig // {
-        ExecStart = "${updateAiTools}/bin/update-ai-tools update";
+        ExecStart = "${updateWorker}/bin/update-worker ai-update";
+        StateDirectory = [
+          "nixos-ai-tools"
+          "nixos-delayed-updates-v2"
+        ];
         TimeoutStartSec = "2h";
+        TimeoutStopSec = "3min";
+        KillMode = "mixed";
       };
     };
 
@@ -22,9 +28,16 @@ in
       after = [ "nixos-ai-tools-update.service" ];
       serviceConfig = {
         Type = "oneshot";
-        StateDirectory = "nixos-ai-tools";
+        StateDirectory = [
+          "nixos-ai-tools"
+          "nixos-delayed-updates-v2"
+        ];
         StateDirectoryMode = "0755";
-        ExecStart = "${updateAiTools}/bin/update-ai-tools check-stale";
+        UMask = "0022";
+        ExecStart = "${updateWorker}/bin/update-worker ai-stale";
+        TimeoutStartSec = "5min";
+        TimeoutStopSec = "3min";
+        KillMode = "mixed";
       };
     };
   };
