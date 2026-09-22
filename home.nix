@@ -124,8 +124,7 @@ let
     packagedUserService "nm-daemon" nmDaemon
     // packagedUserService "bt-daemon" btDaemon
     // packagedUserService "clip-daemon" clipDaemon
-    // packagedUserService "ringboard-server" clipDaemon
-    // packagedUserService "ringboard-wayland" clipDaemon;
+    // packagedUserService "ringboard-server" clipDaemon;
 
   hyprlandConfig = themeText (
     scriptWith {
