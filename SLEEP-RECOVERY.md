@@ -93,6 +93,68 @@ the external connector; opening the lid remains the usable fallback when that
 connector cannot be restored. No sleep, display-switch, GPU-reset or firmware
 experiment was performed during this follow-up.
 
+## September 23 follow-up: recovery still fails with daemon policy active
+
+Boot `b0e899655ebe483dbe1e6915dc981242`, Europe/Amsterdam:
+
+- Lid close initiated **ordinary suspend** at 15:13:19. It returned at
+  19:13:10 when the lid opened. This attempt did not exercise hibernation.
+- AMD SMU reported successful resume; user.slice thawed and Hypridle issued
+  DPMS-on. This does not establish successful scanout or a usable session.
+- At 19:13:12, UCSI again logged `GET_CONNECTOR_STATUS failed (-110)`.
+  The timeout is correlated evidence, not proof of the HDMI failure's cause.
+- The installed daemon reported `settling` at 19:13:10 and `external` at
+  19:13:16. HDMI Wayland outputs were replaced around 19:13:15–16 and
+  19:13:25–26. At 19:13:25, Qt explicitly reported **no outputs**.
+- Fingerprint verification matched at 19:13:37; power-button events and app
+  sampling continued through 19:14:21. A fresh boot began at 19:14:59.
+  The journal does not show an orderly shutdown in between.
+
+The earlier daemon migration was running, but did not prevent this failure.
+Its five-second settling period expired before the last observed HDMI dropout.
+Source inspection also reveals a blind spot: display reconciliation consumes
+sleep events and a two-second timer, not compositor monitor add/remove events.
+A disconnect/reconnect between samples can leave the same monitor signature
+and escape stability invalidation. Wayland output replacement is not itself
+proof that Hyprland's monitor ID changed. No renewed `settling` or `internal`
+policy status was logged after the 19:13:25 dropout.
+
+Recommended immediate isolation/mitigation: turn off the external-only
+preference in Battery & Power so the internal panel remains enabled with HDMI
+attached. This is not a proven GPU/firmware fix. A robust follow-up should
+invalidate stability on monitor lifecycle events and retain the panel during
+wake recovery rather than interpreting a few matching snapshots as proof of a
+working external display. Increasing the delay alone cannot prove recovery.
+
+Detailed compositor logs are missing from the persistent journal: Hyprland
+announced that it disabled stdout logging at startup. Capture persistent
+compositor logs and timestamped monitor/DPMS/DRM snapshots around the next
+user-initiated wake to distinguish policy, lock-screen, and driver failures.
+No live display settings, services, kernel parameters, or sleep configuration
+were changed in this review; only these notes were updated.
+
+## September 23 research update: confirmed DPMS command defect
+
+See [HDMI-RESUME-RESEARCH.md](HDMI-RESUME-RESEARCH.md) for hardware identification,
+upstream sources, missing Aquamarine/Linux fixes, and the ordered test plan.
+
+**Correction to the earlier interpretation:** the logged
+`hl.dsp.dpms("on")` command was intended to turn displays on, but Hyprland
+0.55.4's Lua implementation interprets a non-table argument as **toggle**.
+The existing idle `"off"` command also toggles. Thus the resume hook can turn
+an already-awake output off again. Logs showing that command ran are not proof
+that DPMS-on was requested.
+
+`home.nix` now uses `hl.dsp.dpms({ action = "on" })` for both wake callbacks and
+`hl.dsp.dpms({ action = "off" })` for idle blanking. These source changes are
+**not activated**. Isolated settings evaluation and syntax checks passed; full
+system evaluation is blocked by an unrelated Shelllist source/input mismatch,
+as detailed in the research notes. Correct and activate the hooks before
+attributing remaining failures to hardware or updating kernel/compositor.
+
+This establishes a real configuration defect, not proof that it accounts for
+every HDMI hotplug or the historical hibernation failure.
+
 ## Remaining validation
 
 After activating the monitor fix, compare internal-panel-only and HDMI-connected

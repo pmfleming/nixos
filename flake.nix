@@ -4,6 +4,8 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    # Isolated HDMI recovery candidates; the base OS keeps its existing pin.
+    nixpkgs-display.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     home-manager.url = "github:nix-community/home-manager/release-26.05";
     home-manager.inputs.nixpkgs.follows = "nixpkgs";
@@ -202,6 +204,34 @@
               -exec shellcheck -s bash -x -e SC1091 {} +
           '';
 
+          sleep-recovery =
+            let
+              base = self.nixosConfigurations.${machine.hostName}.config;
+              versions = config: {
+                kernel = config.boot.kernelPackages.kernel.version;
+                hyprland = config.programs.hyprland.package.version;
+                portal = config.programs.hyprland.portalPackage.version;
+                mesa = config.hardware.graphics.package.version;
+                mesa32 = config.hardware.graphics.package32.version;
+                aquamarine =
+                  (nixpkgs.lib.findFirst (
+                    p: (p.pname or "") == "aquamarine"
+                  ) (throw "Hyprland must link Aquamarine") config.programs.hyprland.package.buildInputs).version;
+              };
+              fixture = pkgs.writeText "sleep-recovery.json" (
+                builtins.toJSON {
+                  idle = base.home-manager.users.${machine.username}.services.hypridle.settings;
+                  hyprlandConfig =
+                    base.home-manager.users.${machine.username}.xdg.configFile."hypr/hyprland.lua".text;
+                  baseline = versions base;
+                  candidates = builtins.mapAttrs (_: value: versions value.configuration) base.specialisation;
+                }
+              );
+            in
+            mkCheck "sleep-recovery-tests" [ pkgs.python3 ] ''
+              python3 ${self}/config/scripts/tests/sleep-recovery.py ${fixture}
+            '';
+
           display-layout-compatibility = mkCheck "display-layout-compatibility" [ pkgs.bash pkgs.gnugrep ] ''
             bash ${self}/config/scripts/tests/display-layout-compatibility.sh ${self}
           '';
@@ -317,6 +347,7 @@
         inherit specialArgs;
         modules = [
           ./configuration.nix
+          ./modules/display-recovery.nix
           inputs.sops-nix.nixosModules.sops
           home-manager.nixosModules.home-manager
           homeManagerModule

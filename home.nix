@@ -359,7 +359,9 @@ in
       general = {
         lock_cmd = "pidof hyprlock || ${uwsmApp} -s s -- hyprlock";
         before_sleep_cmd = "loginctl lock-session";
-        after_sleep_cmd = "hyprctl dispatch 'hl.dsp.dpms(\"on\")'";
+        # Hyprland's Lua dispatcher requires an action table. A string argument
+        # silently means toggle, which can turn an already-awake display off.
+        after_sleep_cmd = "hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })'";
       };
       listener = [
         {
@@ -368,8 +370,8 @@ in
         }
         {
           timeout = 420;
-          on-timeout = "hyprctl dispatch 'hl.dsp.dpms(\"off\")'";
-          on-resume = "hyprctl dispatch 'hl.dsp.dpms(\"on\")'";
+          on-timeout = "hyprctl dispatch 'hl.dsp.dpms({ action = \"off\" })'";
+          on-resume = "hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })'";
         }
         {
           timeout = 1800;

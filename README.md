@@ -58,6 +58,15 @@ Check the flake before applying it:
 local-build check /etc/nixos
 ```
 
+## HDMI Suspend Recovery
+
+The default configuration corrects Hyprland's Lua DPMS wake/idle commands and
+logs compositor output to the journal. Separate `hdmi-display`, `hdmi-kernel`,
+and `hdmi-combined` boot specialisations test updated display packages and the
+6.18 LTS kernel without changing the default stack or updating the whole OS.
+See [HDMI-RECOVERY-ROLLOUT.md](HDMI-RECOVERY-ROLLOUT.md) for deployment, test order,
+and rollback. Use `rebuild` so current local project snapshots are selected.
+
 ## Automatic Updates
 
 Updates are split by activation risk rather than by one shared system switch.

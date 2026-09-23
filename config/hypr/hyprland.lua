@@ -32,6 +32,13 @@ hl.on("hyprland.start", function()
 end)
 
 hl.config({
+    -- UWSM sends stdout to the persistent journal. Runtime-directory logs alone
+    -- disappear on reboot, losing the HDMI/DPMS failure we need to diagnose.
+    debug = {
+        disable_logs = false,
+        enable_stdout_logs = true,
+    },
+
     input = {
         kb_layout = "us,gb",
         kb_variant = "intl,",
