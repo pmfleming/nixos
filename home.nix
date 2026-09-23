@@ -105,8 +105,12 @@ let
     Type=Application
     Hidden=true
   '';
+  # This slice starts after graphical-session.target. Order its services after
+  # the target too, preventing WantedBy's implicit reverse ordering from
+  # creating a cycle that blocks UWSM shutdown until the session times out.
   daemonUnitOverride.text = ''
     [Unit]
+    After=graphical-session.target
     PartOf=graphical-session.target
 
     [Service]
