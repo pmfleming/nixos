@@ -52,14 +52,11 @@
         daemonFramework.follows = "daemon-framework";
       };
     };
-    shelllist-hyprland.url = "git+file:///home/laufan/Projects/shelllist-hyprland";
-    shelllist-hyprland.inputs.nixpkgs.follows = "nixpkgs";
     bar-daemon = {
       url = "git+file:///home/laufan/Projects/bar-daemon";
       inputs = {
         nixpkgs.follows = "nixpkgs";
         daemonFramework.follows = "daemon-framework";
-        hyprlandIpc.follows = "shelllist-hyprland";
       };
     };
 
@@ -68,7 +65,6 @@
       inputs = {
         nixpkgs.follows = "nixpkgs";
         daemon-framework.follows = "daemon-framework";
-        shelllist-hyprland.follows = "shelllist-hyprland";
         nm-daemon.follows = "nm-daemon";
         bt-daemon.follows = "bt-daemon";
         clip-daemon.follows = "clip-daemon";
