@@ -11,13 +11,14 @@
   retains laptop fallback. The nwg-displays converter is removed; advanced
   mirroring/bit-depth controls are not provided by this editor and workspace
   rules remain declarative.
-- **Updates:** `/home/laufan/Projects/update-daemon` owns the privileged finite
-  worker and private transaction helpers. Existing service/timer names remain;
-  Shelllist reads structured progress, failures and AI-tool freshness. Quarantine,
-  approval, deployment locks and next-boot-only system staging remain intact.
-  AI-profile updates and freshness checks are now native Python, not a private
-  Bash helper. The system quarantine/approval/rollback transaction is the remaining
-  updater Bash implementation; it is deliberately unchanged in this step.
+- **NixOS updates:** `/home/laufan/Projects/update-daemon` owns system quarantine,
+  approval, deployment locks and next-boot staging. Those semantics are unchanged.
+- **AI updates:** `packages/vendor-ai-tools` now owns vendor release discovery,
+  independent checked Nix profiles, rollback holds and freshness checks. It does
+  not use the system worker's host-flake/local-worktree preparation. Existing
+  service/timer names and Shelllist's aggregate job record format are preserved;
+  `ai-tools status` adds per-tool versions, check/activation times and failures.
+  The legacy shared profile remains a bootstrap fallback, not an update target.
 - **Cleanup:** update jobs no longer signal Waybar or require `procps`.
 
 **Keep `config/hypr/monitors.lua`, its Home Manager link and its Lua import.**
@@ -26,6 +27,10 @@ deleting it breaks the live configuration before any new activation. A regressio
 check now protects this compatibility boundary.
 
 ## Validation and activation
+
+For vendor AI packaging and real isolated update tests, see
+[its validation record](packages/vendor-ai-tools/README.md#implementation-validation-2026-09-30).
+The following records the earlier desktop/daemon migration validation:
 
 Rust tests/Clippy, QML tests/lint, protocol contracts, worker fake-process tests,
 transaction/approval/deployment-lock regression tests, targeted Nix checks and

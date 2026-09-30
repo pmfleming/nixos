@@ -5,6 +5,7 @@
   machine,
   pkgs,
   unstablePkgs,
+  vendorAiTools,
   ...
 }:
 
@@ -172,8 +173,8 @@ in
       tsReactQualityLens
       zenBrowser
       pkgs.inkscape
-      # Bootstrap fallback; /var/lib/nixos-ai-tools/current/bin shadows it
-      # after the independent frequently updated profile has completed once.
+      # Bootstrap fallback. Stable launchers prefer each checked vendor profile,
+      # then the legacy shared profile, then these immutable system packages.
       unstablePkgs.codex
     ]
     ++ (with pkgs; [
@@ -195,7 +196,7 @@ in
       VISUAL = "code --wait";
     };
     sessionPath = [
-      "/var/lib/nixos-ai-tools/current/bin"
+      "${vendorAiTools.launchers}/bin"
       "$HOME/.local/bin"
     ];
 

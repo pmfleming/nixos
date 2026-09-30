@@ -1,20 +1,22 @@
-{ updateWorker, ... }:
+{ vendorAiTools, ... }:
 
 let
   systemdLib = import ../lib/systemd.nix;
   commonService = systemdLib.nixBuildService "nixos-ai-tools";
 in
 {
+  environment.systemPackages = [ vendorAiTools.updater ];
+
   systemd.services = {
     nixos-ai-tools-update = commonService // {
-      description = "Build and atomically activate current AI coding tools";
+      description = "Check official AI releases and independently activate checked tools";
       serviceConfig = commonService.serviceConfig // {
-        ExecStart = "${updateWorker}/bin/update-worker ai-update";
+        ExecStart = "${vendorAiTools.updater}/bin/ai-tools update";
         StateDirectory = [
           "nixos-ai-tools"
           "nixos-delayed-updates-v2"
         ];
-        TimeoutStartSec = "2h";
+        TimeoutStartSec = "50min";
         TimeoutStopSec = "3min";
         KillMode = "mixed";
       };
@@ -34,7 +36,7 @@ in
         ];
         StateDirectoryMode = "0755";
         UMask = "0022";
-        ExecStart = "${updateWorker}/bin/update-worker ai-stale";
+        ExecStart = "${vendorAiTools.updater}/bin/ai-tools stale";
         TimeoutStartSec = "5min";
         TimeoutStopSec = "3min";
         KillMode = "mixed";
@@ -43,19 +45,17 @@ in
   };
 
   systemd.timers = {
-    nixos-ai-tools-update =
-      systemdLib.timer "Check nixpkgs-unstable for AI coding-tool updates every 30 minutes"
-        {
-          OnBootSec = "2m";
-          OnCalendar = "*:0/30";
-          AccuracySec = "1m";
-          RandomizedDelaySec = "2m";
-          Unit = "nixos-ai-tools-update.service";
-        };
+    nixos-ai-tools-update = systemdLib.timer "Check official stable AI-tool releases every 15 minutes" {
+      OnBootSec = "2m";
+      OnCalendar = "*:0/15";
+      AccuracySec = "1m";
+      RandomizedDelaySec = "2m";
+      Unit = "nixos-ai-tools-update.service";
+    };
 
     nixos-ai-tools-stale = systemdLib.timer "Check whether AI coding-tool updates have gone stale" {
-      OnCalendar = "*-*-* 00/3:20:00";
-      AccuracySec = "5m";
+      OnCalendar = "hourly";
+      AccuracySec = "1m";
       Unit = "nixos-ai-tools-stale.service";
     };
   };

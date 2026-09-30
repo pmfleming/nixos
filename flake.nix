@@ -122,15 +122,11 @@
         localBuildHelper = "${inputs.daemon-framework}/tools/local-build.py";
         sourceStateHelper = ./config/scripts/rebuild-source-state.py;
       };
-      aiTools = pkgs.buildEnv {
-        name = "ai-coding-tools";
-        paths = with unstablePkgs; [
-          claude-code
-          codex
-          pi-coding-agent
-          t3code
-        ];
-        pathsToLink = [ "/bin" ];
+      vendorAiTools = import ./packages/vendor-ai-tools {
+        inherit pkgs;
+        piExtensions = ./config/pi;
+        fallbacks = unstablePkgs;
+        inherit (machine) username;
       };
       specialArgs = {
         inherit
@@ -138,6 +134,7 @@
           machine
           unstablePkgs
           updateWorker
+          vendorAiTools
           ;
       };
       homeManagerModule = {
@@ -246,10 +243,7 @@
 
           updater-state = updateWorker.tests;
 
-          ai-tools-updater-runtime = mkCheck "ai-tools-updater-runtime-test" [ ] ''
-            ${pkgs.coreutils}/bin/env -i PATH=/missing \
-              ${updateWorker}/bin/update-worker check-runtime
-          '';
+          vendor-ai-tools = vendorAiTools.tests;
 
           generation-retention =
             mkCheck "generation-retention-tests"
@@ -328,7 +322,8 @@
         };
 
       packages.${system} = {
-        inherit aiTools connectParityProbe;
+        inherit connectParityProbe;
+        ai-tools-updater = vendorAiTools.updater;
         rebuild = self.nixosConfigurations.${machine.hostName}.config.system.build.rebuild;
       };
 
