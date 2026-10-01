@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    # Isolated HDMI recovery candidates; the base OS keeps its existing pin.
+    # Default kernel/display stack; the base OS keeps its existing pin.
     nixpkgs-display.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     home-manager.url = "github:nix-community/home-manager/release-26.05";
@@ -216,8 +216,8 @@
                   idle = base.home-manager.users.${machine.username}.services.hypridle.settings;
                   hyprlandConfig =
                     base.home-manager.users.${machine.username}.xdg.configFile."hypr/hyprland.lua".text;
-                  baseline = versions base;
-                  candidates = builtins.mapAttrs (_: value: versions value.configuration) base.specialisation;
+                  defaultStack = versions base;
+                  specialisations = builtins.attrNames base.specialisation;
                 }
               );
             in
@@ -242,6 +242,9 @@
               '';
 
           updater-state = updateWorker.tests;
+
+          # Catch npm lock/hash drift before the system deployment build.
+          ts-react-quality-lens = inputs.ts-react-quality-lens.packages.${system}.default;
 
           vendor-ai-tools = vendorAiTools.tests;
 

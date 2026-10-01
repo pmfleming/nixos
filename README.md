@@ -61,11 +61,13 @@ local-build check /etc/nixos
 ## HDMI Suspend Recovery
 
 The default configuration corrects Hyprland's Lua DPMS wake/idle commands and
-logs compositor output to the journal. Separate `hdmi-display`, `hdmi-kernel`,
-and `hdmi-combined` boot specialisations test updated display packages and the
-6.18 LTS kernel without changing the default stack or updating the whole OS.
-See [HDMI-RECOVERY-ROLLOUT.md](HDMI-RECOVERY-ROLLOUT.md) for deployment, test order,
-and rollback. Use `rebuild` so current local project snapshots are selected.
+logs compositor output to the journal. The proven `hdmi-combined` stack is now
+the default: the 6.18 LTS kernel, Hyprland/Aquamarine, matching portal, and both
+Mesa architectures come from `nixpkgs-display`, without updating the whole OS.
+The experimental boot specialisations are retired; previous generations remain
+available for rollback. See [HDMI-RECOVERY-ROLLOUT.md](HDMI-RECOVERY-ROLLOUT.md)
+for deployment and verification. Use `rebuild` so current local project snapshots
+are selected.
 
 ## Automatic Updates
 

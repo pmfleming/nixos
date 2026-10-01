@@ -224,8 +224,8 @@ in
 
   xdg.portal = {
     enable = true;
-    # programs.hyprland supplies its matching portal, including in the HDMI
-    # recovery specialisations. Do not also install the base package here.
+    # programs.hyprland supplies the matching portal from nixpkgs-display.
+    # Do not also install the base package here.
     extraPortals = [ pkgs.xdg-desktop-portal-gtk ];
     config.common.default = [
       "hyprland"

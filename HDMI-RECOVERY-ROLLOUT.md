@@ -1,28 +1,27 @@
 # HDMI recovery rollout
 
-Prepared on 2026-09-23 for ThinkPad P14s Gen 5 AMD. See
+Prepared on 2026-09-23 for ThinkPad P14s Gen 5 AMD; combined stack promoted to
+the default on 2026-10-01 after stable daily use. See
 [the research](HDMI-RESUME-RESEARCH.md) for evidence and limitations.
 
 ## What is implemented
 
-All entries have explicit, idempotent Lua DPMS actions (`{ action = "on" }`
+The default configuration has explicit, idempotent Lua DPMS actions (`{ action = "on" }`
 and `{ action = "off" }`) and Hyprland stdout/file logging. Under UWSM,
 stdout reaches the persistent user journal instead of being lost with the
 runtime directory on reboot. Logging may include window/application metadata;
 keep captures local and redact before sharing.
 
-The default configuration deliberately retains the original kernel and display
-stack. Three NixOS specialisations allow independent tests:
+The default configuration now uses the previously tested `hdmi-combined` stack.
+The `hdmi-display`, `hdmi-kernel`, and `hdmi-combined` specialisations are removed
+from new generations; existing generations are not deleted.
 
 | Boot entry | Kernel | Hyprland / Aquamarine | Mesa / Hyprland portal |
 | --- | --- | --- | --- |
-| Default, DPMS-only baseline | 6.18.39 | 0.55.4 / 0.11.0 | Original packages |
-| `hdmi-display` | 6.18.39 | 0.56.2 / 0.15.1 | 26.2.3 / 1.4.1 |
-| `hdmi-kernel` | 6.18.53 | 0.55.4 / 0.11.0 | Original packages |
-| `hdmi-combined` | 6.18.53 | 0.56.2 / 0.15.1 | 26.2.3 / 1.4.1 |
+| Default (formerly `hdmi-combined`) | 6.18.53 | 0.56.2 / 0.15.1 | 26.2.3 / 1.4.1 |
 
 Versions are those in the current lock. A dedicated `nixpkgs-display` input pins
-only the candidate closures; the base `nixpkgs` and AI-tools input were not
+only the kernel/display closures; the base `nixpkgs` and AI-tools input were not
 updated. Both Mesa architectures and the portal accompany the newer compositor.
 No ABI-incompatible library substitution, GPU parameters, BIOS flash, firmware
 change, monitor modeset, or automatic suspend was added.
@@ -36,8 +35,8 @@ rebuild
 ```
 
 It uses current tracked local worktrees, runs the full compatibility checks,
-asks for sudo, and installs the default configuration plus all three boot
-entries. It intentionally restarts Shelllist and its daemons, including the
+asks for sudo, and installs the combined stack as the normal default boot
+entry. It intentionally restarts Shelllist and its daemons, including the
 bar-daemon-owned idle process. Do not run a separate standalone hypridle daemon.
 
 Do not use raw `nixos-rebuild --flake /etc/nixos`: historical local lock entries
@@ -55,21 +54,18 @@ uname -r
 journalctl --user -u wayland-wm@hyprland.desktop.service -n 30 --no-pager
 ```
 
-The three DPMS commands must contain `action =`. The default versions remain old
-on purpose. Log enabling takes effect when Hyprland reads the new configuration;
-check `hyprctl configerrors` and that new compositor logs reach the journal.
+The three DPMS commands must contain `action =`. Check `hyprctl configerrors`
+and that compositor logs reach the journal.
 
-Reboot when convenient, choosing the appropriate `hdmi-*` specialisation in
-the systemd-boot menu (hold Space during startup if hidden). Do not switch to a
-different compositor/Mesa closure live or restart the compositor with unsaved
-applications. `hyprctl version` and `uname -r` verify the selected test pair.
+Reboot when convenient into the normal default entry; no `hdmi-*` selection is
+needed. `hyprctl version` and `uname -r` should match the table after reboot.
+A live rebuild does not replace the running kernel or compositor. Save work
+before restarting the graphical session or rebooting.
 
-## Test order and rollback
+## Verification and rollback
 
-1. Default entry: test only the DPMS correction, with diagnostics enabled.
-2. If recovery still fails, select `hdmi-display` for a new userspace-only test.
-3. Select `hdmi-kernel` for a separate new-kernel-only test.
-4. Select `hdmi-combined` if testing both fixes together is needed.
+Verify HDMI recovery on the default entry with the same suspend/resume checks
+used for `hdmi-combined`.
 
 Keep the laptop panel available while testing by disabling the external-only
 preference in Battery & Power. That is a user preference, not silently rewritten
@@ -77,9 +73,10 @@ by these changes. Record whether the connection is native HDMI or a dock.
 Repeat short and long suspends, including multiple cycles per boot. Do not
 combine a refresh-rate change or BIOS update with the first comparison.
 
-Rollback: choose the **default entry of this generation** to return to the
-original stack with corrected hooks, or a **previous generation** to undo the
-whole deployment. No firmware downgrade is needed. Keep the previous known-good
+Rollback: choose a **previous generation** in systemd-boot (hold Space during
+startup if hidden). Older generations retain their original default and
+`hdmi-*` entries. The new default is no longer the old-stack fallback.
+No firmware downgrade is needed. Keep the previous known-good
 generation until repeated physical tests succeed. A successful Nix build alone
 does not establish reliable physical recovery.
 
@@ -106,4 +103,5 @@ done
 
 No commands above change display state. The regression check
 `checks.x86_64-linux.sleep-recovery` verifies evaluated DPMS commands, logging,
-the fixed candidate versions, and independence of kernel/display boot variants.
+minimum combined-stack versions on the default configuration, matching Mesa
+architectures, and removal of the experimental boot variants.

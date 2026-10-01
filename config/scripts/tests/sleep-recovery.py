@@ -1,4 +1,4 @@
-"""Check evaluated hooks and the independent HDMI recovery boot configurations."""
+"""Check evaluated hooks and the promoted combined kernel/display stack."""
 
 import json
 import re
@@ -28,25 +28,16 @@ def main():
     assert re.search(r"debug\s*=\s*\{[^}]*disable_logs\s*=\s*false", lua)
     assert re.search(r"debug\s*=\s*\{[^}]*enable_stdout_logs\s*=\s*true", lua)
 
-    base = config["baseline"]
-    candidates = config["candidates"]
-    assert set(candidates) == {"hdmi-kernel", "hdmi-display", "hdmi-combined"}
-    kernel = candidates["hdmi-kernel"]
-    display = candidates["hdmi-display"]
-    combined = candidates["hdmi-combined"]
-
-    assert kernel["kernel"].startswith("6.18.")
-    assert version(kernel["kernel"]) >= (6, 18, 53)
-    assert display["kernel"] == base["kernel"]
-    assert combined["kernel"] == kernel["kernel"]
-    for field in ("hyprland", "aquamarine", "portal", "mesa", "mesa32"):
-        assert kernel[field] == base[field], f"kernel-only changed {field}"
-        assert combined[field] == display[field], f"combined differs in {field}"
-    assert version(display["hyprland"]) >= (0, 56, 2)
-    assert version(display["aquamarine"]) >= (0, 15, 1)
-    assert display["mesa"] == display["mesa32"]
-    assert version(display["portal"]) >= (1, 4, 1)
-    print("PASS: explicit DPMS actions, persistent compositor logs, isolated HDMI boot candidates")
+    stack = config["defaultStack"]
+    assert config["specialisations"] == [], "experimental boot variants must stay retired"
+    assert stack["kernel"].startswith("6.18.")
+    assert version(stack["kernel"]) >= (6, 18, 53)
+    assert version(stack["hyprland"]) >= (0, 56, 2)
+    assert version(stack["aquamarine"]) >= (0, 15, 1)
+    assert version(stack["mesa"]) >= (26, 2, 3)
+    assert stack["mesa"] == stack["mesa32"]
+    assert version(stack["portal"]) >= (1, 4, 1)
+    print("PASS: explicit DPMS actions, persistent compositor logs, combined stack by default")
 
 
 if __name__ == "__main__":
