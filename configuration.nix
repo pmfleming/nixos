@@ -9,7 +9,7 @@
 }:
 
 let
-  theme = import ./theme.nix { inherit lib; };
+  theme = import ./theme.nix;
   deploymentLock = import ./lib/deployment-lock.nix { inherit pkgs; };
   mkScript = (import ./lib/scripts.nix).mkScriptFrom pkgs ./config/scripts;
   locale = "en_IE.UTF-8";

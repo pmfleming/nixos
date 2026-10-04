@@ -255,6 +255,57 @@ class Profiles(unittest.TestCase):
         )
 
 
+class StatusOutput(unittest.TestCase):
+    def test_bootstrap_stale_and_error_output(self):
+        state = {
+            "tool": "pi",
+            "installed_version": None,
+            "phase": "failed",
+            "stale": True,
+            "error": "offline",
+        }
+        self.assertEqual(
+            u.format_status(state),
+            "pi      installed=bootstrap fallback latest=unknown phase=failed (stale check)\n"
+            "        checked=never activated=never\n        offline",
+        )
+
+    def test_checked_and_activated_times_are_separate(self):
+        state = {
+            "tool": "pi",
+            "installed_version": "1.2.3",
+            "latest_version": "1.2.4",
+            "phase": "available",
+            "stale": False,
+            "last_successful_check": 200,
+            "last_activation": 100,
+        }
+        with patch.object(u.time, "strftime", side_effect=["checked", "activated"]):
+            self.assertEqual(
+                u.format_status(state),
+                "pi      installed=1.2.3 latest=1.2.4 phase=available\n"
+                "        checked=checked activated=activated",
+            )
+
+
+class BatchPhase(unittest.TestCase):
+    def test_precedence_and_stale_reporting(self):
+        cases = [
+            (["current"], False, False, "current"),
+            (["activated", "available"], False, False, "available"),
+            (["current", "activated"], False, False, "activated"),
+            (["activated"], True, False, "blocked"),
+            (["activated"], True, True, "stale"),
+            (["activated"], False, True, "activated"),
+        ]
+        for phases, problems, stale, expected in cases:
+            with self.subTest(phases=phases, problems=problems, stale=stale):
+                self.assertEqual(
+                    u.batch_phase([{"phase": p} for p in phases], problems, stale),
+                    expected,
+                )
+
+
 class Discovery(unittest.TestCase):
     def github(self, tool, dependency_url=None):
         repo = u.REPOS[tool]
@@ -273,7 +324,8 @@ class Discovery(unittest.TestCase):
                     {
                         "packages": {
                             "": {},
-                            "node_modules/" + package_name: {
+                            "node_modules/"
+                            + package_name: {
                                 "version": "1.2.3",
                                 "resolved": dependency_url or package_url,
                             },
@@ -332,6 +384,83 @@ class Discovery(unittest.TestCase):
                         ],
                         u.sha256("ab" * 32),
                     )
+
+    def test_pi_lock_validation_and_existing_integrity(self):
+        name = "node_modules/@earendil-works/pi-coding-agent"
+        package = {"dependencies": {"@earendil-works/pi-coding-agent": "1.2.3"}}
+        entry = {
+            "version": "1.2.3",
+            "resolved": "https://registry.npmjs.org/pi.tgz",
+            "integrity": u.sha256("ab" * 32),
+        }
+        cases = [
+            ({"version": "1.2.4"}, "lock version mismatch"),
+            ({"link": True}, "Non-registry"),
+            ({"resolved": "file:///local/pi.tgz"}, "Non-registry"),
+            ({"integrity": "not-a-hash"}, "Unpinned"),
+        ]
+        assets = {"package": {}, "lock": {}}
+        for change, error in cases:
+            with self.subTest(change=change), patch.object(
+                u,
+                "checked_json",
+                side_effect=[package, {"packages": {name: entry | change}}],
+            ):
+                with self.assertRaisesRegex(ValueError, error):
+                    u.pi_integrities(assets, "1.2.3")
+        with patch.object(
+            u,
+            "checked_json",
+            side_effect=[package, {"packages": {"": {}, name: entry}}],
+        ), patch.object(u, "download") as download:
+            self.assertEqual(u.pi_integrities(assets, "1.2.3"), {})
+            download.assert_not_called()
+        with patch.object(
+            u,
+            "checked_json",
+            side_effect=[{"dependencies": {}}, {"packages": {name: entry}}],
+        ):
+            with self.assertRaisesRegex(ValueError, "does not select"):
+                u.pi_integrities(assets, "1.2.3")
+
+    def test_pi_registry_completion_rejects_tarball_mismatch(self):
+        responses = self.github("pi")
+        url = "https://registry.npmjs.org/@earendil-works/pi-coding-agent/1.2.3"
+        metadata = json.loads(responses[url])
+        metadata["dist"]["tarball"] = "https://registry.npmjs.org/another.tgz"
+        responses[url] = json.dumps(metadata).encode()
+        with patch.object(u, "download", side_effect=responses.__getitem__):
+            with self.assertRaisesRegex(ValueError, "Registry URL disagrees"):
+                u.discover("pi")
+
+    def test_github_rejects_wrong_tag_url_and_conflicting_checksums(self):
+        metadata_url = "https://api.github.com/repos/openai/codex/releases/latest"
+        for case, error in (
+            ("tag", "Unexpected release tag"),
+            ("url", "Unexpected vendor asset URL"),
+            ("sums", "Conflicting vendor checksums"),
+        ):
+            responses = self.github("codex")
+            metadata = json.loads(responses[metadata_url])
+            if case == "tag":
+                metadata["tag_name"] = "v1.2.3"
+            elif case == "url":
+                metadata["assets"][0][
+                    "browser_download_url"
+                ] = "https://example.invalid/archive"
+            else:
+                sums = metadata["assets"][-1]
+                data = (
+                    "00" * 32 + "  " + metadata["assets"][0]["name"] + "\n"
+                ).encode()
+                responses[sums["browser_download_url"]] = data
+                sums["digest"] = "sha256:" + hashlib.sha256(data).hexdigest()
+            responses[metadata_url] = json.dumps(metadata).encode()
+            with self.subTest(case=case), patch.object(
+                u, "download", side_effect=responses.__getitem__
+            ):
+                with self.assertRaisesRegex(ValueError, error):
+                    u.discover("codex")
 
     def test_pi_rejects_non_registry_dependency_even_in_hashed_lock(self):
         responses = self.github("pi", "git+https://example.invalid/repo")

@@ -124,35 +124,28 @@ def verify(data, asset):
     return data
 
 
-def discover(tool):
-    if tool == "claude":
-        ver = version(download(f"{CLAUDE}/latest").decode().strip())
-        manifest = json.loads(download(f"{CLAUDE}/{ver}/manifest.json"))
-        if manifest["version"] != ver:
-            raise ValueError("Claude manifest version mismatch")
-        return {
-            "tool": tool,
-            "version": ver,
-            "source": f"{CLAUDE}/{ver}/manifest.json",
-            "assets": {
-                "binary": {
-                    "url": f"{CLAUDE}/{ver}/linux-x64/claude",
-                    "hash": sha256(manifest["platforms"]["linux-x64"]["checksum"]),
-                }
-            },
-        }
+def discover_claude():
+    ver = version(download(f"{CLAUDE}/latest").decode().strip())
+    source = f"{CLAUDE}/{ver}/manifest.json"
+    manifest = json.loads(download(source))
+    if manifest["version"] != ver:
+        raise ValueError("Claude manifest version mismatch")
+    return {
+        "tool": "claude",
+        "version": ver,
+        "source": source,
+        "assets": {
+            "binary": {
+                "url": f"{CLAUDE}/{ver}/linux-x64/claude",
+                "hash": sha256(manifest["platforms"]["linux-x64"]["checksum"]),
+            }
+        },
+    }
 
-    repo = REPOS[tool]
-    release = json.loads(
-        download(f"https://api.github.com/repos/{repo}/releases/latest")
-    )
-    if release["draft"] or release["prerelease"]:
-        raise ValueError("Refusing a draft or prerelease")
-    tag = release["tag_name"]
-    prefix = "rust-v" if tool == "codex" else "v"
-    if not tag.startswith(prefix):
-        raise ValueError(f"Unexpected release tag: {tag}")
-    ver = version(tag[len(prefix) :])
+
+def github_assets(tool, release, ver):
+    """Select exact release URLs and cross-check the publisher's digests."""
+    repo, tag = REPOS[tool], release["tag_name"]
     assets = {a["name"]: a for a in release["assets"]}
 
     def asset(name):
@@ -188,54 +181,82 @@ def discover(tool):
     for key, name in names.items():
         if name in checksums and selected[key]["hash"] != checksums[name]:
             raise ValueError(f"Conflicting vendor checksums for {name}")
-    npm_integrities = {}
-    if tool == "pi":
-        # Validate the official npm lock before Nix interprets it. Every dependency
-        # must be immutable registry content, never a git/file URL or install script.
-        package = json.loads(
-            verify(download(selected["package"]["url"]), selected["package"])
-        )
-        lock = json.loads(verify(download(selected["lock"]["url"]), selected["lock"]))
-        if package["dependencies"] != {"@earendil-works/pi-coding-agent": ver}:
-            raise ValueError("Pi installer package does not select the release")
-        if (
-            lock["packages"]["node_modules/@earendil-works/pi-coding-agent"]["version"]
-            != ver
-        ):
-            raise ValueError("Pi installer lock version mismatch")
-        for name, entry in lock["packages"].items():
-            if not name:
-                continue
-            if not entry.get("resolved", "").startswith(
-                "https://registry.npmjs.org/"
-            ) or entry.get("link"):
-                raise ValueError(f"Non-registry Pi dependency: {name}")
-            integrity = entry.get("integrity")
-            if not integrity:
-                # Upstream's release lock omits integrity for its own freshly
-                # published workspace packages. Resolve that exact version, never latest.
-                package_name = name.rsplit("node_modules/", 1)[-1]
-                metadata = json.loads(
-                    download(
-                        f"https://registry.npmjs.org/{package_name}/{version(entry['version'])}"
-                    )
+    return selected
+
+
+def checked_json(asset):
+    return json.loads(verify(download(asset["url"]), asset))
+
+
+def pi_integrities(assets, ver):
+    """Validate the installer lock before Nix interprets registry-only content."""
+    package, lock = checked_json(assets["package"]), checked_json(assets["lock"])
+    if package["dependencies"] != {"@earendil-works/pi-coding-agent": ver}:
+        raise ValueError("Pi installer package does not select the release")
+    if (
+        lock["packages"]["node_modules/@earendil-works/pi-coding-agent"]["version"]
+        != ver
+    ):
+        raise ValueError("Pi installer lock version mismatch")
+    missing = {}
+    for name, entry in lock["packages"].items():
+        if not name:
+            continue
+        if not entry.get("resolved", "").startswith(
+            "https://registry.npmjs.org/"
+        ) or entry.get("link"):
+            raise ValueError(f"Non-registry Pi dependency: {name}")
+        integrity = entry.get("integrity")
+        if not integrity:
+            # Complete freshly published workspace packages at the locked version, never latest.
+            package_name = name.rsplit("node_modules/", 1)[-1]
+            metadata = json.loads(
+                download(
+                    f"https://registry.npmjs.org/{package_name}/{version(entry['version'])}"
                 )
-                if metadata["dist"]["tarball"] != entry["resolved"]:
-                    raise ValueError(f"Registry URL disagrees with Pi lock: {name}")
-                integrity = metadata["dist"]["integrity"]
-                npm_integrities[name] = integrity
-            if not re.fullmatch(r"sha(256|512)-[A-Za-z0-9+/]+=*", integrity):
-                raise ValueError(f"Unpinned Pi dependency: {name}")
+            )
+            if metadata["dist"]["tarball"] != entry["resolved"]:
+                raise ValueError(f"Registry URL disagrees with Pi lock: {name}")
+            integrity = metadata["dist"]["integrity"]
+            missing[name] = integrity
+        if not re.fullmatch(r"sha(256|512)-[A-Za-z0-9+/]+=*", integrity):
+            raise ValueError(f"Unpinned Pi dependency: {name}")
+    return missing
+
+
+def discover(tool):
+    if tool == "claude":
+        return discover_claude()
+    release = json.loads(
+        download(f"https://api.github.com/repos/{REPOS[tool]}/releases/latest")
+    )
+    if release["draft"] or release["prerelease"]:
+        raise ValueError("Refusing a draft or prerelease")
+    tag = release["tag_name"]
+    prefix = "rust-v" if tool == "codex" else "v"
+    if not tag.startswith(prefix):
+        raise ValueError(f"Unexpected release tag: {tag}")
+    ver = version(tag[len(prefix) :])
+    assets = github_assets(tool, release, ver)
     result = {
         "tool": tool,
         "version": ver,
+        "assets": assets,
         "source": release["html_url"],
         "published_at": release["published_at"],
-        "assets": selected,
     }
     if tool == "pi":
-        result["npm_integrities"] = npm_integrities
+        result["npm_integrities"] = pi_integrities(assets, ver)
     return result
+
+
+def batch_phase(states, problems, stale):
+    if problems:
+        return "stale" if stale else "blocked"
+    phases = {state["phase"] for state in states}
+    return next(
+        (phase for phase in ("available", "activated") if phase in phases), "current"
+    )
 
 
 def run(command, timeout=2700):
@@ -514,9 +535,9 @@ class Updater:
             "started_at": started or stamp,
             "updated_at": stamp,
             "finished_at": stamp if status != "running" else None,
-            "exit_code": (1 if status == "failed" else 0)
-            if status != "running"
-            else None,
+            "exit_code": (
+                (1 if status == "failed" else 0) if status != "running" else None
+            ),
             "pid": os.getpid(),
             "boot_id": boot,
             "process_start": start,
@@ -585,23 +606,9 @@ class Updater:
                     "A tool is busy; retry after its current operation finishes"
                 )
             error = "; ".join(problems)[:6000]
-            phases = {s["phase"] for s in states}
-            phase = (
-                "stale"
-                if stale and problems
-                else "blocked"
-                if problems
-                else (
-                    "available"
-                    if "available" in phases
-                    else "activated"
-                    if "activated" in phases
-                    else "current"
-                )
-            )
             self.job(
                 operation,
-                phase,
+                batch_phase(states, problems, stale),
                 "failed" if problems and not stale else "completed",
                 error or None,
                 started,
@@ -610,6 +617,26 @@ class Updater:
                 self.notify(error)
             # An unrelated tool's failure stays visible but cannot fail a targeted update.
             return int(not all(results)) if not stale else 0
+
+
+def format_status(state):
+    def stamp(key):
+        value = state.get(key)
+        return (
+            time.strftime("%Y-%m-%d %H:%M:%S %Z", time.localtime(value))
+            if value
+            else "never"
+        )
+
+    text = (
+        f"{state['tool']:7} installed={state['installed_version'] or 'bootstrap fallback'} "
+        f"latest={state.get('latest_version', 'unknown')} phase={state['phase']}"
+        f"{' (stale check)' if state['stale'] else ''}\n"
+        f"        checked={stamp('last_successful_check')} activated={stamp('last_activation')}"
+    )
+    if state.get("error"):
+        text += "\n        " + state["error"]
+    return text
 
 
 def main():
@@ -633,24 +660,7 @@ def main():
         if args.json:
             print(json.dumps(states, indent=2))
         else:
-            for state in states:
-
-                def stamp(key):
-                    value = state.get(key)
-                    return (
-                        time.strftime("%Y-%m-%d %H:%M:%S %Z", time.localtime(value))
-                        if value
-                        else "never"
-                    )
-
-                print(
-                    f"{state['tool']:7} installed={state['installed_version'] or 'bootstrap fallback'} "
-                    f"latest={state.get('latest_version', 'unknown')} phase={state['phase']}"
-                    f"{' (stale check)' if state['stale'] else ''}\n"
-                    f"        checked={stamp('last_successful_check')} activated={stamp('last_activation')}"
-                )
-                if state.get("error"):
-                    print("        " + state["error"])
+            print("\n".join(format_status(state) for state in states))
         return 0
     if args.command in ("rollback", "resume"):
         getattr(updater, args.command)(args.tool)

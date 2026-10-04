@@ -23,7 +23,7 @@ let
   tsReactQualityLens = inputPackage inputs.ts-react-quality-lens "default";
   zenBrowser = inputPackage inputs.zen-browser "default";
 
-  theme = import ./theme.nix { inherit lib; };
+  theme = import ./theme.nix;
   inherit (theme)
     palette
     fonts
@@ -58,39 +58,20 @@ let
   );
   uwsmApp = "${pkgs.uwsm}/bin/uwsm-app";
 
-  mkUserService =
-    {
-      description,
-      execStart,
-      execStartPre ? [ ],
-      after ? [ ],
-      requires ? [ ],
-      partOf ? [ ],
-      environment ? { },
-      restart ? "always",
-      restartSec ? "2s",
-    }:
-    {
-      Unit = {
-        Description = description;
-        After = [ "graphical-session.target" ] ++ after;
-        Requires = requires;
-        PartOf = [ "graphical-session.target" ] ++ partOf;
-      };
-      Service = {
-        ExecStart = execStart;
-        Restart = restart;
-        RestartSec = restartSec;
-        Slice = "background-graphical.slice";
-      }
-      // lib.optionalAttrs (execStartPre != [ ]) {
-        ExecStartPre = execStartPre;
-      }
-      // lib.optionalAttrs (environment != { }) {
-        Environment = lib.mapAttrsToList (name: value: "${name}=${builtins.toString value}") environment;
-      };
-      Install.WantedBy = [ "graphical-session.target" ];
+  graphicalService = description: execStart: {
+    Unit = {
+      Description = description;
+      After = [ "graphical-session.target" ];
+      PartOf = [ "graphical-session.target" ];
     };
+    Service = {
+      ExecStart = execStart;
+      Restart = "on-failure";
+      RestartSec = "2s";
+      Slice = "background-graphical.slice";
+    };
+    Install.WantedBy = [ "graphical-session.target" ];
+  };
 
   scriptLib = import ./lib/scripts.nix;
   scriptWith = scriptLib.withPlaceholders;
@@ -128,6 +109,7 @@ let
   packagedUserServices =
     packagedUserService "nm-daemon" nmDaemon
     // packagedUserService "bt-daemon" btDaemon
+    // packagedUserService "app-daemon" appDaemon
     // packagedUserService "clip-daemon" clipDaemon
     // packagedUserService "ringboard-server" clipDaemon;
 
@@ -265,8 +247,7 @@ in
     };
 
     configFile = packagedUserServices // {
-      # Override package-provided XDG autostart entries; Waybar and the custom
-      # network/Bluetooth controls own these interfaces instead of tray applets.
+      # Shelllist owns these interfaces instead of package-provided tray applets.
       "autostart/blueman.desktop" = hiddenAutostart;
       "autostart/nm-applet.desktop" = hiddenAutostart;
       # UWSM sources this before starting the compositor and exports the values
@@ -323,12 +304,6 @@ in
       "hypr/hyprpaper.conf".text = scriptWith {
         "@WALLPAPER@" = "${wallpaper}";
       } (configPath "hypr/hyprpaper.conf");
-      "waybar/config".text = readConfig "waybar/config.jsonc";
-      "waybar/style.css".text = themedConfig "waybar/style.css";
-      "waybar/zen-workspace.svg".source = ./config/waybar/zen-workspace.svg;
-      "waybar/vscode-workspace.svg".source = ./config/waybar/vscode-workspace.svg;
-      "waybar/spotify-workspace.svg".source = ./config/waybar/spotify-workspace.svg;
-      "waybar/scratchpad-workspace.svg".source = ./config/waybar/scratchpad-workspace.svg;
       "ghostty/config".text = themedConfig "ghostty/config";
       # VS Code writes settings from its UI, so keep this as a writable,
       # version-controlled out-of-store file rather than a Nix store symlink.
@@ -400,23 +375,8 @@ in
       TimeoutStopSec = "5s";
     };
 
-    hyprpaper = mkUserService {
-      description = "Hyprland wallpaper service";
-      execStart = "${pkgs.hyprpaper}/bin/hyprpaper";
-      restart = "on-failure";
-    };
-
-    hyprpolkitagent = mkUserService {
-      description = "Hyprland PolicyKit authentication agent";
-      execStart = "${pkgs.hyprpolkitagent}/libexec/hyprpolkitagent";
-      restart = "on-failure";
-    };
-
-    app-daemon = mkUserService {
-      description = "Shelllist application catalog and activation service";
-      execStart = "${appDaemon}/bin/app-daemon daemon";
-      restart = "on-failure";
-    };
+    hyprpaper = graphicalService "Hyprland wallpaper service" "${pkgs.hyprpaper}/bin/hyprpaper";
+    hyprpolkitagent = graphicalService "Hyprland PolicyKit authentication agent" "${pkgs.hyprpolkitagent}/libexec/hyprpolkitagent";
   };
 
   programs = {

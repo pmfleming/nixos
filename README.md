@@ -2,6 +2,19 @@
 
 This repository tracks the live NixOS flake configuration in `/etc/nixos`.
 
+## Configuration layout
+
+- `flake.nix`: dependency wiring, machine identity and exported outputs.
+- `checks.nix`: deployment gates, including the complete upstream check matrix.
+- `configuration.nix` / `home.nix`: system policy and desktop-session policy.
+- `modules/`: bounded update, retention, display and Home Manager features.
+- `theme.nix`: shared theme data and substitutions for active configurations.
+- `packages/vendor-ai-tools/`: independent vendor discovery, packaging and activation.
+
+Use package-owned daemon units with the shared UWSM drop-in; do not copy their
+commands or lifecycle policy into Home Manager. Shelllist is the only bar;
+retired Waybar configuration and patches are not deployed.
+
 ## Apply Changes
 
 Daily ThinkPad rebuild:

@@ -5,7 +5,7 @@
   piExtensions,
 }:
 let
-  pkgs = import nixpkgs { config.allowUnfree = true; };
+  pkgs = import nixpkgs { };
   inherit (pkgs) lib;
   release = builtins.fromJSON (builtins.readFile manifestFile);
   fetch =
@@ -37,6 +37,11 @@ let
     preInstallCheck = ''
       export HOME="$TMPDIR/smoke-home"
       mkdir -p "$HOME"
+    '';
+    installCheckPhase = ''
+      runHook preInstallCheck
+      ${smoke release.tool}
+      runHook postInstallCheck
     '';
   };
   smoke = command: ''
@@ -101,11 +106,6 @@ assert pkgs.stdenv.hostPlatform.system == "x86_64-linux";
           }
         runHook postInstall
       '';
-      installCheckPhase = ''
-        runHook preInstallCheck
-        ${smoke "claude"}
-        runHook postInstallCheck
-      '';
     }
   );
 
@@ -129,11 +129,6 @@ assert pkgs.stdenv.hostPlatform.system == "x86_64-linux";
             --prefix PATH : ${lib.makeBinPath [ pkgs.ripgrep ]}
         done
         runHook postInstall
-      '';
-      installCheckPhase = ''
-        runHook preInstallCheck
-        ${smoke "codex"}
-        runHook postInstallCheck
       '';
     }
   );
@@ -160,9 +155,7 @@ assert pkgs.stdenv.hostPlatform.system == "x86_64-linux";
           }
         runHook postInstall
       '';
-      installCheckPhase = ''
-        runHook preInstallCheck
-        ${smoke "pi"}
+      postInstallCheck = ''
         # Gate this tool alone on the exact extension snapshot deployed with the worker.
         cp -R ${
           builtins.path {
@@ -174,7 +167,6 @@ assert pkgs.stdenv.hostPlatform.system == "x86_64-linux";
         ln -s "$out/lib/node_modules" node_modules
         ${pkgs.typescript}/bin/tsc --project ./pi-extensions/tsconfig.json
         ${pkgs.nodejs}/bin/node --experimental-strip-types --test ./pi-extensions/tests/*.test.ts
-        runHook postInstallCheck
       '';
     }
   );
@@ -231,13 +223,10 @@ assert pkgs.stdenv.hostPlatform.system == "x86_64-linux";
         # Deliberately do not prepend a pinned Codex: use the independent active tool.
         runHook postInstall
       '';
-      installCheckPhase = ''
-        runHook preInstallCheck
-        ${smoke "t3"}
+      postInstallCheck = ''
         # Exercise Electron's loader without starting a desktop or contacting a provider.
         ELECTRON_RUN_AS_NODE=1 ${pkgs.coreutils}/bin/timeout 45 \
           "$out/libexec/t3-desktop/t3code" -e 'if (!process.versions.electron) process.exit(1)'
-        runHook postInstallCheck
       '';
     }
   );

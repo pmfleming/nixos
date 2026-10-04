@@ -1,18 +1,7 @@
-{ lib }:
-
 let
   inherit (import ./lib/scripts.nix) substitute;
 
   colorBare = color: builtins.substring 1 6 color;
-
-  hexPair = hex: pos: lib.fromHexString (builtins.substring pos 2 hex);
-
-  colorRgb =
-    color:
-    let
-      hex = colorBare color;
-    in
-    "${toString (hexPair hex 0)}, ${toString (hexPair hex 2)}, ${toString (hexPair hex 4)}";
 
   palette = rec {
     black = "#000000";
@@ -37,7 +26,6 @@ let
     ui = "Noto Sans";
     terminal = code;
     code = "JetBrainsMono Nerd Font";
-    icons = "JetBrainsMono Nerd Font Mono";
     serif = "Noto Serif";
   };
 
@@ -66,17 +54,13 @@ let
   themeTokens = {
     "@BG@" = palette.bg;
     "@BG_BARE@" = colorBare palette.bg;
-    "@BG_RGB@" = colorRgb palette.bg;
     "@MUTED@" = palette.muted;
     "@TEXT@" = palette.text;
     "@TEXT_BARE@" = colorBare palette.text;
     "@SUBTEXT@" = palette.subtext;
     "@ACCENT@" = palette.accent;
     "@ACCENT_BARE@" = colorBare palette.accent;
-    "@ACCENT_RGB@" = colorRgb palette.accent;
-    "@FOREGROUND@" = palette.foreground;
     "@FOREGROUND_BARE@" = colorBare palette.foreground;
-    "@BLACK@" = palette.black;
     "@WHITE@" = palette.white;
     "@BORDER_DIM@" = palette.borderDim;
     "@BORDER_DIM_BARE@" = colorBare palette.borderDim;
@@ -90,7 +74,6 @@ let
     "@FONT_UI@" = fonts.ui;
     "@FONT_TERMINAL@" = fonts.terminal;
     "@FONT_CODE@" = fonts.code;
-    "@FONT_ICONS@" = fonts.icons;
     "@FONT_SIZE@" = ui.fontSize;
     "@SCROLLBAR_WIDTH@" = ui.scrollbarWidth;
     "@MONITOR_SCALE@" = appearance.monitorScale;
