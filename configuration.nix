@@ -70,6 +70,7 @@ in
     ./modules/ai-tools-updates.nix
     ./modules/delayed-updates.nix
     ./modules/generation-retention.nix
+    ./modules/printers.nix
   ];
 
   nix = {
@@ -185,7 +186,6 @@ in
     # Fingerprint reader support for login and lock-screen biometric auth.
     # The patched tuigreet above filters PAM's instructional fingerprint text.
     fprintd.enable = true;
-    printing.enable = true;
     blueman.enable = true;
     pipewire = {
       enable = true;

@@ -175,6 +175,40 @@ journalctl -u nixos-update-delayed.service \
 
 Review and commit automatic `flake.lock` changes intentionally. After changing and committing NixOS configuration, run `rebuild` once to approve that local commit and exact resulting lock for future unattended staging.
 
+## Epson network printer
+
+`modules/printers.nix` declares `Epson_ET_2950` using driverless IPP Everywhere
+and encrypted IPP at `ipps://EPSON4C18B4.local:631/ipp/print`. The hostname follows
+DHCP changes; no fixed address, vendor driver or printer-admin password is stored
+in Nix. The queue uses A4, is not shared with other machines, and retries failed
+jobs rather than permanently stopping the printer. Existing queues and the
+system default printer are left unchanged.
+
+The trusted `rembrandtweg` Wi-Fi profile has NetworkManager's persistent
+`connection.mdns=1` (resolve-only). This is local network state, like its Wi-Fi
+credentials, not part of the flake. If recreating that profile, restore it with:
+
+```sh
+nmcli connection modify rembrandtweg connection.mdns 1
+nmcli device reapply wlp2s0
+resolvectl query EPSON4C18B4.local
+```
+
+Do not enable discovery on unrelated networks. This uses the existing
+systemd-resolved setup; Avahi and incoming CUPS firewall ports are unnecessary.
+
+After `rebuild`, a timer sets up the queue asynchronously. Each attempt is bounded
+to 45 seconds and failures retry every two minutes, so an offline printer does
+not block boot or activation. Once setup succeeds, CUPS handles ordinary jobs.
+
+```sh
+systemctl status ensure-printers.service ensure-printers.timer
+journalctl -u ensure-printers.service -n 50 --no-pager
+lpstat -p Epson_ET_2950 -v
+# Optional: choose it as your own default printer.
+lpoptions -d Epson_ET_2950
+```
+
 ## Generation Retention
 
 `prune-nixos-generations.service` runs daily for both the system and Home Manager profiles. It retains the newest five generations, the newest generation from each of the current and previous seven ISO weeks, and the newest generation from each of the current and previous eleven calendar months. These sets may overlap, and active system/profile targets are always protected. Boot entries are refreshed from the system profile target, preserving any update staged for the next boot rather than reselecting the older running system. `nix-store-gc.timer` separately removes unreferenced store paths once per week.
