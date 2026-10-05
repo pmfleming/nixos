@@ -1,17 +1,17 @@
 """Capture rebuild approval identity from the actual frozen configuration.
 
 Only /etc/nixos identity gates approval. Dirty sibling worktrees remain supported.
-The manifest is passed explicitly to the privileged updater under the existing
-deployment -> updater-state lock order; no shared environment or request file.
+The native local-build CLI owns graph discovery and snapshotting; this module
+owns the manifest passed to the privileged updater under the deployment lock.
 """
 import argparse
 import hashlib
-import importlib.util
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 
 sys.dont_write_bytecode = True
 
@@ -88,101 +88,51 @@ def verify(root, manifest):
     return {"revision": identity["revision"], "lockHash": lock[2]}
 
 
-def load_helper(path):
-    spec = importlib.util.spec_from_file_location("local_build", path)
-    helper = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(helper)
-    return helper
+class NativeHelper:
+    def __init__(self, path):
+        self.path = path.resolve()
+
+    def run(self, *arguments):
+        return subprocess.run([str(self.path), *map(str, arguments)],
+                              check=True, stdout=subprocess.PIPE, text=True).stdout
+
+    def preflight(self, root):
+        return json.loads(self.run("preflight", root))
+
+    def prepare(self, root, destination):
+        return json.loads(self.run("prepare", root, destination, "--capture-root"))
+
+    def remote_lock(self, root, path):
+        # Never let pruning modify either captured tree or the live lock.
+        with tempfile.TemporaryDirectory(prefix="rebuild-remote-lock-") as temporary:
+            lock = Path(temporary) / "flake.lock"
+            lock.write_bytes(path.read_bytes())
+            self.run("prune-lock", root, lock)
+            return json.loads(lock.read_text())
 
 
-def remote_lock_identity(helper, path, local_names):
+def remote_lock_identity(helper, root, path):
     if not path.exists():
         return None
-    remote = helper.prune_lock(json.loads(path.read_text()), local_names)
+    remote = helper.remote_lock(root, path)
     return hashlib.sha256(json.dumps(remote, sort_keys=True).encode()).hexdigest()
 
 
 def prepare(helper, root, destination, manifest):
-    snapshot = helper.snapshot
-    captured = None
-    local_names = []
-    frozen_root = None
-
-    def capture_snapshot(source, target):
-        nonlocal captured, local_names, frozen_root
-        before = revision(root) if source == root else None
-        snapshot(source, target)
-        if source == root:
-            # Before local-build rewrites the disposable flake.lock.
-            captured = capture(root, target, before)
-            frozen_root = target
-            local_names = [name for name, spec in helper.read_inputs(target).items()
-                           if helper.local_path(spec, root) is not None]
-            captured["remoteLock"] = remote_lock_identity(helper, target / "flake.lock", local_names)
-
-    helper.snapshot = capture_snapshot
-    try:
-        result = helper.prepare(root, destination)
-    finally:
-        helper.snapshot = snapshot
-    if captured is None:
-        raise ValueError("local-build did not capture the configuration worktree")
-    if captured["remoteLock"] != remote_lock_identity(helper, frozen_root / "flake.lock", local_names):
+    before_revision = revision(root)
+    result = helper.prepare(root, destination)
+    original = destination / ".approval-root"
+    frozen = destination / "root"
+    if (result.get("originalRoot") != str(original)
+            or result.get("flake") != "path:" + str(frozen)):
+        raise ValueError("local-build did not return the captured configuration worktree")
+    captured = capture(root, original, before_revision)
+    captured["remoteLock"] = remote_lock_identity(helper, original, original / "flake.lock")
+    if captured["remoteLock"] != remote_lock_identity(helper, original, frozen / "flake.lock"):
         captured["eligible"] = False
         captured["approvalBlocker"] = "remote pins changed during snapshot resolution; update the remote lock and rebuild"
     manifest.write_text(json.dumps(captured, indent=2) + "\n")
     return result
-
-
-def preflight(helper, root):
-    """Inspect the live graph for diagnostics only; prepare still revalidates it."""
-    definitions = {}
-    problems = []
-    walked = set()
-
-    def inspect(source):
-        if source in definitions:
-            return definitions[source]
-        definitions[source] = None
-        try:
-            top = Path(os.fsdecode(git(source, "rev-parse", "--show-toplevel")).strip()).resolve()
-            if top != source:
-                raise ValueError(f"not a repository root: {source}")
-            untracked = git(source, "ls-files", "--others", "--exclude-standard", "-z")
-            if untracked:
-                names = [os.fsdecode(name) for name in untracked.split(b"\0") if name]
-                problems.append(f"Untracked files in {source}:\n" + "\n".join(f"  {name!r}" for name in names))
-            definitions[source] = helper.read_inputs(source)
-        except (ValueError, OSError, subprocess.CalledProcessError) as error:
-            problems.append(f"Cannot inspect {source}: {error}")
-        return definitions[source]
-
-    def walk(source, overlay, ancestors):
-        if source in ancestors:
-            problems.append(f"Local input cycle at {source}")
-            return
-        key = (source, json.dumps(overlay, sort_keys=True))
-        if key in walked:
-            return
-        walked.add(key)
-        inputs = inspect(source)
-        if inputs is None:
-            return
-        for name, spec in helper.merge(inputs, overlay).items():
-            if "follows" in spec:
-                continue
-            try:
-                child = helper.local_path(spec, source)
-                if child is not None:
-                    walk(child, spec.get("inputs", {}), ancestors | {source})
-            except (ValueError, OSError) as error:
-                problems.append(f"Cannot inspect {source}/{name}: {error}")
-
-    walk(root, {}, set())
-    if problems:
-        raise ValueError("Local worktree preflight failed:\n\n" + "\n\n".join(problems)
-                         + "\n\nAdd or ignore untracked files explicitly; rebuild never changes Git tracking.")
-    return {"repositories": [str(source) for source in definitions]}
 
 
 def main():
@@ -201,9 +151,9 @@ def main():
     child.add_argument("manifest", type=Path)
     args = parser.parse_args()
     if args.command == "prepare":
-        result = prepare(load_helper(args.helper), args.root.resolve(), args.destination.resolve(), args.manifest)
+        result = prepare(NativeHelper(args.helper), args.root.resolve(), args.destination.resolve(), args.manifest)
     elif args.command == "preflight":
-        result = preflight(load_helper(args.helper), args.root.resolve())
+        result = NativeHelper(args.helper).preflight(args.root.resolve())
     else:
         result = verify(args.root.resolve(), args.manifest)
     print(json.dumps(result))

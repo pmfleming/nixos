@@ -96,8 +96,10 @@ in
   captive-portal-browser = {
     name = "Captive Portal Browser";
     genericName = "Captive Portal Browser";
-    comment = "Open Shelllist's temporary captive-portal browser with a fallback HTTP probe";
-    exec = "shelllist-captive-portal --manual --fallback";
+    # Browser launches now require a claimed daemon intent. Enter the Wi-Fi UI
+    # rather than bypassing that transaction through the retired shell helper.
+    comment = "Open Wi-Fi controls to sign in to a captive portal";
+    exec = "shelllist open wifi";
     categories = [
       "Network"
       "WebBrowser"

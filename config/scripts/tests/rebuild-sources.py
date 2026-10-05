@@ -56,6 +56,14 @@ if [ "$1 $2" = 'flake check' ]; then
   [ "$4" = --no-update-lock-file ]
   [ "$5" = --no-build ]
   printf 'evaluate %s\\n' "$3" >> "$GATE_EVENTS"
+  # Edits during evaluation must not affect checks/switch or gain approval.
+  case "${MUTATION:-edit}" in
+    edit|commit) printf 'later edit\\n' > "$FLAKE_DIR/flake.nix" ;;
+    lock) printf '{"changed": true}\\n' > "$FLAKE_DIR/flake.lock" ;;
+  esac
+  if [ "${MUTATION:-edit}" = commit ]; then
+    git -C "$FLAKE_DIR" -c user.name=Test -c user.email=test@example.invalid commit -qam 'changed during build'
+  fi
   exit "${EVAL_STATUS:-0}"
 fi
 [ "$1" = build ]
@@ -88,41 +96,36 @@ printf 'switch %s\n' "$3" >> "$EVENTS"
 printf '%s\\n' "${@:5}" > "$SWITCH_ARGUMENTS"
 exit "${SWITCH_STATUS:-0}"
 ''')
-    helper = root / "local-build.py"
-    helper.write_text('''import os, pathlib, shutil, subprocess
+    helper = root / "local-build"
+    helper.write_text(f'#!{sys.executable}\n' + '''import json, os, pathlib, shutil, subprocess, sys
 
-def read_inputs(root):
-    return {}
-
-def merge(left, right):
-    return dict(left, **right)
-
-def prune_lock(lock, names):
-    return lock
-
-def snapshot(source, target):
+command, source, *arguments = sys.argv[1:]
+source = pathlib.Path(source)
+if command in ("preflight", "prepare"):
     untracked = subprocess.check_output(["git", "-C", str(source), "ls-files", "--others", "--exclude-standard"])
     if untracked:
-        raise ValueError("Git-add or ignore untracked files: " + untracked.decode())
-    target.mkdir(parents=True)
-    for name in ("flake.nix", "flake.lock"):
-        shutil.copyfile(source / name, target / name)
-
-def prepare(source, destination):
+        sys.exit("Untracked files in " + str(source) + ": " + untracked.decode() + "; Git-add or ignore untracked files")
+if command == "preflight":
+    assert not arguments
+    print(json.dumps({"repositories": [str(source)]}))
+elif command == "prepare":
+    destination, flag = arguments
+    assert flag == "--capture-root"
+    destination = pathlib.Path(destination)
     staged = destination / "root"
+    original = destination / ".approval-root"
     pathlib.Path(os.environ["SNAPSHOT_PATH"]).write_text(str(destination.parent))
-    snapshot(source, staged)
-    # Simulate edits after capture: checks and switch must use frozen sources.
-    mutation = os.environ.get("MUTATION", "edit")
-    if mutation in ("edit", "commit"):
-        (source / "flake.nix").write_text("later edit\\n")
-    if mutation == "commit":
-        subprocess.run(["git", "-C", str(source), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
-                        "commit", "-qam", "changed during build"], check=True, stdout=subprocess.DEVNULL)
-    if mutation == "lock":
-        (source / "flake.lock").write_text('{"changed": true}\\n')
-    return {"flake": "path:" + str(staged)}
+    for target in (staged, original):
+        target.mkdir(parents=True)
+        for name in ("flake.nix", "flake.lock"):
+            shutil.copyfile(source / name, target / name)
+    print(json.dumps({"flake": "path:" + str(staged), "originalRoot": str(original)}))
+elif command == "prune-lock":
+    assert len(arguments) == 1
+else:
+    sys.exit("unexpected native helper command: " + command)
 ''')
+    helper.chmod(0o755)
     approval = executable("approval", f'''
 export NIXOS_DEPLOYMENT_LOCK_HELPER={scripts / "deployment-lock.sh"}
 exec bash {updater} "$@"

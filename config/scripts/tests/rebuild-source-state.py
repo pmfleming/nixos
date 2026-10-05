@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.dont_write_bytecode = True
 scripts = Path(sys.argv.pop(1)).resolve()
@@ -83,68 +84,34 @@ class IdentityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "sources changed during build"):
             state.verify(self.root, self.manifest)
 
-    def test_preflight_aggregates_repositories_and_respects_follows(self):
-        sibling = self.base / "sibling"
-        sibling.mkdir()
-        subprocess.run(["git", "init", "-q", str(sibling)], check=True)
-        (sibling / "flake.nix").write_text("{}\n")
-        (sibling / ".gitignore").write_text("ignored/\n")
-        state.git(sibling, "add", ".")
-        (sibling / "ignored").mkdir()
-        (sibling / "ignored/output").write_text("ignored\n")
-        (sibling / "image.png").write_text("untracked\n")
-        (self.root / "forgotten.nix").write_text("untracked\n")
-        missing = self.base / "missing"
-        definitions = {
-            self.root: {"sibling": {"url": str(sibling)}, "again": {"url": str(sibling)},
-                        "followed": {"follows": "sibling", "url": str(missing)}},
-            sibling: {},
-        }
-        inspected = []
-
-        class Helper:
-            @staticmethod
-            def read_inputs(root):
-                inspected.append(root)
-                return definitions[root]
-
-            @staticmethod
-            def local_path(spec, root):
-                return Path(spec["url"])
-
-            @staticmethod
-            def merge(left, right):
-                return dict(left, **right)
-
-        with self.assertRaises(ValueError) as failure:
-            state.preflight(Helper, self.root)
-        message = str(failure.exception)
-        self.assertIn("forgotten.nix", message)
-        self.assertIn("image.png", message)
-        self.assertNotIn("ignored/output", message)
-        self.assertNotIn(str(missing), message)
-        self.assertEqual(inspected, [self.root, sibling])
-        self.assertEqual(state.git(sibling, "ls-files", "--others", "--exclude-standard").decode(), "image.png\n")
+    def test_native_cli_is_executed_without_interpreter(self):
+        helper = state.NativeHelper(self.base / "local-build")
+        with patch.object(state.subprocess, "run") as run:
+            run.return_value.stdout = '{"repositories": []}'
+            self.assertEqual(helper.preflight(self.root), {"repositories": []})
+            self.assertEqual(run.call_args.args[0], [str(helper.path), "preflight", str(self.root)])
+            helper.prepare(self.root, self.base / "frozen")
+            self.assertEqual(run.call_args.args[0], [str(helper.path), "prepare", str(self.root),
+                                                   str(self.base / "frozen"), "--capture-root"])
+            run.side_effect = subprocess.CalledProcessError(1, str(helper.path))
+            with self.assertRaises(subprocess.CalledProcessError):
+                helper.preflight(self.root)
 
     def test_prepare_captures_before_disposable_lock_rewrite(self):
         class Helper:
             remote = "before"
 
             @staticmethod
-            def read_inputs(root):
-                return {}
-
-            @staticmethod
-            def prune_lock(lock, names):
-                return {"remote": lock["remote"]}
-
-            def snapshot(inner, source, target):
-                shutil.copytree(source, target, ignore=shutil.ignore_patterns(".git"))
+            def remote_lock(root, path):
+                return {"remote": json.loads(path.read_text())["remote"]}
 
             def prepare(inner, root, destination):
-                inner.snapshot(root, destination)
-                (destination / "flake.lock").write_text(json.dumps({"remote": inner.remote, "local": "disposable"}))
-                return {"flake": "path:" + str(destination)}
+                original = destination / ".approval-root"
+                frozen = destination / "root"
+                shutil.copytree(root, original, ignore=shutil.ignore_patterns(".git"))
+                shutil.copytree(original, frozen)
+                (frozen / "flake.lock").write_text(json.dumps({"remote": inner.remote, "local": "disposable"}))
+                return {"flake": "path:" + str(frozen), "originalRoot": str(original)}
 
         helper = Helper()
         state.prepare(helper, self.root, self.base / "frozen", self.manifest)

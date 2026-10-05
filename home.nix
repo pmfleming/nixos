@@ -18,7 +18,6 @@ let
   clipDaemon = inputPackage inputs.clip-daemon "default";
   appDaemon = inputPackage inputs.app-daemon "default";
   shelllist = inputPackage inputs.shelllist "default";
-  shelllistPortalBrowser = inputPackage inputs.shelllist "captivePortalBrowser";
   scratchpad = inputPackage inputs.scratchpad "scratchpad-hyprland";
   tsReactQualityLens = inputPackage inputs.ts-react-quality-lens "default";
   zenBrowser = inputPackage inputs.zen-browser "default";
@@ -150,7 +149,6 @@ in
       btDaemon
       clipDaemon
       nmDaemon
-      shelllistPortalBrowser
       scratchpad
       tsReactQualityLens
       zenBrowser

@@ -31,10 +31,10 @@ For the first deployment of this policy, the installed `rebuild` still has the
 old behavior. Bootstrap the new wrapper without using old project pins:
 
 ```sh
-python3 /home/laufan/Projects/daemon-framework/tools/local-build.py run --attr rebuild /etc/nixos
+/home/laufan/Projects/daemon-framework/tools/local-build run --attr rebuild /etc/nixos
 ```
 
-After that successful switch, use `rebuild` normally. No source commits are
+The checkout launcher requires Cargo/Rust; the packaged native `local-build` needs neither Cargo nor Python. After that successful switch, use `rebuild` normally. No source commits are
 required, but new files must be registered with Git (`git add` or `git add -N`).
 
 Home Manager is integrated as a NixOS module, so home changes in `home.nix` are applied by the same rebuild.
@@ -49,7 +49,7 @@ Build defaults are **two concurrent derivations, eight cores each**, overridable
 
 The last two distinct successful check aggregates are rooted under `~/.local/state/nixos-rebuild/check-cache/` (or `$XDG_STATE_HOME/nixos-rebuild/check-cache/`). This preserves check results and Rust dependency artifacts through weekly GC without retaining every historical build dependency globally. Repeated cache hits do not evict the previous distinct check set. Failed checks leave the previous cache entries intact; a later deployment failure does not discard already-successful checks. To reclaim the cache, remove that directory while no rebuild is running, then let normal GC collect unreferenced paths. Cache retention costs disk space, not test coverage: changed check derivations always run.
 
-Standalone development uses `local-build check /path/to/project`, `local-build build /path/to/project`, or `local-build develop /path/to/project`. Before installing that command, invoke `python3 /home/laufan/Projects/daemon-framework/tools/local-build.py` with the same arguments. This is the supported Nix development path; ordinary `nix build`/`flake check` can create and reuse local lock entries.
+Standalone development uses `local-build check /path/to/project`, `local-build build /path/to/project`, or `local-build develop /path/to/project`. Before installing that command, invoke `/home/laufan/Projects/daemon-framework/tools/local-build` with the same arguments (requires Cargo/Rust). This is the supported Nix development path; ordinary `nix build`/`flake check` can create and reuse local lock entries.
 
 `rebuild`, `rollback`, unattended NixOS staging, and generation pruning share the root-owned
 `/run/lock/nixos-deployment/lock` inode. Contention makes interactive rebuilds fail

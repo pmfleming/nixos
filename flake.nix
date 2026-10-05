@@ -125,7 +125,8 @@
         inherit pkgs;
         inherit (machine) hostName username;
         manualInputs = machine.localProjects;
-        localBuildHelper = "${inputs.daemon-framework}/tools/local-build.py";
+        localBuildHelper = nixpkgs.lib.getExe inputs.daemon-framework.packages.${system}.localBuild;
+        localBuildTestHelper = inputs.daemon-framework.packages.${system}.localBuild.unwrappedProgram;
         sourceStateHelper = ./config/scripts/rebuild-source-state.py;
       };
       vendorAiTools = import ./packages/vendor-ai-tools {

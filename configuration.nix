@@ -58,7 +58,9 @@ let
       "@DEPLOYMENT_LOCK_HELPER@" = "${deploymentLock.helper}";
       "@CONFIG_DIRECTORY@" = machine.configDirectory;
       "@FLAKE_ATTR@" = machine.hostName;
-      "@LOCAL_BUILD_HELPER@" = "${inputs.daemon-framework}/tools/local-build.py";
+      "@LOCAL_BUILD_HELPER@" =
+        lib.getExe
+          inputs.daemon-framework.packages.${pkgs.stdenv.hostPlatform.system}.localBuild;
       "@SOURCE_STATE_HELPER@" = "${./config/scripts/rebuild-source-state.py}";
       "@APPROVAL_HELPER@" = "${config.system.build.delayedNixosUpdate}/bin/delayed-nixos-update";
     };
