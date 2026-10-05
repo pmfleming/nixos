@@ -11,6 +11,25 @@
 let
   inherit (pkgs) lib;
   inherit (machine) system;
+  # Filter before interpolation: ${self}/subdir would still depend on the
+  # entire flake (including the disposable local-input lock).
+  nixSources = lib.fileset.toSource {
+    root = ./.;
+    fileset = lib.fileset.fileFilter (file: file.hasExt "nix") ./.;
+  };
+  displaySources = lib.fileset.toSource {
+    root = ./.;
+    fileset = lib.fileset.unions [
+      ./home.nix
+      ./config/hypr
+    ];
+  };
+  configSources = lib.fileset.toSource {
+    root = ./config;
+    fileset = lib.fileset.fileFilter (
+      file: file.hasExt "json" || file.hasExt "jsonc" || file.hasExt "lua"
+    ) ./config;
+  };
   mkCheck =
     name: nativeBuildInputs: script:
     pkgs.runCommand name { inherit nativeBuildInputs; } (script + "\ntouch $out\n");
@@ -34,9 +53,9 @@ lib.mapAttrs' (
         util-linux
       ])
       ''
-        python3 ${self}/config/scripts/tests/rebuild-sources.py ${self}/config/scripts \
+        python3 ${./config/scripts/tests/rebuild-sources.py} ${./config/scripts} \
           ${inputs.update-daemon}/helpers/delayed-nixos-update.sh
-        python3 ${self}/config/scripts/tests/rebuild-source-state.py ${self}/config/scripts
+        python3 ${./config/scripts/tests/rebuild-source-state.py} ${./config/scripts}
       '';
   nix =
     mkCheck "nix-quality-check"
@@ -47,12 +66,12 @@ lib.mapAttrs' (
         statix
       ])
       ''
-        find ${self} -type f -name '*.nix' -exec nixfmt --check {} +
-        deadnix --fail ${self}
-        statix check ${self}
+        find ${nixSources} -type f -name '*.nix' -exec nixfmt --check {} +
+        deadnix --fail ${nixSources}
+        statix check ${nixSources}
       '';
   shellcheck = mkCheck "shellcheck" [ pkgs.shellcheck ] ''
-    find ${self}/config/scripts -type f -name '*.sh' \
+    find ${./config/scripts} -type f -name '*.sh' \
       -exec shellcheck -s bash -x -e SC1091 {} +
   '';
   sleep-recovery =
@@ -80,10 +99,10 @@ lib.mapAttrs' (
       );
     in
     mkCheck "sleep-recovery-tests" [ pkgs.python3 ] ''
-      python3 ${self}/config/scripts/tests/sleep-recovery.py ${fixture}
+      python3 ${./config/scripts/tests/sleep-recovery.py} ${fixture}
     '';
   display-layout-compatibility = mkCheck "display-layout-compatibility" [ pkgs.bash pkgs.gnugrep ] ''
-    bash ${self}/config/scripts/tests/display-layout-compatibility.sh ${self}
+    bash ${./config/scripts/tests/display-layout-compatibility.sh} ${displaySources}
   '';
   deployment-lock =
     mkCheck "deployment-lock-tests"
@@ -93,8 +112,8 @@ lib.mapAttrs' (
         util-linux
       ])
       ''
-        bash ${self}/config/scripts/tests/deployment-lock.sh \
-          ${self}/config/scripts ${inputs.update-daemon}/helpers/delayed-nixos-update.sh
+        bash ${./config/scripts/tests/deployment-lock.sh} \
+          ${./config/scripts} ${inputs.update-daemon}/helpers/delayed-nixos-update.sh
       '';
   updater-state = updateWorker.tests;
   # Catch npm lock/hash drift before the system deployment build.
@@ -109,8 +128,8 @@ lib.mapAttrs' (
         util-linux
       ])
       ''
-        bash ${self}/config/scripts/tests/prune-nixos-generations.sh \
-          ${self}/config/scripts/prune-nixos-generations.sh
+        bash ${./config/scripts/tests/prune-nixos-generations.sh} \
+          ${./config/scripts}/prune-nixos-generations.sh
       '';
   pi-extensions =
     mkCheck "pi-extension-tests"
@@ -119,7 +138,7 @@ lib.mapAttrs' (
         typescript
       ])
       ''
-        cp -R ${self}/config/pi ./pi
+        cp -R ${./config/pi} ./pi
         chmod -R u+w ./pi
 
         vendor=${unstablePkgs.pi-coding-agent}/lib/node_modules/pi-monorepo/node_modules
@@ -152,7 +171,7 @@ lib.mapAttrs' (
 
         import json5
 
-        root = Path("${self}/config")
+        root = Path("${configSources}")
         for path in root.rglob("*.json"):
             with path.open(encoding="utf-8") as source:
                 json.load(source)
@@ -161,7 +180,7 @@ lib.mapAttrs' (
                 json5.load(source)
         PY
 
-        cp -R ${self}/config/hypr ./hypr
+        cp -R ${configSources}/hypr ./hypr
         chmod -R u+w ./hypr
         substituteInPlace ./hypr/hyprland.lua \
           --replace-fail '@UWSM_APP@' '/bin/true' \

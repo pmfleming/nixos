@@ -12,7 +12,9 @@ approval_helper=@APPROVAL_HELPER@
 # checked snapshot. Only accept build tuning, never arbitrary Nix options.
 build_arguments=()
 parse_build_arguments() {
-  local argument value
+  # Bound both levels of parallelism: two derivations must not each spawn all
+  # sixteen hardware threads. Explicit command-line values still win.
+  local argument value max_jobs=2 build_cores=8
 
   while (($#)); do
     argument=$1
@@ -39,7 +41,11 @@ parse_build_arguments() {
           printf 'Invalid value for %s: %s\n' "$argument" "$value" >&2
           return 2
         fi
-        build_arguments+=( "$argument" "$value" )
+        if [[ $argument == --max-jobs ]]; then
+          max_jobs=$value
+        else
+          build_cores=$value
+        fi
         ;;
       *)
         printf 'rebuild owns source selection and local deployment; unsupported argument: %s\n' "$argument" >&2
@@ -48,6 +54,7 @@ parse_build_arguments() {
         ;;
     esac
   done
+  build_arguments+=( --max-jobs "$max_jobs" --cores "$build_cores" )
 }
 shelllist_daemons=(
   app-daemon.service
@@ -79,6 +86,7 @@ session_result='not reached'
 baseline_result='not reached'
 temporary_file=
 snapshot_dir=
+cache_pending=
 
 human_duration() {
   local seconds=$1
@@ -131,6 +139,7 @@ finish() {
   release_deployment_lock
   [[ -z $temporary_file ]] || rm -f -- "$temporary_file"
   [[ -z $snapshot_dir ]] || rm -rf -- "$snapshot_dir"
+  [[ -z $cache_pending ]] || rm -rf -- "$cache_pending"
 
   # Close the pipe and wait for tee so every final build event is available to
   # the summary parser. Summary output is appended with a separate tee below.
@@ -284,8 +293,43 @@ snapshot_json=$(python3 "$source_state_helper" prepare "$local_build_helper" \
 printf '%s\n' "$snapshot_json" | jq .
 snapshot_flake=$(jq -er .flake <<< "$snapshot_json")
 
+# Fail evaluation before scheduling release builds. --keep-going is opt-in,
+# rather than spending minutes compiling after an already-fatal error.
+stage 'Evaluating the frozen deployment graph'
+nix flake check "$snapshot_flake" --no-update-lock-file --no-build "${build_arguments[@]}"
+
+stage 'Running inexpensive deployment checks'
+nix build "$snapshot_flake#rebuildPreflight" --no-update-lock-file --no-link "${build_arguments[@]}"
+
 stage 'Running framework, daemon, Shelllist, and configuration checks'
-nix flake check "$snapshot_flake" --no-update-lock-file --keep-going "${build_arguments[@]}"
+cache_dir="$state_home/nixos-rebuild/check-cache"
+mkdir -p "$cache_dir"
+# Recover abandoned attempts (e.g. SIGKILL). The interactive lock guarantees
+# that none of these directories belongs to another running rebuild.
+while IFS= read -r abandoned_cache; do
+  [[ -f $abandoned_cache/complete ]] || rm -rf -- "$abandoned_cache"
+done < <(find "$cache_dir" -mindepth 1 -maxdepth 1 -type d -name 'entry-*')
+cache_pending=$(mktemp -d "$cache_dir/entry-$(date --utc +%Y%m%dT%H%M%S%N)-XXXXXXXX")
+# This aggregate contains EVERY checks.${system} derivation and the reusable
+# Rust dependency artifacts. Nix registers the out-link as an indirect GC root.
+nix build "$snapshot_flake#rebuildChecks" --no-update-lock-file \
+  --out-link "$cache_pending/checks" "${build_arguments[@]}"
+# Never move the link: Nix's indirect GC root records its absolute location.
+# Failed attempts leave the previous two successful check sets intact.
+touch "$cache_pending/complete"
+cache_pending=
+mapfile -t cache_entries < <(find "$cache_dir" -mindepth 2 -maxdepth 2 -type f -name complete -printf '%h\n' | sort -r)
+declare -A retained_targets=()
+retained_count=0
+for cache_entry in "${cache_entries[@]}"; do
+  cache_target=$(readlink -- "$cache_entry/checks")
+  if [[ ${retained_targets[$cache_target]+present} ]] || ((retained_count >= 2)); then
+    rm -rf -- "$cache_entry"
+  else
+    retained_targets["$cache_target"]=1
+    retained_count=$((retained_count + 1))
+  fi
+done
 
 # Activation can fail after Home Manager has stopped graphical services. Save
 # the switch status, then make a best effort to put the complete stack back in

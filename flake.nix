@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
+    crane.url = "github:ipetkov/crane/47b6b27ed9a3a9181415e4367d0c30ab2a0e0250";
     nixpkgs-unstable.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     # Default kernel/display stack; the base OS keeps its existing pin.
     nixpkgs-display.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -20,8 +21,11 @@
     # local-build snapshots tracked worktrees (including dirty files) once per
     # invocation. Never add refs/revisions, private framework copies, or rely on
     # persistent local-project locks. Checks and deployment use the same snapshot.
-    daemon-framework.url = "git+file:///home/laufan/Projects/daemon-framework";
-    daemon-framework.inputs.nixpkgs.follows = "nixpkgs";
+    daemon-framework = {
+      url = "git+file:///home/laufan/Projects/daemon-framework";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.crane.follows = "crane";
+    };
     update-daemon.url = "git+file:///home/laufan/Projects/update-daemon";
 
     nm-daemon = {
@@ -73,8 +77,11 @@
       };
     };
 
-    scratchpad.url = "git+file:///home/laufan/Projects/scratchpad";
-    scratchpad.inputs.nixpkgs.follows = "nixpkgs";
+    scratchpad = {
+      url = "git+file:///home/laufan/Projects/scratchpad";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.crane.follows = "crane";
+    };
     ts-react-quality-lens.url = "git+file:///home/laufan/Projects/ts-react-quality-lens";
     ts-react-quality-lens.inputs.nixpkgs.follows = "nixpkgs";
   };
@@ -162,6 +169,53 @@
       };
 
       packages.${system} = {
+        # Keep cheap failures ahead of release compilation without weakening the
+        # full matrix. All of these are also members of rebuildChecks below.
+        rebuildPreflight = pkgs.linkFarm "rebuild-preflight" (
+          map
+            (name: {
+              inherit name;
+              path = self.checks.${system}.${name};
+            })
+            [
+              "nix"
+              "shellcheck"
+              "config-files"
+              "display-layout-compatibility"
+              "rebuild-sources"
+              "deployment-lock"
+              "generation-retention"
+              "shelllist-typescript"
+            ]
+        );
+        rebuildChecks = pkgs.linkFarm "rebuild-checks" (
+          nixpkgs.lib.mapAttrsToList (name: path: { inherit name path; }) self.checks.${system}
+          ++
+            nixpkgs.lib.imap0
+              (index: path: {
+                name = "rust-cache-${toString index}";
+                inherit path;
+              })
+              (
+                nixpkgs.lib.unique (
+                  nixpkgs.lib.concatMap (package: package.rebuildCache or [ ]) (
+                    map (name: inputs.${name}.packages.${system}.default) [
+                      "app-daemon"
+                      "bar-daemon"
+                      "bt-daemon"
+                      "clip-daemon"
+                      "nm-daemon"
+                      "scratchpad"
+                    ]
+                    ++ [
+                      inputs.daemon-framework.packages.${system}.protocolBindings
+                      inputs.daemon-framework.packages.${system}.localBuild
+                      inputs.daemon-framework.checks.${system}.workspace
+                    ]
+                  )
+                )
+              )
+        );
         inherit connectParityProbe;
         ai-tools-updater = vendorAiTools.updater;
         rebuild = self.nixosConfigurations.${machine.hostName}.config.system.build.rebuild;

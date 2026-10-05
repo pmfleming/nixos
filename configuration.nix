@@ -80,6 +80,9 @@ in
         "flakes"
       ];
       auto-optimise-store = true;
+      # Match rebuild's defaults, including unattended/local development builds.
+      max-jobs = 2;
+      cores = 8;
     };
   };
 

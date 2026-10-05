@@ -52,13 +52,30 @@ esac
 ''')
     executable("nix", '''
 if [ "$1" = path-info ]; then exit 1; fi
-[ "$1 $2" = 'flake check' ]
-[ "$4" = --no-update-lock-file ]
-source=${3#path:}
+if [ "$1 $2" = 'flake check' ]; then
+  [ "$4" = --no-update-lock-file ]
+  [ "$5" = --no-build ]
+  printf 'evaluate %s\\n' "$3" >> "$GATE_EVENTS"
+  exit "${EVAL_STATUS:-0}"
+fi
+[ "$1" = build ]
+[ "$3" = --no-update-lock-file ]
+source=${2#path:}
+source=${source%#*}
 [ "$(< "$source/flake.nix")" = before ]
-printf 'check %s\n' "$3" >> "$EVENTS"
-printf '%s\\n' "${@:5}" > "$CHECK_ARGUMENTS"
-exit "${CHECK_STATUS:-0}"
+case "$2" in
+  *#rebuildPreflight)
+    [ "$4" = --no-link ]
+    printf 'preflight path:%s\\n' "$source" >> "$GATE_EVENTS"
+    exit "${PREFLIGHT_STATUS:-0}" ;;
+  *#rebuildChecks)
+    [ "$4" = --out-link ]
+    printf 'check path:%s\\n' "$source" >> "$EVENTS"
+    printf '%s\\n' "${@:6}" > "$CHECK_ARGUMENTS"
+    if [ "${CHECK_STATUS:-0}" != 0 ]; then exit "$CHECK_STATUS"; fi
+    ln -s "/nix/store/${CACHE_TARGET:-fake-check-cache-$$}" "$5" ;;
+  *) exit 99 ;;
+esac
 ''')
     executable("nixos-rebuild", '''
 [ "$1" = switch ]
@@ -134,6 +151,7 @@ exec bash {updater} "$@"
     environment = dict(os.environ, PATH=str(binaries) + ":" + os.environ["PATH"],
                        HOME=str(root), XDG_STATE_HOME=str(root / "state"),
                        NIXOS_DEPLOYMENT_LOCK_FILE=str(lock), EVENTS=str(events),
+                       GATE_EVENTS=str(root / "gate-events"),
                        STACK_EVENTS=str(root / "stack-events"), SUDO_EVENTS=str(root / "sudo-events"),
                        CHECK_ARGUMENTS=str(root / "check-arguments"), SWITCH_ARGUMENTS=str(root / "switch-arguments"),
                        SNAPSHOT_PATH=str(root / "snapshot-path"), FLAKE_DIR=str(flake),
@@ -141,6 +159,7 @@ exec bash {updater} "$@"
                        NIXOS_SOURCE_STATE_HELPER=str(scripts / "rebuild-source-state.py"),
                        NIXOS_UPDATE_ACTIVE_SYSTEM_LINK=str(active_system))
     for name in ("MUTATION", "AUTH_STATUS", "LATE_UNTRACKED", "CHECK_STATUS", "SWITCH_STATUS",
+                 "EVAL_STATUS", "PREFLIGHT_STATUS", "CACHE_TARGET",
                  "GRAPHICAL_STATUS", "INACTIVE_UNIT", "DAEMON_RESTART_STATUS", "NIXOS_UPDATE_LIB_ONLY"):
         environment.pop(name, None)
     environment.pop("NIXOS_LOCAL_BUILD_HELPER", None)
@@ -149,6 +168,13 @@ exec bash {updater} "$@"
     assert result.returncode == 0, result.stdout + result.stderr
     checked, switched = events.read_text().splitlines()
     assert switched == "switch " + checked.removeprefix("check ") + "#thinkpad"
+    frozen = checked.removeprefix("check ")
+    assert (root / "gate-events").read_text().splitlines() == [
+        "evaluate " + frozen, "preflight " + frozen,
+    ]
+    assert (root / "check-arguments").read_text().splitlines() == ["--max-jobs", "2", "--cores", "8"]
+    cache = root / "state/nixos-rebuild/check-cache"
+    assert len(list(cache.glob("entry-*/checks"))) == 1
     assert (flake / "flake.nix").read_text() == "later edit\n"
     assert (flake / "flake.lock").read_text() == "{}\n"
     assert "baseline not approved: sources changed during build" in result.stdout
@@ -178,15 +204,20 @@ exec bash {updater} "$@"
         assert "Failed at:  Validating rebuild arguments (exit 2)" in failed_log.read_text()
 
     for arguments in (["-L", "--show-trace", "--cores=2", "-j4"],
-                      ["--max-jobs", "auto", "--cores", "0", "--offline"]):
+                      ["--max-jobs", "auto", "--cores", "0", "--offline"],
+                      ["--keep-going"]):
         (flake / "flake.nix").write_text("before\n")
         result = subprocess.run(["bash", str(script), *arguments],
                                 env=environment, text=True, capture_output=True)
         assert result.returncode == 0, result.stdout + result.stderr
         check_arguments = (root / "check-arguments").read_text().splitlines()
         switch_arguments = (root / "switch-arguments").read_text().splitlines()
-        assert check_arguments == ["--keep-going", *switch_arguments]
+        assert check_arguments == switch_arguments
         assert "--cores" in switch_arguments and "--max-jobs" in switch_arguments
+        assert ("--keep-going" in check_arguments) == ("--keep-going" in arguments)
+        if "-j4" in arguments:
+            assert check_arguments[-4:] == ["--max-jobs", "4", "--cores", "2"]
+        assert len(list(cache.glob("entry-*/checks"))) == 2, "check cache is not bounded"
     before_sudo = (root / "sudo-events").read_text()
     with (logs / "rebuild.lock").open("r+") as held:
         fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -229,6 +260,7 @@ exec bash {updater} "$@"
         # This repository exists only inside TemporaryDirectory.
         subprocess.run(["git", "-C", str(flake), "reset", "--hard", "-q", initial_revision], check=True)
         events.write_text("")
+        (root / "gate-events").write_text("")
         (root / "snapshot-path").unlink(missing_ok=True)
         (root / "stack-events").write_text("")
         result = subprocess.run(["bash", str(script)], env=dict(environment, **overrides),
@@ -243,6 +275,16 @@ exec bash {updater} "$@"
     assert "SUCCESS WITH WARNINGS" not in result.stdout
     assert (updater_state / "approved-revision").read_text().strip() == initial_revision
     assert (updater_state / "approved-system").read_text().strip() == str(active_system)
+    # Repeated cache hits must not evict the previous distinct successful set.
+    abandoned = cache / "entry-000-abandoned"
+    abandoned.mkdir()
+    for _ in range(2):
+        result = scenario(MUTATION="none", CACHE_TARGET="stable-check-set")
+        assert result.returncode == 0, result.stdout + result.stderr
+        targets = [os.readlink(path) for path in cache.glob("entry-*/checks")]
+        assert len(targets) == len(set(targets)) == 2
+        assert targets.count("/nix/store/stable-check-set") == 1
+    assert not abandoned.exists(), "abandoned cache attempt was not cleaned"
     approved = {name: (updater_state / name).read_bytes()
                 for name in ("approved-revision", "approved-system", "applied-lock-hash")}
     # A stale approval may neither overwrite metadata nor recover an unrelated
@@ -270,11 +312,18 @@ exec bash {updater} "$@"
 
     for overrides, expected, stage in [
         ({"AUTH_STATUS": "9"}, 9, "Authorizing the generation switch"),
+        ({"EVAL_STATUS": "12"}, 12, "Evaluating the frozen deployment graph"),
+        ({"PREFLIGHT_STATUS": "13"}, 13, "Running inexpensive deployment checks"),
         ({"CHECK_STATUS": "11"}, 11, "Running framework, daemon, Shelllist, and configuration checks"),
         ({"LATE_UNTRACKED": "1"}, 1, "Snapshotting current local worktrees"),
     ]:
+        retained = sorted(str(path) for path in cache.glob("entry-*/checks"))
         result = scenario(**overrides)
         assert result.returncode == expected, result.stdout + result.stderr
+        assert sorted(str(path) for path in cache.glob("entry-*/checks")) == retained
+        assert len(list(cache.glob("entry-*"))) == 2, "failed cache attempt leaked"
+        if "EVAL_STATUS" in overrides or "PREFLIGHT_STATUS" in overrides:
+            assert not events.read_text(), "early failure reached expensive checks"
         assert f"Failed at:  {stage} (exit {expected})" in result.stdout
         assert "switch " not in events.read_text(), "failure reached deployment"
         assert "Recording the update baseline" not in result.stdout
