@@ -15,8 +15,11 @@ let
     {
       id,
       name,
+      genericName,
+      comment,
       url,
       icon,
+      forceDark ? false,
     }:
     let
       launcher = pkgs.writeShellApplication {
@@ -38,16 +41,24 @@ let
             --user-data-dir="$profile" \
             --class=${pkgs.lib.escapeShellArg id} \
             --no-first-run --no-default-browser-check \
-            --force-dark-mode --enable-features=WebContentsForceDark \
+            ${pkgs.lib.optionalString forceDark "--force-dark-mode --enable-features=WebContentsForceDark"} \
             --app=${pkgs.lib.escapeShellArg url}
         '';
       };
     in
     {
-      inherit name icon;
-      comment = "Open ${name} in its own dark Chrome window";
+      inherit
+        name
+        genericName
+        comment
+        icon
+        ;
       exec = "${launcher}/bin/${id}";
-      categories = [ "AudioVideo" ];
+      categories = [
+        "AudioVideo"
+        "Audio"
+        "Player"
+      ];
       settings.StartupWMClass = id;
     };
 in
@@ -55,15 +66,20 @@ in
   "com.laufan.audible" = chromeWebApp {
     id = "com.laufan.audible";
     name = "Audible";
+    genericName = "Audiobook Player";
+    comment = "Listen to audiobooks with Audible";
     url = "https://www.audible.co.uk/library/titles";
-    icon = "audio-headphones";
+    icon = "com.laufan.audible";
+    forceDark = true;
   };
 
   "com.laufan.pocketcasts" = chromeWebApp {
     id = "com.laufan.pocketcasts";
     name = "Pocket Casts";
+    genericName = "Podcast Player";
+    comment = "Listen to podcasts with Pocket Casts";
     url = "https://play.pocketcasts.com/";
-    icon = "multimedia-player-symbolic";
+    icon = "com.laufan.pocketcasts";
   };
 
   blueman-manager = {

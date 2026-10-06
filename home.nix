@@ -324,6 +324,13 @@ in
       '';
     };
 
+    # Match the desktop IDs exposed by the isolated players over MPRIS so the
+    # launcher and media chooser resolve the same locally installed app icons.
+    dataFile = {
+      "icons/hicolor/192x192/apps/com.laufan.audible.png".source = ./assets/audible.png;
+      "icons/hicolor/192x192/apps/com.laufan.pocketcasts.png".source = ./assets/pocketcasts.png;
+    };
+
     desktopEntries = import ./modules/home/desktop-entries.nix { inherit pkgs; };
   };
 

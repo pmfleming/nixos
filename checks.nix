@@ -190,5 +190,6 @@ lib.mapAttrs' (
           --replace-fail '@ACCENT_BARE@' '000000' \
           --replace-fail '@BORDER_DIM_BARE@' '000000'
         find ./hypr -type f -name '*.lua' -exec luac -p {} +
+        lua ${./config/scripts/tests/hyprland-shortcuts.lua} ./hypr/hyprland.lua
       '';
 }
