@@ -11,8 +11,61 @@ let
     settings.StartupWMClass = command;
   };
   shelllistOnly = entry: entry // { settings."X-Shelllist-LaunchOnly" = "true"; };
+  chromeWebApp =
+    {
+      id,
+      name,
+      url,
+      icon,
+    }:
+    let
+      launcher = pkgs.writeShellApplication {
+        name = id;
+        runtimeInputs = [
+          pkgs.coreutils
+          pkgs.google-chrome
+        ];
+        text = ''
+          umask 077
+          data_home="''${XDG_DATA_HOME:-$HOME/.local/share}"
+          profile="$data_home/chrome-web-apps/${id}"
+          mkdir -p -- "$profile"
+          # bar-daemon reads these labels from the D-Bus owner's environment.
+          export SHELLLIST_MEDIA_IDENTITY=${pkgs.lib.escapeShellArg name}
+          export SHELLLIST_MEDIA_DESKTOP_ENTRY=${pkgs.lib.escapeShellArg id}
+          export CHROME_DESKTOP=${pkgs.lib.escapeShellArg "${id}.desktop"}
+          exec google-chrome-stable \
+            --user-data-dir="$profile" \
+            --class=${pkgs.lib.escapeShellArg id} \
+            --no-first-run --no-default-browser-check \
+            --force-dark-mode --enable-features=WebContentsForceDark \
+            --app=${pkgs.lib.escapeShellArg url}
+        '';
+      };
+    in
+    {
+      inherit name icon;
+      comment = "Open ${name} in its own dark Chrome window";
+      exec = "${launcher}/bin/${id}";
+      categories = [ "AudioVideo" ];
+      settings.StartupWMClass = id;
+    };
 in
 {
+  "com.laufan.audible" = chromeWebApp {
+    id = "com.laufan.audible";
+    name = "Audible";
+    url = "https://www.audible.co.uk/library/titles";
+    icon = "audio-headphones";
+  };
+
+  "com.laufan.pocketcasts" = chromeWebApp {
+    id = "com.laufan.pocketcasts";
+    name = "Pocket Casts";
+    url = "https://play.pocketcasts.com/";
+    icon = "multimedia-player-symbolic";
+  };
+
   blueman-manager = {
     name = "Bluetooth Manager";
     genericName = "Bluetooth Manager";
