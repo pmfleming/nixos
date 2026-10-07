@@ -138,6 +138,7 @@ in
     package = shelllist;
     systemd.target = "graphical-session.target";
     displays.enable = true;
+    media.youtubeMetadata.enable = true;
   };
 
   home = {
