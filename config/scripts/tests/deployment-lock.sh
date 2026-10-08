@@ -4,10 +4,13 @@ scripts_dir=$1
 updater=${2:?private updater helper required}
 test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
+bash "$scripts_dir/tests/render-deployment.sh" "$scripts_dir" "$test_root/scripts"
+scripts_dir="$test_root/scripts"
+# The historical updater oracle still needs its test override. The rendered
+# host scripts must ignore an attempted environment override of the lock inode.
 export NIXOS_DEPLOYMENT_LOCK_HELPER="$scripts_dir/deployment-lock.sh"
-export NIXOS_DEPLOYMENT_LOCK_FILE="$test_root/deployment.lock"
+export NIXOS_DEPLOYMENT_LOCK_FILE="$test_root/ignored.lock"
 export NIXOS_UPDATE_STATE_DIR="$test_root/state"
-: > "$NIXOS_DEPLOYMENT_LOCK_FILE"
 # shellcheck source=/dev/null
 source "$NIXOS_DEPLOYMENT_LOCK_HELPER"
 
@@ -49,7 +52,7 @@ acquire_deployment_lock
 release_deployment_lock
 
 # Missing provisioning is an error, not an unlocked deployment or a timer skip.
-rm "$NIXOS_DEPLOYMENT_LOCK_FILE"
+rm "$scripts_dir/deployment.lock"
 if bash -c 'source "$NIXOS_DEPLOYMENT_LOCK_HELPER"; acquire_deployment_lock'; then
   printf 'A missing lock file was silently accepted.\n' >&2
   exit 1

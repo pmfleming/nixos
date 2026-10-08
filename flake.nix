@@ -120,13 +120,14 @@
             "t3code"
           ];
       };
+      frameworkPackages = inputs.daemon-framework.packages.${system};
       connectParityProbe = inputs.nm-daemon.packages.${system}.connectParityProbe;
       updateWorker = inputs.update-daemon.lib.mkPackage {
         inherit pkgs;
         inherit (machine) hostName username;
         manualInputs = machine.localProjects;
-        localBuildHelper = nixpkgs.lib.getExe inputs.daemon-framework.packages.${system}.localBuild;
-        localBuildTestHelper = inputs.daemon-framework.packages.${system}.localBuild.unwrappedProgram;
+        localBuildHelper = nixpkgs.lib.getExe frameworkPackages.localBuild;
+        localBuildTestHelper = frameworkPackages.localBuild.unwrappedProgram;
         sourceStateHelper = ./config/scripts/rebuild-source-state.py;
       };
       vendorAiTools = import ./packages/vendor-ai-tools {
@@ -157,17 +158,7 @@
     {
       formatter.${system} = pkgs.nixfmt-tree;
 
-      checks.${system} = import ./checks.nix {
-        inherit
-          self
-          inputs
-          pkgs
-          machine
-          unstablePkgs
-          updateWorker
-          vendorAiTools
-          ;
-      };
+      checks.${system} = import ./checks.nix (specialArgs // { inherit self pkgs; });
 
       packages.${system} = {
         # Keep cheap failures ahead of release compilation without weakening the
@@ -209,8 +200,8 @@
                       "scratchpad"
                     ]
                     ++ [
-                      inputs.daemon-framework.packages.${system}.protocolBindings
-                      inputs.daemon-framework.packages.${system}.localBuild
+                      frameworkPackages.protocolBindings
+                      frameworkPackages.localBuild
                       inputs.daemon-framework.checks.${system}.workspace
                     ]
                   )

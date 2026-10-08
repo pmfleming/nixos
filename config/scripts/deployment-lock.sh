@@ -4,7 +4,7 @@
 deployment_lock_held=0
 
 acquire_deployment_lock() {
-  local lock_file="${NIXOS_DEPLOYMENT_LOCK_FILE:-@DEPLOYMENT_LOCK_FILE@}"
+  local lock_file="@DEPLOYMENT_LOCK_FILE@"
 
   if ! { exec 8< "$lock_file"; }; then
     printf 'Cannot open deployment lock %s; activate the tmpfiles configuration first.\n' "$lock_file" >&2

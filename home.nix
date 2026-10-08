@@ -13,10 +13,9 @@ let
   system = pkgs.stdenv.hostPlatform.system;
   inputPackage = input: name: input.packages.${system}.${name};
   hyprlandGuiutils = inputPackage inputs.hyprland-guiutils "default";
-  nmDaemon = inputPackage inputs.nm-daemon "default";
-  btDaemon = inputPackage inputs.bt-daemon "default";
-  clipDaemon = inputPackage inputs.clip-daemon "default";
-  appDaemon = inputPackage inputs.app-daemon "default";
+  daemonPackages = lib.genAttrs [ "app-daemon" "bt-daemon" "clip-daemon" "nm-daemon" ] (
+    name: inputPackage inputs.${name} "default"
+  );
   shelllist = inputPackage inputs.shelllist "default";
   scratchpad = inputPackage inputs.scratchpad "scratchpad-hyprland";
   tsReactQualityLens = inputPackage inputs.ts-react-quality-lens "default";
@@ -29,6 +28,12 @@ let
     themeText
     wallpaper
     ;
+
+  cursor = {
+    name = theme.appearance.cursorTheme;
+    package = pkgs.bibata-cursors;
+    size = theme.appearance.cursorSize;
+  };
 
   uwsmEnvironment = {
     GTK_THEME = theme.appearance.gtkThemeEnv;
@@ -105,12 +110,9 @@ let
   };
   # Keep the clipboard engine and facade together: stock Ringboard cannot
   # perform safe edits. The packaged units also own readiness and privacy gates.
-  packagedUserServices =
-    packagedUserService "nm-daemon" nmDaemon
-    // packagedUserService "bt-daemon" btDaemon
-    // packagedUserService "app-daemon" appDaemon
-    // packagedUserService "clip-daemon" clipDaemon
-    // packagedUserService "ringboard-server" clipDaemon;
+  packagedUserServices = lib.concatMapAttrs packagedUserService (
+    daemonPackages // { ringboard-server = daemonPackages.clip-daemon; }
+  );
 
   hyprlandConfig = themeText (
     scriptWith {
@@ -127,9 +129,9 @@ in
       inherit
         palette
         scratchpad
-        clipDaemon
         uwsmApp
         ;
+      clipDaemon = daemonPackages.clip-daemon;
     })
   ];
 
@@ -145,29 +147,27 @@ in
     inherit (machine) username homeDirectory;
     stateVersion = "26.05";
 
-    packages = [
-      appDaemon
-      btDaemon
-      clipDaemon
-      nmDaemon
-      scratchpad
-      tsReactQualityLens
-      zenBrowser
-      pkgs.inkscape
-      # Bootstrap fallback. Stable launchers prefer each checked vendor profile,
-      # then the legacy shared profile, then these immutable system packages.
-      unstablePkgs.codex
-    ]
-    ++ (with pkgs; [
-      ghostty
-      hyprlandGuiutils
-      hyprlock
-      hyprpaper
-      qt5.qtwayland
-      qt6.qtwayland
-      wlogout
-      btop
-    ]);
+    packages =
+      builtins.attrValues daemonPackages
+      ++ [
+        scratchpad
+        tsReactQualityLens
+        zenBrowser
+        pkgs.inkscape
+        # Bootstrap fallback. Stable launchers prefer each checked vendor profile,
+        # then the legacy shared profile, then these immutable system packages.
+        unstablePkgs.codex
+      ]
+      ++ (with pkgs; [
+        ghostty
+        hyprlandGuiutils
+        hyprlock
+        hyprpaper
+        qt5.qtwayland
+        qt6.qtwayland
+        wlogout
+        btop
+      ]);
 
     sessionVariables = {
       BROWSER = "zen";
@@ -181,10 +181,7 @@ in
       "$HOME/.local/bin"
     ];
 
-    pointerCursor = {
-      name = theme.appearance.cursorTheme;
-      package = pkgs.bibata-cursors;
-      size = theme.appearance.cursorSize;
+    pointerCursor = cursor // {
       gtk.enable = true;
       x11.enable = true;
     };
@@ -201,11 +198,7 @@ in
     enable = true;
     theme.name = theme.appearance.gtkTheme;
     iconTheme.name = theme.appearance.iconTheme;
-    cursorTheme = {
-      name = theme.appearance.cursorTheme;
-      package = pkgs.bibata-cursors;
-      size = theme.appearance.cursorSize;
-    };
+    cursorTheme = cursor;
     font = {
       name = fonts.ui;
       size = theme.ui.fontSizeInt;
@@ -368,22 +361,19 @@ in
   # headroom for unit-stop and sd-switch D-Bus bookkeeping.
   systemd.user.servicesStartTimeoutMs = 60000;
 
-  systemd.user.services = {
-    shelllist.Service = {
-      Slice = "session-graphical.slice";
-      TimeoutStopSec = "5s";
+  # Bound both frontend and backend shutdown: a blocked PipeWire worker must
+  # not strand Home Manager's transaction with Shelllist stopped after a switch.
+  systemd.user.services =
+    lib.genAttrs [ "shelllist" "bar-daemon" ] (_: {
+      Service = {
+        Slice = "session-graphical.slice";
+        TimeoutStopSec = "5s";
+      };
+    })
+    // {
+      hyprpaper = graphicalService "Hyprland wallpaper service" "${pkgs.hyprpaper}/bin/hyprpaper";
+      hyprpolkitagent = graphicalService "Hyprland PolicyKit authentication agent" "${pkgs.hyprpolkitagent}/libexec/hyprpolkitagent";
     };
-    # A blocked PipeWire worker can prevent bar-daemon's Tokio runtime from
-    # completing shutdown after SIGTERM. Do not let that strand Home Manager's
-    # unit transaction and leave Shelllist stopped after a generation switch.
-    bar-daemon.Service = {
-      Slice = "session-graphical.slice";
-      TimeoutStopSec = "5s";
-    };
-
-    hyprpaper = graphicalService "Hyprland wallpaper service" "${pkgs.hyprpaper}/bin/hyprpaper";
-    hyprpolkitagent = graphicalService "Hyprland PolicyKit authentication agent" "${pkgs.hyprpolkitagent}/libexec/hyprpolkitagent";
-  };
 
   programs = {
     bash.enable = true;

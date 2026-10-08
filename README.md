@@ -43,7 +43,7 @@ Interactive rebuild and Nix daemon defaults are **two jobs, eight cores**. Updat
 
 Crane caches compiled dependencies for the daemons, framework tools/tests and Scratchpad. Filtered sources avoid rebuilding them for unrelated documentation changes. The last two **distinct successful** check aggregates and dependency outputs remain GC-rooted in `$XDG_STATE_HOME/nixos-rebuild/check-cache` (default `~/.local/state/nixos-rebuild/check-cache`). Failed checks preserve previous entries. Remove that directory only while no rebuild is running to release its roots; changed derivations still require checks.
 
-Rebuild, rollback, unattended system staging and generation pruning share `/run/lock/nixos-deployment/lock`. Interactive contention exits 75; timer jobs skip. Direct `nixos-rebuild` bypasses this coordination.
+Rebuild, rollback, unattended system staging and generation pruning share `/run/lock/nixos-deployment/lock`. Interactive contention exits 75; timer jobs skip. Direct `nixos-rebuild` bypasses this coordination. Host scripts bind helper paths and the deployment-lock path at build time; environment variables cannot substitute them. Tests render private script fixtures instead (`config/scripts/tests/render-deployment.sh`).
 
 Logs live in `~/.local/state/nixos-rebuild/` (or `$XDG_STATE_HOME/nixos-rebuild/`). `latest.log` identifies the newest attempt, not necessarily the running one; `latest-failed.log` identifies the latest failure. Completed logs end in `.success.log` or `.failed.log`; logs older than 30 days are pruned on subsequent runs. Skipped baseline approval after a successful deployment exits zero and reports **SUCCESS WITH WARNINGS**, with the reason in the log.
 

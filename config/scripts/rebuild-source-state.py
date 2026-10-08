@@ -54,6 +54,15 @@ def clean_configuration(root):
     return not git(root, "status", "--porcelain=v1", "--untracked-files=all", "--", ".", ":(exclude)flake.lock")
 
 
+def matches_configuration(root, identity):
+    return (
+        revision(root) == identity["revision"]
+        and clean_configuration(root)
+        and configuration_identity(root, tracked=True) == identity["configuration"]
+        and file_identity(root / "flake.lock") == identity["lock"]
+    )
+
+
 def capture(root, frozen, before_revision):
     identity = {
         "version": 1,
@@ -61,12 +70,7 @@ def capture(root, frozen, before_revision):
         "configuration": configuration_identity(frozen),
         "lock": file_identity(frozen / "flake.lock"),
     }
-    identity["eligible"] = (
-        revision(root) == before_revision
-        and clean_configuration(root)
-        and configuration_identity(root, tracked=True) == identity["configuration"]
-        and file_identity(root / "flake.lock") == identity["lock"]
-    )
+    identity["eligible"] = matches_configuration(root, identity)
     return identity
 
 
@@ -75,10 +79,7 @@ def verify(root, manifest):
     if identity.get("version") != 1 or not identity.get("eligible"):
         raise ValueError("baseline not approved: " + identity.get(
             "approvalBlocker", "configuration was dirty or changed during capture"))
-    if (revision(root) != identity["revision"]
-            or not clean_configuration(root)
-            or configuration_identity(root, tracked=True) != identity["configuration"]
-            or file_identity(root / "flake.lock") != identity["lock"]):
+    if not matches_configuration(root, identity):
         raise ValueError("baseline not approved: sources changed during build")
     lock = identity["lock"]
     if not lock or lock[0] != "file":

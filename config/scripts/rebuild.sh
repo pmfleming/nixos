@@ -1,11 +1,11 @@
 set -euo pipefail
 
 # shellcheck source=/dev/null
-source "${NIXOS_DEPLOYMENT_LOCK_HELPER:-@DEPLOYMENT_LOCK_HELPER@}"
+source "@DEPLOYMENT_LOCK_HELPER@"
 
 flake_dir=@CONFIG_DIRECTORY@
 flake_attr=@FLAKE_ATTR@
-local_build_helper=${NIXOS_LOCAL_BUILD_HELPER:-@LOCAL_BUILD_HELPER@}
+local_build_helper=@LOCAL_BUILD_HELPER@
 source_state_helper=@SOURCE_STATE_HELPER@
 approval_helper=@APPROVAL_HELPER@
 # Fail closed: nixos-rebuild has aliases and deployment modes that bypass our
@@ -84,7 +84,6 @@ system_before=$(readlink -f /run/current-system 2>/dev/null || true)
 rebuild_stage=initialization
 session_result='not reached'
 baseline_result='not reached'
-temporary_file=
 snapshot_dir=
 cache_pending=
 
@@ -130,14 +129,13 @@ stage() {
 
 finish() {
   local status=$?
-  local copied_info disk_after elapsed final_log line outcome suffix system_after
+  local copied_info disk_after elapsed final_log line outcome suffix system_after temporary_file
   local closure_after='' copied_bytes='' store_available_after='' store_used_after=''
   local -A built_paths=() copied_paths=()
 
   trap - EXIT HUP INT TERM
   set +e
   release_deployment_lock
-  [[ -z $temporary_file ]] || rm -f -- "$temporary_file"
   [[ -z $snapshot_dir ]] || rm -rf -- "$snapshot_dir"
   [[ -z $cache_pending ]] || rm -rf -- "$cache_pending"
 
@@ -161,7 +159,6 @@ finish() {
       copied_bytes=$(jq -r '[.[] | (.narSize // 0)] | add // 0' <<< "$copied_info")
     fi
     rm -f -- "$temporary_file"
-    temporary_file=
   fi
 
   elapsed=$(($(date +%s) - started_at))
@@ -237,7 +234,6 @@ finish() {
 
 closure_before=
 store_used_before=
-disk_before=
 trap finish EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT

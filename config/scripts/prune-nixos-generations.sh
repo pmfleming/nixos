@@ -2,7 +2,7 @@ set -euo pipefail
 export LC_ALL=C
 
 # shellcheck source=/dev/null
-source "${NIXOS_DEPLOYMENT_LOCK_HELPER:-@DEPLOYMENT_LOCK_HELPER@}"
+source "@DEPLOYMENT_LOCK_HELPER@"
 
 profile=/nix/var/nix/profiles/system
 refresh_boot=1

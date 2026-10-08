@@ -39,8 +39,6 @@ lib.mapAttrs' (
   name: value: lib.nameValuePair "shelllist-${name}" value
 ) inputs.shelllist.checks.${system}
 // {
-  framework-workspace = inputs.daemon-framework.checks.${system}.workspace;
-  local-build-policy = inputs.daemon-framework.checks.${system}.localBuild;
   rebuild-sources =
     mkCheck "rebuild-source-identity-tests"
       (with pkgs; [

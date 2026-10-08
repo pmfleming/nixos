@@ -117,6 +117,9 @@ class Profiles(unittest.TestCase):
         self.worker.rollback("codex")
         self.assertEqual(self.worker.installed("codex")["version"], "1.2.3")
         self.assertFalse(self.update("codex", "1.2.4"))
+        held = self.worker.status("codex")
+        self.assertEqual(held["phase"], "held")
+        self.assertIsNotNone(held["finished_at"], "held early return must finalize status")
         self.assertEqual(self.worker.installed("codex")["version"], "1.2.3")
         self.worker.resume("codex")
         self.assertTrue(self.update("codex", "1.2.4"))
@@ -158,6 +161,14 @@ class Profiles(unittest.TestCase):
         self.assertIn("Cannot read pi state", self.worker.report("pi")["error"])
         self.assertEqual(u.load(self.root / "jobs/ai-tools.json")["status"], "failed")
 
+    def test_stale_report_never_updates_or_fails_the_timer(self):
+        with patch.object(self.worker, "update") as update:
+            self.assertEqual(self.worker.batch(u.TOOLS, stale=True), 0)
+        update.assert_not_called()
+        job = u.load(self.root / "jobs/ai-tools-stale.json")
+        self.assertEqual((job["status"], job["phase"], job["exit_code"]), ("completed", "stale", 0))
+        self.assertIn("no successful release check", job["error"])
+
     def test_unrelated_untracked_work_has_no_effect(self):
         # Deliberately hostile/untracked host and project content is never inspected.
         (self.root / "flake.nix").write_text('throw "do not evaluate host flake"')
@@ -179,6 +190,7 @@ class Profiles(unittest.TestCase):
             (state["installed_version"], state["latest_version"]), ("1.2.4", "1.2.5")
         )
         self.assertEqual(state["phase"], "available")
+        self.assertIsNotNone(state["finished_at"], "check-only early return must finalize status")
         self.assertEqual(state["last_activation"], installed_at)
         self.assertFalse(self.update("t3", "1.2.3"))
         self.assertEqual(self.worker.installed("t3")["version"], "1.2.4")

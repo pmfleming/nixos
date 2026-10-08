@@ -11,6 +11,8 @@ scripts = Path(sys.argv[1]).resolve()
 updater = Path(sys.argv[2]).resolve()
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
+    rendered_scripts = root / "scripts"
+    subprocess.run(["bash", str(scripts / "tests/render-deployment.sh"), str(scripts), str(rendered_scripts)], check=True)
     flake = root / "flake"
     flake.mkdir()
     (flake / "flake.nix").write_text("before\n")
@@ -127,7 +129,7 @@ else:
 ''')
     helper.chmod(0o755)
     approval = executable("approval", f'''
-export NIXOS_DEPLOYMENT_LOCK_HELPER={scripts / "deployment-lock.sh"}
+export NIXOS_DEPLOYMENT_LOCK_HELPER={rendered_scripts / "deployment-lock.sh"}
 exec bash {updater} "$@"
 ''')
     active_system = root / "active-system"
@@ -136,24 +138,22 @@ exec bash {updater} "$@"
     switch_program.write_text("#!/bin/sh\nexit 0\n")
     switch_program.chmod(0o755)
     updater_state = root / "updater-state"
-    rendered = (scripts / "rebuild.sh").read_text()
+    rendered = (rendered_scripts / "rebuild.sh").read_text()
     for old, new in {
         "@CONFIG_DIRECTORY@": str(flake),
         "@FLAKE_ATTR@": "thinkpad",
         "@LOCAL_BUILD_HELPER@": str(helper),
         "@SOURCE_STATE_HELPER@": str(scripts / "rebuild-source-state.py"),
         "@APPROVAL_HELPER@": str(approval),
-        "@DEPLOYMENT_LOCK_HELPER@": str(scripts / "deployment-lock.sh"),
         "/run/wrappers/bin/sudo": str(sudo),
     }.items():
         rendered = rendered.replace(old, new)
     script = root / "rebuild.sh"
     script.write_text(rendered)
-    lock = root / "deployment.lock"
-    lock.touch()
+    lock = rendered_scripts / "deployment.lock"
     environment = dict(os.environ, PATH=str(binaries) + ":" + os.environ["PATH"],
                        HOME=str(root), XDG_STATE_HOME=str(root / "state"),
-                       NIXOS_DEPLOYMENT_LOCK_FILE=str(lock), EVENTS=str(events),
+                       EVENTS=str(events),
                        GATE_EVENTS=str(root / "gate-events"),
                        STACK_EVENTS=str(root / "stack-events"), SUDO_EVENTS=str(root / "sudo-events"),
                        CHECK_ARGUMENTS=str(root / "check-arguments"), SWITCH_ARGUMENTS=str(root / "switch-arguments"),
@@ -273,7 +273,9 @@ exec bash {updater} "$@"
             assert not Path(snapshot_marker.read_text()).exists(), "snapshot leaked on exit"
         return result
 
-    result = scenario(MUTATION="none")
+    result = scenario(MUTATION="none", NIXOS_LOCAL_BUILD_HELPER="/missing-helper",
+                      NIXOS_DEPLOYMENT_LOCK_HELPER="/missing-lock-helper",
+                      NIXOS_DEPLOYMENT_LOCK_FILE="/missing-lock")
     assert result.returncode == 0 and "Baseline:   recorded" in result.stdout, result.stdout + result.stderr
     assert "SUCCESS WITH WARNINGS" not in result.stdout
     assert (updater_state / "approved-revision").read_text().strip() == initial_revision

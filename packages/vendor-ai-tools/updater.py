@@ -250,6 +250,12 @@ def discover(tool):
     return result
 
 
+def status_problem(state):
+    if state["stale"] or state["phase"] in ("failed", "held"):
+        return f"{state['tool']}: {state.get('error') or 'no successful release check in four hours'}"
+    return None
+
+
 def batch_phase(states, problems, stale):
     if problems:
         return "stale" if stale else "blocked"
@@ -310,29 +316,24 @@ class Updater:
             directory / "status.json", {"tool": tool, "phase": "never-checked"}
         )
         installed = self.installed(tool)
-        bootstrap = self.bootstrap(tool) if not installed else None
-        fallback_version = (
-            re.search(r"-([0-9]+\.[0-9]+\.[0-9]+)/", str(bootstrap.resolve()))
-            if bootstrap
-            else None
-        )
-        state["installed_version"] = (
-            installed["version"]
-            if installed
-            else (fallback_version[1] if fallback_version else None)
-        )
-        state["origin"] = "vendor" if installed else "bootstrap"
-        state["profile"] = (
-            str((directory / "current").resolve())
-            if installed
-            else (str(bootstrap.resolve()) if bootstrap else None)
-        )
-        # Link mtime is an activation timestamp even if power failed before status was saved.
-        state["last_activation"] = (
-            int((directory / "current").lstat().st_mtime)
-            if installed
-            else state.get("last_activation")
-        )
+        if installed:
+            state.update(
+                installed_version=installed["version"],
+                origin="vendor",
+                profile=str((directory / "current").resolve()),
+                # Link mtime survives power loss before status was saved.
+                last_activation=int((directory / "current").lstat().st_mtime),
+            )
+        else:
+            bootstrap = self.bootstrap(tool)
+            profile = str(bootstrap.resolve()) if bootstrap else ""
+            fallback_version = re.search(r"-([0-9]+\.[0-9]+\.[0-9]+)/", profile)
+            state.update(
+                installed_version=fallback_version[1] if fallback_version else None,
+                origin="bootstrap",
+                profile=profile or None,
+                last_activation=state.get("last_activation"),
+            )
         state["hold"] = load(directory / "hold.json")
         age = now() - state.get("last_successful_check", 0)
         state["stale"] = age < 0 or age >= 4 * 3600
@@ -363,7 +364,9 @@ class Updater:
         generations.mkdir(parents=True, exist_ok=True)
         generation = generations / f"{now()}-{uuid.uuid4().hex}"
         generation.mkdir()
-        atomic_json(generation / "release.json", release)
+        manifest = generation / "release.json"
+        profile = generation / "profile"
+        atomic_json(manifest, release)
         atomic_json(generation / "build.json", {"fingerprint": fingerprint})
         try:
             # The stable per-generation out-link is an indirect GC root. Never move it.
@@ -376,20 +379,20 @@ class Updater:
                     self.config["nixpkgs"],
                     "--argstr",
                     "manifestFile",
-                    str(generation / "release.json"),
+                    str(manifest),
                     "--argstr",
                     "piExtensions",
                     self.config["extensions"],
                     "--out-link",
-                    str(generation / "profile"),
+                    str(profile),
                     "--option",
                     "allow-import-from-derivation",
                     "true",
                 ]
             )
-            if load(generation / "profile/share/vendor-ai/release.json") != release:
+            if load(profile / "share/vendor-ai/release.json") != release:
                 raise ValueError("Built profile does not match the requested release")
-            return generation / "profile"
+            return profile
         except BaseException:
             shutil.rmtree(generation)
             raise
@@ -437,47 +440,42 @@ class Updater:
                 atomic_json(directory / "status.json", state)
                 installed = self.installed(tool)
                 fingerprint = self.fingerprint(tool, release)
-                held = load(directory / "hold.json")
-                if held:
+                if state["hold"]:
                     state.update(
                         phase="held",
                         error="Updates paused after rollback; use ai-tools resume "
                         + tool,
                     )
-                elif state["installed_version"] and version_key(
+                    return False
+                if state["installed_version"] and version_key(
                     release["version"]
                 ) < version_key(state["installed_version"]):
                     raise ValueError(
                         "Vendor latest moved backwards; refusing an automatic downgrade"
                     )
-                elif check_only:
+                if check_only:
                     state["phase"] = "current" if installed == release else "available"
-                else:
-                    current = directory / "current"
-                    previous_build = (
-                        load(Path(os.readlink(current)).parent / "build.json", {})
-                        if current.is_symlink()
-                        else {}
-                    )
-                    if (
-                        installed == release
-                        and previous_build.get("fingerprint") == fingerprint
-                    ):
-                        state["phase"] = "current"
-                    else:
-                        state["phase"] = "building"
-                        atomic_json(directory / "status.json", state)
-                        profile = self.build(tool, release, fingerprint)
-                        self.activate(tool, profile)
-                        state.update(phase="activated", last_activation=now())
-                state["error"] = state.get("error") if held else None
+                    return True
+                current = directory / "current"
+                previous_build = (
+                    load(Path(os.readlink(current)).parent / "build.json", {})
+                    if current.is_symlink() else {}
+                )
+                if installed == release and previous_build.get("fingerprint") == fingerprint:
+                    state["phase"] = "current"
+                    return True
+                state["phase"] = "building"
+                atomic_json(directory / "status.json", state)
+                self.activate(tool, self.build(tool, release, fingerprint))
+                state.update(phase="activated", last_activation=now())
+                return True
             except Exception as error:
                 state.update(phase="failed", error=str(error)[-8000:])
                 print(f"{tool}: {error}", file=sys.stderr, flush=True)
+                return False
             finally:
                 state["finished_at"] = now()
                 atomic_json(directory / "status.json", state)
-            return state["phase"] not in ("failed", "held")
 
     def rollback(self, tool):
         directory = self.directory(tool)
@@ -535,9 +533,7 @@ class Updater:
             "started_at": started or stamp,
             "updated_at": stamp,
             "finished_at": stamp if status != "running" else None,
-            "exit_code": (
-                (1 if status == "failed" else 0) if status != "running" else None
-            ),
+            "exit_code": None if status == "running" else int(status == "failed"),
             "pid": os.getpid(),
             "boot_id": boot,
             "process_start": start,
@@ -563,6 +559,14 @@ class Updater:
                 return
             atomic_json(marker, {"at": now()})
 
+    def attempt(self, tool, check_only):
+        """Keep setup/IO failures inside one tool; workers never mutate batch state."""
+        try:
+            return self.update(tool, check_only), None
+        except Exception as error:
+            print(f"{tool}: {error}", file=sys.stderr, flush=True)
+            return False, str(error)
+
     def batch(self, tools, check_only=False, stale=False):
         # Preserve the existing bar-daemon reader contract and serialize with the
         # retired worker during migration. Per-tool profiles/locks remain separate.
@@ -573,35 +577,18 @@ class Updater:
             started = now()
             operation = "ai-stale" if stale else "ai-update"
             self.job(operation, "checking", started=started)
-            failures = {}
+            results = {}
             if not stale:
-
-                def attempt(tool):
-                    try:
-                        return self.update(tool, check_only)
-                    except Exception as error:
-                        # Even corrupt state or failed lock/setup IO belongs to
-                        # one tool, not to the entire batch.
-                        print(f"{tool}: {error}", file=sys.stderr, flush=True)
-                        failures[tool] = str(error)
-                        return False
-
-                with concurrent.futures.ThreadPoolExecutor(
-                    max_workers=len(tools)
-                ) as pool:
-                    results = list(pool.map(attempt, tools))
-            else:
-                results = [True]
+                with concurrent.futures.ThreadPoolExecutor(max_workers=len(tools)) as pool:
+                    results = dict(zip(tools, pool.map(self.attempt, tools, [check_only] * len(tools))))
+            succeeded = all(success for success, _ in results.values())
             states = [self.report(tool) for tool in TOOLS]
             for state in states:
-                if state["tool"] in failures:
-                    state.update(phase="failed", error=failures[state["tool"]])
-            problems = [
-                f"{s['tool']}: {s.get('error') or 'no successful release check in four hours'}"
-                for s in states
-                if s["stale"] or s["phase"] in ("failed", "held")
-            ]
-            if not all(results) and not problems:
+                _, failure = results.get(state["tool"], (True, None))
+                if failure is not None:
+                    state.update(phase="failed", error=failure)
+            problems = list(filter(None, map(status_problem, states)))
+            if not succeeded and not problems:
                 problems.append(
                     "A tool is busy; retry after its current operation finishes"
                 )
@@ -616,7 +603,7 @@ class Updater:
             if problems:
                 self.notify(error)
             # An unrelated tool's failure stays visible but cannot fail a targeted update.
-            return int(not all(results)) if not stale else 0
+            return int(not succeeded)
 
 
 def format_status(state):
@@ -645,11 +632,10 @@ def main():
     sub = parser.add_subparsers(dest="command", required=True)
     for op in ("update", "check", "rollback", "resume"):
         command = sub.add_parser(op)
-        command.add_argument(
-            "tool",
-            choices=(*TOOLS, "all") if op in ("update", "check") else TOOLS,
-            **({"nargs": "?", "default": "all"} if op in ("update", "check") else {}),
-        )
+        if op in ("update", "check"):
+            command.add_argument("tool", choices=(*TOOLS, "all"), nargs="?", default="all")
+        else:
+            command.add_argument("tool", choices=TOOLS)
     sub.add_parser("stale")
     status = sub.add_parser("status")
     status.add_argument("--json", action="store_true")
