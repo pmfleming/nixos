@@ -1,44 +1,5 @@
 {
   "nodes": {
-    "crane": {
-      "locked": {
-        "lastModified": 1790899423,
-        "narHash": "sha256-THGtz65UGJU+sonZidRboyCMk+9DclpMF7pwL4uDV4M=",
-        "owner": "ipetkov",
-        "repo": "crane",
-        "rev": "47b6b27ed9a3a9181415e4367d0c30ab2a0e0250",
-        "type": "github"
-      },
-      "original": {
-        "owner": "ipetkov",
-        "repo": "crane",
-        "rev": "47b6b27ed9a3a9181415e4367d0c30ab2a0e0250",
-        "type": "github"
-      }
-    },
-    "app-daemon": {
-      "inputs": {
-        "daemonFramework": [
-          "daemon-framework"
-        ],
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1789564123,
-        "narHash": "sha256-MuF+web21upL7k6eSJIOGLqIAsb7s+I2R+/rVcgCEH8=",
-        "ref": "refs/heads/main",
-        "rev": "fb801d99611ed09da75b36b9d5e50021f671bdf5",
-        "revCount": 98,
-        "type": "git",
-        "url": "file:///home/laufan/Projects/app-daemon"
-      },
-      "original": {
-        "type": "git",
-        "url": "file:///home/laufan/Projects/app-daemon"
-      }
-    },
     "aquamarine": {
       "inputs": {
         "hyprutils": [
@@ -72,96 +33,20 @@
         "type": "github"
       }
     },
-    "bar-daemon": {
-      "inputs": {
-        "daemonFramework": [
-          "daemon-framework"
-        ],
-        "hyprlandIpc": [
-          "shelllist-hyprland"
-        ],
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
+    "crane": {
       "locked": {
-        "lastModified": 1789564123,
-        "narHash": "sha256-Mc4XYVVOJIisCnD9k8iEed63t53q8CH4LhIq5jMKr/Y=",
-        "ref": "refs/heads/main",
-        "rev": "c9877041fac932d073fbf9bb249eb824b76fd70b",
-        "revCount": 111,
-        "type": "git",
-        "url": "file:///home/laufan/Projects/bar-daemon"
+        "lastModified": 1790899423,
+        "narHash": "sha256-THGtz65UGJU+sonZidRboyCMk+9DclpMF7pwL4uDV4M=",
+        "owner": "ipetkov",
+        "repo": "crane",
+        "rev": "47b6b27ed9a3a9181415e4367d0c30ab2a0e0250",
+        "type": "github"
       },
       "original": {
-        "type": "git",
-        "url": "file:///home/laufan/Projects/bar-daemon"
-      }
-    },
-    "bt-daemon": {
-      "inputs": {
-        "daemonFramework": [
-          "daemon-framework"
-        ],
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1789564123,
-        "narHash": "sha256-/jmkUQ6Cn0+JEePfdqH81G2gQ9tzq8L6buC1YRHLjuo=",
-        "ref": "refs/heads/main",
-        "rev": "bfc2540f7ee80440ce1222ee8228b3a9bf7785be",
-        "revCount": 112,
-        "type": "git",
-        "url": "file:///home/laufan/Projects/bt-daemon"
-      },
-      "original": {
-        "type": "git",
-        "url": "file:///home/laufan/Projects/bt-daemon"
-      }
-    },
-    "clip-daemon": {
-      "inputs": {
-        "daemonFramework": [
-          "daemon-framework"
-        ],
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1789564123,
-        "narHash": "sha256-jMPKBwqJZvoSdLfj/QukPOXLeZ2Bs7cQjkadv7IF4vg=",
-        "ref": "refs/heads/main",
-        "rev": "5c9321fd6a1eeabe54a6254473a2944c556e42fa",
-        "revCount": 108,
-        "type": "git",
-        "url": "file:///home/laufan/Projects/clip-daemon"
-      },
-      "original": {
-        "type": "git",
-        "url": "file:///home/laufan/Projects/clip-daemon"
-      }
-    },
-    "daemon-framework": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1789564123,
-        "narHash": "sha256-ET1G2sLvqAYB1VWHPPmN7e6xTokfAJhMf7xFGiGYbwI=",
-        "ref": "refs/heads/main",
-        "rev": "b45f10db211a121e04bba12a8b5a1499cc34d7f8",
-        "revCount": 37,
-        "type": "git",
-        "url": "file:///home/laufan/Projects/daemon-framework"
-      },
-      "original": {
-        "type": "git",
-        "url": "file:///home/laufan/Projects/daemon-framework"
+        "owner": "ipetkov",
+        "repo": "crane",
+        "rev": "47b6b27ed9a3a9181415e4367d0c30ab2a0e0250",
+        "type": "github"
       }
     },
     "home-manager": {
@@ -413,130 +298,16 @@
         "type": "github"
       }
     },
-    "nm-daemon": {
-      "inputs": {
-        "daemonFramework": [
-          "daemon-framework"
-        ],
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1789564123,
-        "narHash": "sha256-CtdYhN0XENS5GgujWPaufw/ZcsQpviistVeFPce6WFo=",
-        "ref": "refs/heads/main",
-        "rev": "494d6e534fc1b94c17721dc46d16307ba44ceb40",
-        "revCount": 134,
-        "type": "git",
-        "url": "file:///home/laufan/Projects/nm-daemon"
-      },
-      "original": {
-        "type": "git",
-        "url": "file:///home/laufan/Projects/nm-daemon"
-      }
-    },
     "root": {
       "inputs": {
-        "app-daemon": "app-daemon",
-        "bar-daemon": "bar-daemon",
-        "bt-daemon": "bt-daemon",
-        "clip-daemon": "clip-daemon",
         "crane": "crane",
-        "daemon-framework": "daemon-framework",
         "home-manager": "home-manager",
         "hyprland-guiutils": "hyprland-guiutils",
         "nixpkgs": "nixpkgs",
         "nixpkgs-display": "nixpkgs-display",
         "nixpkgs-unstable": "nixpkgs-unstable",
-        "nm-daemon": "nm-daemon",
-        "scratchpad": "scratchpad",
-        "shelllist": "shelllist",
-        "shelllist-hyprland": "shelllist-hyprland",
         "sops-nix": "sops-nix",
-        "ts-react-quality-lens": "ts-react-quality-lens",
         "zen-browser": "zen-browser"
-      }
-    },
-    "scratchpad": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1789249896,
-        "narHash": "sha256-J4fiMQerzahdGliiDEk57nXZVvk1vUP7Gil0vNOLn6U=",
-        "ref": "refs/heads/master",
-        "rev": "0b4faa6bcc6a8f648bd976ee77ea60752c9fd595",
-        "revCount": 176,
-        "type": "git",
-        "url": "file:///home/laufan/Projects/scratchpad"
-      },
-      "original": {
-        "type": "git",
-        "url": "file:///home/laufan/Projects/scratchpad"
-      }
-    },
-    "shelllist": {
-      "inputs": {
-        "app-daemon": [
-          "app-daemon"
-        ],
-        "bar-daemon": [
-          "bar-daemon"
-        ],
-        "bt-daemon": [
-          "bt-daemon"
-        ],
-        "clip-daemon": [
-          "clip-daemon"
-        ],
-        "daemon-framework": [
-          "daemon-framework"
-        ],
-        "nixpkgs": [
-          "nixpkgs"
-        ],
-        "nm-daemon": [
-          "nm-daemon"
-        ],
-        "shelllist-hyprland": [
-          "shelllist-hyprland"
-        ]
-      },
-      "locked": {
-        "lastModified": 1789564123,
-        "narHash": "sha256-T9FBK2fTdMFHWyLpXaT/K/4I0Jk+dp+wz0/Tg1nZn/8=",
-        "ref": "refs/heads/main",
-        "rev": "11c862d3de39075157b79a45462d939eb8eb2119",
-        "revCount": 436,
-        "type": "git",
-        "url": "file:///home/laufan/Projects/shelllist"
-      },
-      "original": {
-        "type": "git",
-        "url": "file:///home/laufan/Projects/shelllist"
-      }
-    },
-    "shelllist-hyprland": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1789429383,
-        "narHash": "sha256-FSIeEuNTNrzWqCE6UgIJs2HDwHh+skr1dVj2M2IacYo=",
-        "ref": "refs/heads/main",
-        "rev": "61376dd84a0a8f5edef2da02b11b36cd0e3edbf4",
-        "revCount": 4,
-        "type": "git",
-        "url": "file:///home/laufan/Projects/shelllist-hyprland"
-      },
-      "original": {
-        "type": "git",
-        "url": "file:///home/laufan/Projects/shelllist-hyprland"
       }
     },
     "sops-nix": {
@@ -572,26 +343,6 @@
         "owner": "nix-systems",
         "repo": "default-linux",
         "type": "github"
-      }
-    },
-    "ts-react-quality-lens": {
-      "inputs": {
-        "nixpkgs": [
-          "nixpkgs"
-        ]
-      },
-      "locked": {
-        "lastModified": 1789562401,
-        "narHash": "sha256-mZvUYOkKfeTuiqpG5ZlWwTJkIFi8cd4EquQly0GC/5A=",
-        "ref": "refs/heads/main",
-        "rev": "c9e853ffe256cd04c5e6b0e2383615882d3056ae",
-        "revCount": 32,
-        "type": "git",
-        "url": "file:///home/laufan/Projects/ts-react-quality-lens"
-      },
-      "original": {
-        "type": "git",
-        "url": "file:///home/laufan/Projects/ts-react-quality-lens"
       }
     },
     "zen-browser": {

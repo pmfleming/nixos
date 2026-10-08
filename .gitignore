@@ -5,3 +5,6 @@ result-*
 *.img
 .direnv/
 .envrc
+
+# Frequently changing proposals are not rebuild inputs.
+/docs/proposals/
