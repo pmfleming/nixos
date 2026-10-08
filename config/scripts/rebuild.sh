@@ -5,7 +5,6 @@ source "@DEPLOYMENT_LOCK_HELPER@"
 
 flake_dir=@CONFIG_DIRECTORY@
 flake_attr=@FLAKE_ATTR@
-local_build_helper=@LOCAL_BUILD_HELPER@
 source_state_helper=@SOURCE_STATE_HELPER@
 approval_helper=@APPROVAL_HELPER@
 # Fail closed: nixos-rebuild has aliases and deployment modes that bypass our
@@ -269,7 +268,7 @@ fi
 
 stage 'Checking all local worktrees'
 cd "$flake_dir"
-python3 "$source_state_helper" preflight "$local_build_helper" "$flake_dir"
+"$source_state_helper" source preflight "$flake_dir"
 # The preflight above only discovers sources; authenticate before snapshot
 # resolution, compatibility checks, and the expensive system build.
 stage 'Authorizing the generation switch'
@@ -284,7 +283,7 @@ acquire_deployment_lock
 # pins or replace this with flake update / --no-write-lock-file alone.
 stage 'Snapshotting current local worktrees'
 snapshot_dir=$(mktemp -d)
-snapshot_json=$(python3 "$source_state_helper" prepare "$local_build_helper" \
+snapshot_json=$("$source_state_helper" source prepare \
   "$flake_dir" "$snapshot_dir/sources" "$snapshot_dir/baseline.json")
 printf '%s\n' "$snapshot_json" | jq .
 snapshot_flake=$(jq -er .flake <<< "$snapshot_json")

@@ -52,8 +52,7 @@ lib.mapAttrs' (
       ])
       ''
         python3 ${./config/scripts/tests/rebuild-sources.py} ${./config/scripts} \
-          ${inputs.update-daemon}/helpers/delayed-nixos-update.sh
-        python3 ${./config/scripts/tests/rebuild-source-state.py} ${./config/scripts}
+          ${updateWorker.testDriver} ${updateWorker.testConfig}
       '';
   nix =
     mkCheck "nix-quality-check"
@@ -107,11 +106,12 @@ lib.mapAttrs' (
       (with pkgs; [
         bash
         coreutils
+        jq
         util-linux
       ])
       ''
         bash ${./config/scripts/tests/deployment-lock.sh} \
-          ${./config/scripts} ${inputs.update-daemon}/helpers/delayed-nixos-update.sh
+          ${./config/scripts} ${updateWorker.testDriver} ${updateWorker.testConfig}
       '';
   updater-state = updateWorker.tests;
   # Catch npm lock/hash drift before the system deployment build.

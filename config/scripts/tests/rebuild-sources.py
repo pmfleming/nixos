@@ -1,5 +1,7 @@
 """Exercise the real rebuild control flow with fake Nix/systemd/sudo commands."""
 import shutil
+import json
+import pwd
 import fcntl
 import os
 from pathlib import Path
@@ -8,7 +10,8 @@ import sys
 import tempfile
 
 scripts = Path(sys.argv[1]).resolve()
-updater = Path(sys.argv[2]).resolve()
+driver = Path(sys.argv[2]).resolve()
+template = json.loads(Path(sys.argv[3]).read_text())
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
     rendered_scripts = root / "scripts"
@@ -116,7 +119,7 @@ elif command == "prepare":
     destination = pathlib.Path(destination)
     staged = destination / "root"
     original = destination / ".approval-root"
-    pathlib.Path(os.environ["SNAPSHOT_PATH"]).write_text(str(destination.parent))
+    pathlib.Path(SNAPSHOT_PATH).write_text(str(destination.parent))
     for target in (staged, original):
         target.mkdir(parents=True)
         for name in ("flake.nix", "flake.lock"):
@@ -127,23 +130,33 @@ elif command == "prune-lock":
 else:
     sys.exit("unexpected native helper command: " + command)
 ''')
+    helper.write_text(helper.read_text().replace("SNAPSHOT_PATH", repr(str(root / "snapshot-path"))))
     helper.chmod(0o755)
-    approval = executable("approval", f'''
-export NIXOS_DEPLOYMENT_LOCK_HELPER={rendered_scripts / "deployment-lock.sh"}
-exec bash {updater} "$@"
-''')
+    # Native test-only driver uses explicit private configuration, not production
+    # environment overrides or the retired shell/Python approval implementation.
+    approval = root / "approval"
+    shutil.copyfile(driver, approval)
+    approval.chmod(0o755)
+    approval.with_suffix(".effect.json").write_text(json.dumps({"root": str(root), "role": "worker"}))
     active_system = root / "active-system"
     (active_system / "bin").mkdir(parents=True)
     switch_program = active_system / "bin/switch-to-configuration"
     switch_program.write_text("#!/bin/sh\nexit 0\n")
     switch_program.chmod(0o755)
     updater_state = root / "updater-state"
+    template.update(flake_directory=str(flake), state_directory=str(updater_state),
+                    ai_state_directory=str(root / "ai"),
+                    username=pwd.getpwuid(os.geteuid()).pw_name,
+                    local_build_helper=str(helper),
+                    deployment_lock=str(rendered_scripts / "deployment.lock"),
+                    active_system=str(active_system), system_profile=str(root / "system-profile"),
+                    runtime_path=str(binaries) + ":" + os.environ["PATH"])
+    (root / "config.json").write_text(json.dumps(template))
     rendered = (rendered_scripts / "rebuild.sh").read_text()
     for old, new in {
         "@CONFIG_DIRECTORY@": str(flake),
         "@FLAKE_ATTR@": "thinkpad",
-        "@LOCAL_BUILD_HELPER@": str(helper),
-        "@SOURCE_STATE_HELPER@": str(scripts / "rebuild-source-state.py"),
+        "@SOURCE_STATE_HELPER@": str(approval),
         "@APPROVAL_HELPER@": str(approval),
         "/run/wrappers/bin/sudo": str(sudo),
     }.items():
@@ -157,10 +170,7 @@ exec bash {updater} "$@"
                        GATE_EVENTS=str(root / "gate-events"),
                        STACK_EVENTS=str(root / "stack-events"), SUDO_EVENTS=str(root / "sudo-events"),
                        CHECK_ARGUMENTS=str(root / "check-arguments"), SWITCH_ARGUMENTS=str(root / "switch-arguments"),
-                       SNAPSHOT_PATH=str(root / "snapshot-path"), FLAKE_DIR=str(flake),
-                       NIXOS_UPDATE_FLAKE_DIR=str(flake), NIXOS_UPDATE_STATE_DIR=str(updater_state),
-                       NIXOS_SOURCE_STATE_HELPER=str(scripts / "rebuild-source-state.py"),
-                       NIXOS_UPDATE_ACTIVE_SYSTEM_LINK=str(active_system))
+                       SNAPSHOT_PATH=str(root / "snapshot-path"), FLAKE_DIR=str(flake))
     for name in ("MUTATION", "AUTH_STATUS", "LATE_UNTRACKED", "CHECK_STATUS", "SWITCH_STATUS",
                  "EVAL_STATUS", "PREFLIGHT_STATUS", "CACHE_TARGET",
                  "GRAPHICAL_STATUS", "INACTIVE_UNIT", "DAEMON_RESTART_STATUS", "NIXOS_UPDATE_LIB_ONLY"):
@@ -291,16 +301,21 @@ exec bash {updater} "$@"
         assert targets.count("/nix/store/stable-check-set") == 1
     assert not abandoned.exists(), "abandoned cache attempt was not cleaned"
     approved = {name: (updater_state / name).read_bytes()
-                for name in ("approved-revision", "approved-system", "applied-lock-hash")}
-    # A stale approval may neither overwrite metadata nor recover an unrelated
-    # pending transaction. Automatic staging owns transaction recovery.
+                for name in ("approval.json", "approved-revision", "approved-system", "applied-lock-hash")}
+    for mutation in ("edit", "commit", "lock"):
+        result = scenario(MUTATION=mutation)
+        assert result.returncode == 0 and "baseline not approved: sources changed during build" in result.stdout, result.stdout
+        for name, contents in approved.items():
+            assert (updater_state / name).read_bytes() == contents
+    # Approval may neither overwrite metadata nor recover an unrelated pending
+    # transaction. Native guards reject a legacy journal before source inspection.
     transaction = updater_state / "apply-transaction"
     transaction.mkdir()
     (transaction / "sentinel").write_text("retain\n")
     for mutation in ("edit", "commit", "lock"):
         result = scenario(MUTATION=mutation)
         assert result.returncode == 0, result.stdout + result.stderr
-        assert "baseline not approved: sources changed during build" in result.stdout
+        assert "legacy transaction present" in result.stdout
         assert "SUCCESS WITH WARNINGS" in result.stdout
         assert "Automatic rollback" not in result.stdout
         assert list(transaction.iterdir()) == [transaction / "sentinel"]
@@ -308,6 +323,14 @@ exec bash {updater} "$@"
         for name, contents in approved.items():
             assert (updater_state / name).read_bytes() == contents
     shutil.rmtree(transaction)
+    journal = updater_state / "transaction.json"
+    journal.write_text("pending transaction must not be parsed or recovered by approval")
+    result = scenario(MUTATION="none")
+    assert result.returncode == 0 and "recover pending transaction before approving" in result.stdout, result.stdout
+    assert journal.read_text() == "pending transaction must not be parsed or recovered by approval"
+    for name, contents in approved.items():
+        assert (updater_state / name).read_bytes() == contents
+    journal.unlink()
 
     with (updater_state / "update.lock").open("r+") as held:
         fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -341,7 +364,7 @@ exec bash {updater} "$@"
     assert not events.read_text(), "deployment lock contention reached checks or switch"
 
     result = subprocess.run([str(approval), "approve-current"], env=environment, text=True, capture_output=True)
-    assert result.returncode == 1 and "requires the source manifest" in result.stderr
+    assert result.returncode == 1 and "approval requires an absolute manifest path" in result.stderr
     for name, contents in approved.items():
         assert (updater_state / name).read_bytes() == contents
 print("rebuild source identity, argument, approval, recovery, logging, and contention tests passed")

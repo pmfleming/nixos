@@ -13,9 +13,12 @@
   rules remain declarative.
 - **NixOS updates:** `/home/laufan/Projects/update-daemon` owns system quarantine,
   approval, deployment locks and next-boot staging. Those semantics are unchanged.
-- **AI updates:** `packages/vendor-ai-tools` now owns vendor release discovery,
-  independent checked Nix profiles, rollback holds and freshness checks. It does
-  not use the system worker's host-flake/local-worktree preparation. Existing
+- **Rebuild manifests:** native unprivileged `update-worker source` operations
+  replace the host Python helper. Existing manifest hashes and approval formats
+  are preserved; the framework still owns source graph discovery/snapshotting.
+- **AI updates:** `update-daemon` now owns native vendor release discovery,
+  Nix packaging, independent checked profiles, rollback holds and freshness checks.
+  Its vendor engine does not use the system lane's host-flake/worktree preparation. Existing
   service/timer names and Shelllist's aggregate job record format are preserved;
   `ai-tools status` adds per-tool versions, check/activation times and failures.
   The legacy shared profile remains a bootstrap fallback, not an update target.
@@ -28,8 +31,10 @@ check now protects this compatibility boundary.
 
 ## Validation and activation
 
-For vendor AI packaging and real isolated update tests, see
-[its validation record](packages/vendor-ai-tools/README.md#implementation-validation-2026-09-30).
+For vendor AI packaging and real isolated update tests, see `nix/VENDOR.md` and
+`HOST-HELPERS.md` in `/home/laufan/Projects/update-daemon`. Host rebuild/locking tests
+now invoke an explicitly configured native test driver, not the historical shell
+updater oracle. The worker and manifest operations no longer require Python.
 The following records the earlier desktop/daemon migration validation:
 
 Rust tests/Clippy, QML tests/lint, protocol contracts, worker fake-process tests,

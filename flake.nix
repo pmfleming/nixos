@@ -128,14 +128,10 @@
         manualInputs = machine.localProjects;
         localBuildHelper = nixpkgs.lib.getExe frameworkPackages.localBuild;
         localBuildTestHelper = frameworkPackages.localBuild.unwrappedProgram;
-        sourceStateHelper = ./config/scripts/rebuild-source-state.py;
-      };
-      vendorAiTools = import ./packages/vendor-ai-tools {
-        inherit pkgs;
         piExtensions = ./config/pi;
         fallbacks = unstablePkgs;
-        inherit (machine) username;
       };
+      inherit (updateWorker) vendorAiTools;
       specialArgs = {
         inherit
           inputs

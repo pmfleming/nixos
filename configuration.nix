@@ -51,17 +51,13 @@ let
       jq
       nix
       nixos-rebuild
-      python3
       util-linux
     ];
     replacements = {
       "@DEPLOYMENT_LOCK_HELPER@" = "${deploymentLock.helper}";
       "@CONFIG_DIRECTORY@" = machine.configDirectory;
       "@FLAKE_ATTR@" = machine.hostName;
-      "@LOCAL_BUILD_HELPER@" =
-        lib.getExe
-          inputs.daemon-framework.packages.${pkgs.stdenv.hostPlatform.system}.localBuild;
-      "@SOURCE_STATE_HELPER@" = "${./config/scripts/rebuild-source-state.py}";
+      "@SOURCE_STATE_HELPER@" = "${config.system.build.delayedNixosUpdate}/bin/update-worker";
       "@APPROVAL_HELPER@" = "${config.system.build.delayedNixosUpdate}/bin/delayed-nixos-update";
     };
   };

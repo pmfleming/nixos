@@ -1,24 +1,32 @@
 set -euo pipefail
 
 scripts_dir=$1
-updater=${2:?private updater helper required}
+driver=${2:?native test driver required}
+configuration=${3:?native test configuration required}
 test_root="$(mktemp -d)"
 trap 'rm -rf "$test_root"' EXIT
 bash "$scripts_dir/tests/render-deployment.sh" "$scripts_dir" "$test_root/scripts"
 scripts_dir="$test_root/scripts"
-# The historical updater oracle still needs its test override. The rendered
-# host scripts must ignore an attempted environment override of the lock inode.
 export NIXOS_DEPLOYMENT_LOCK_HELPER="$scripts_dir/deployment-lock.sh"
 export NIXOS_DEPLOYMENT_LOCK_FILE="$test_root/ignored.lock"
-export NIXOS_UPDATE_STATE_DIR="$test_root/state"
 # shellcheck source=/dev/null
 source "$NIXOS_DEPLOYMENT_LOCK_HELPER"
 
-# Model rebuild holding the shared lock. Timer jobs must skip before touching
-# either the updater state or the system profile, not wait and deadlock.
+cp "$driver" "$test_root/worker"
+chmod +x "$test_root/worker"
+jq -n --arg root "$test_root" '{root:$root,role:"worker"}' > "$test_root/worker.effect.json"
+jq --arg root "$test_root" --arg lock "$scripts_dir/deployment.lock" '
+  .state_directory=($root+"/state") | .ai_state_directory=($root+"/ai") |
+  .flake_directory=($root+"/flake") | .deployment_lock=$lock |
+  .active_system=($root+"/active") | .system_profile=($root+"/profile")
+' "$configuration" > "$test_root/config.json"
+
+# Exercise the actual native lock ordering, with no old shell updater oracle.
 acquire_deployment_lock
-bash "$updater" run-delayed
-[ ! -e "$NIXOS_UPDATE_STATE_DIR" ]
+"$test_root/worker" run-delayed
+[ "$(jq -r .phase "$test_root/state/jobs/system.json")" = skipped ]
+[ ! -e "$test_root/state/approval.json" ]
+[ ! -e "$test_root/profile" ]
 if bash "$scripts_dir/prune-nixos-generations.sh" --profile "$test_root/missing-profile"; then
   printf 'Pruning ignored deployment lock contention.\n' >&2
   exit 1
@@ -31,19 +39,16 @@ if bash -c 'source "$NIXOS_DEPLOYMENT_LOCK_HELPER"; acquire_deployment_lock'; th
 else
   [ "$?" -eq 75 ]
 fi
-
-# Approval must be able to run while rebuild holds the deployment lock. Stub
-# only the approval work; keep the actual main() lock ordering and cleanup.
-bash -c '
-  export NIXOS_UPDATE_LIB_ONLY=1
-  source "$1"
-  approve_current() {
-    [ "$1" = private-manifest.json ]
-    touch "$NIXOS_UPDATE_STATE_DIR/approved"
-  }
-  main approve-current private-manifest.json
-' bash "$updater"
-[ -f "$NIXOS_UPDATE_STATE_DIR/approved" ]
+# Approval must reach manifest verification while rebuild holds deployment.lock.
+# An intentionally absent manifest prevents any approval/state publication.
+if "$test_root/worker" approve-current "$test_root/missing-manifest"; then
+  printf 'Native approval accepted an absent manifest.\n' >&2
+  exit 1
+else
+  [ "$?" -eq 1 ]
+fi
+[ "$(jq -r .phase "$test_root/state/jobs/system.json")" = verifying ]
+[ ! -e "$test_root/state/approval.json" ]
 release_deployment_lock
 
 # A released lock is usable by another process; process exit releases it too.

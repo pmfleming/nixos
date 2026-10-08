@@ -11,7 +11,7 @@ The live flake in `/etc/nixos` targets `thinkpad` (`x86_64-linux`), user `laufan
 | `hardware-configuration.nix` | Machine-specific hardware settings |
 | `modules/`, `lib/` | Update, retention, printer, display and shared integration |
 | `config/`, `theme.nix` | Application configuration, scripts and theme substitutions |
-| `packages/vendor-ai-tools/` | Independent AI-tool packaging and updates |
+| `update-daemon` local input | Native rebuild manifests, system updates and independent vendor-tool packaging/updates |
 
 ## Build and deploy
 
@@ -69,7 +69,7 @@ sudo ai-tools resume pi              # Release that hold
 journalctl -u nixos-ai-tools-update.service -n 100 --no-pager
 ```
 
-Hourly stale checks retry/wait before warning about checks older than four hours; notifications are limited to once per six hours. See the [vendor-tool runbook](packages/vendor-ai-tools/README.md) for trust boundaries, isolated validation and recovery.
+Hourly stale checks retry/wait before warning about checks older than four hours; notifications are limited to once per six hours. The native `ai-tools` command and recipes are owned by `/home/laufan/Projects/update-daemon`; its `nix/VENDOR.md` runbook covers trust boundaries, isolated validation and recovery. There is no production configuration-file override or Python updater.
 
 ### NixOS: quarantined remote inputs, next-boot activation
 
@@ -77,7 +77,7 @@ The Rust `update-worker` from `update-daemon` handles this lane. Automatic disco
 
 Local projects are snapshotted afresh, never deployed from persistent revision pins. Before applying, the worker re-evaluates current local sources; a changed resulting system invalidates the candidate. Successful staging updates the live lock/system profile and runs `switch-to-configuration boot`, not `switch`: the graphical session remains untouched until reboot.
 
-Rebuild approval binds the captured configuration revision, source identity, original lock and active system. `/etc/nixos` must be clean except for `flake.lock`; dirty or unpushed sibling projects are supported. Configuration/lock changes during the build, or remote-pin changes during disposable resolution, prevent new approval without undoing a successful deployment. Refusal preserves existing approval and pending transactions. After committing configuration changes, rebuild again to establish the matching baseline; review and commit automatic lock changes intentionally.
+The unprivileged `update-worker source` commands capture and verify rebuild manifests; privileged approval invokes verification as the source owner. Manifest v1 remains compatible with the former Python helper. Rebuild approval binds the captured configuration revision, source identity, original lock and active system. `/etc/nixos` must be clean except for `flake.lock`; dirty or unpushed sibling projects are supported. Configuration/lock changes during the build, or remote-pin changes during disposable resolution, prevent new approval without undoing a successful deployment. Refusal preserves existing approval and pending transactions. After committing configuration changes, rebuild again to establish the matching baseline; review and commit automatic lock changes intentionally.
 
 ```sh
 # Discover/build a matured candidate without applying it.
