@@ -5,7 +5,7 @@
 - **Screenshots:** `clip-daemon screenshot`, `--annotate`, and `--screen` replace
   the helper and Grim/wl-copy keybinding pipelines. The daemon owns publication,
   validation and operation cleanup; Slurp/Satty remain on-demand tools.
-- **Display layouts:** `SUPER+P` or `shelllist open displays` opens the native
+- **Display layouts:** `SUPER+D` or `shelllist open displays` opens the native
   editor. The daemon saves mode, scale, position and rotation settings, with a
   20-second confirmation deadline and durable rollback. External-only policy
   retains laptop fallback. The nwg-displays converter is removed; advanced

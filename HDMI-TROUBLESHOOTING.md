@@ -54,7 +54,7 @@ Display ownership (activate the updated daemon/UI/NixOS configuration together):
 - `programs.shelllist.displays.enable` opts into bar-daemon ownership.
 - External-only policy waits for a stable external topology and restores the
   laptop fallback on disconnect/resume. Neither legacy monitor script remains.
-- `SUPER+P` or `shelllist open displays` opens native layout settings. Mode,
+- `SUPER+D` or `shelllist open displays` opens native layout settings. Mode,
   scale, position and rotation changes require confirmation within 20 seconds.
 - Saved layouts and durable preview rollback live in
   `$XDG_CONFIG_HOME/bar-daemon/display-layout.json`, not version-controlled Lua.
