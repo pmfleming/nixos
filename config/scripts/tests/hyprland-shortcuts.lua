@@ -31,4 +31,7 @@ assert(displays.arguments[1] == "shelllist:displays", "Wrong Displays shortcut t
 local power = assert(bindings["SUPER + P"], "Super+P must open Battery & Power")
 assert(power.dispatcher == "hl.dsp.global", "Power must use a global shortcut")
 assert(power.arguments[1] == "shelllist:battery", "Wrong Power shortcut target")
+local notifications = assert(bindings["SUPER + period"], "Super+. must open Notifications")
+assert(notifications.dispatcher == "hl.dsp.global", "Notifications must use a global shortcut")
+assert(notifications.arguments[1] == "shelllist:notifications", "Wrong Notifications shortcut target")
 print("Hyprland shortcut registration checks passed")
