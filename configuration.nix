@@ -68,6 +68,7 @@ in
     ./modules/ai-tools-updates.nix
     ./modules/delayed-updates.nix
     ./modules/generation-retention.nix
+    ./modules/location-timezone.nix
     ./modules/printers.nix
     inputs.update-daemon.nixosModules.buildCache
   ];
@@ -162,7 +163,8 @@ in
   console.keyMap = "us";
 
   services = {
-    automatic-timezoned.enable = true;
+    automatic-timezoned.enable = false;
+    location-timezone.enable = true;
     # Shelllist runs as a user service, but its privileged battery helper must
     # be registered with the system D-Bus instance.
     dbus.packages = [ shelllistPackage ];
