@@ -77,6 +77,11 @@ in
     enable = true;
     user = machine.username;
     maxGiB = 4;
+    retentionDays = 14;
+    sharedCaches = {
+      enable = true;
+      maxGiB = 1;
+    };
     workspaceRoots = [
       "${machine.homeDirectory}/Projects"
       "${machine.homeDirectory}/Projects-p2"

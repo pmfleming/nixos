@@ -144,10 +144,15 @@ lib.mapAttrs' (
     assert lib.hasSuffix "/bin/build-cache-trim" service.serviceConfig.ExecStop;
     assert service.serviceConfig.TimeoutStopSec == "60s";
     assert service.serviceConfig.TimeoutStopFailureMode == "kill";
-    assert
-      service.unitConfig.RequiresMountsFor == lib.unique (
-        host.services.build-cache-trim.workspaceRoots ++ host.services.build-cache-trim.repositories
-      );
+    assert lib.all (path: builtins.elem path service.unitConfig.RequiresMountsFor) (
+      host.services.build-cache-trim.workspaceRoots ++ host.services.build-cache-trim.repositories
+    );
+    assert builtins.elem "systemd-logind.service" service.before;
+    assert !(builtins.elem "user.slice" service.before);
+    assert host.services.build-cache-trim.sharedCaches.enable;
+    assert builtins.elem "${machine.homeDirectory}/.cache/rqlens/helpers"
+      service.unitConfig.RequiresMountsFor;
+    assert builtins.elem "${machine.homeDirectory}/.npm/_cacache" service.unitConfig.RequiresMountsFor;
     assert
       service.serviceConfig.ReadWritePaths == map (path: "-" + path) service.unitConfig.RequiresMountsFor;
     assert host.services.build-cache-trim.workspaceRoots != [ ];
