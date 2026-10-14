@@ -115,6 +115,26 @@ lib.mapAttrs' (
       '';
   updater-state = updateWorker.tests;
   build-cache-trim =
+    let
+      host = self.nixosConfigurations.${machine.hostName}.config;
+      service = host.systemd.services.build-cache-trim;
+    in
+    assert service.serviceConfig.User == machine.username;
+    assert service.serviceConfig.RemainAfterExit;
+    assert lib.hasSuffix "/bin/true" service.serviceConfig.ExecStart;
+    assert lib.hasSuffix "/bin/build-cache-trim" service.serviceConfig.ExecStop;
+    assert service.serviceConfig.TimeoutStopSec == "60s";
+    assert service.serviceConfig.TimeoutStopFailureMode == "kill";
+    assert
+      service.unitConfig.RequiresMountsFor == lib.unique (
+        host.services.build-cache-trim.workspaceRoots ++ host.services.build-cache-trim.repositories
+      );
+    assert
+      service.serviceConfig.ReadWritePaths == map (path: "-" + path) service.unitConfig.RequiresMountsFor;
+    assert host.services.build-cache-trim.workspaceRoots != [ ];
+    assert !service.restartIfChanged && !service.stopIfChanged;
+    assert !(host.systemd.timers ? build-cache-trim);
+    assert !(host.home-manager.users.${machine.username}.systemd.user.timers ? build-cache-trim);
     (inputs.update-daemon.lib.mkBuildCachePackage {
       inherit pkgs;
       repositories = [ ];

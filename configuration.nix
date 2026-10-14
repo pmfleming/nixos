@@ -69,7 +69,18 @@ in
     ./modules/delayed-updates.nix
     ./modules/generation-retention.nix
     ./modules/printers.nix
+    inputs.update-daemon.nixosModules.buildCache
   ];
+
+  services.build-cache-trim = {
+    enable = true;
+    user = machine.username;
+    maxGiB = 4;
+    workspaceRoots = [
+      "${machine.homeDirectory}/Projects"
+      "${machine.homeDirectory}/Projects-p2"
+    ];
+  };
 
   nix = {
     settings = {
