@@ -104,8 +104,11 @@ runs the real authority against fake NetworkManager, GeoClue and timedated:
 Canadian Wi-Fi versus Dublin IP retains the timezone, then a network change with
 a fresh Dublin fix applies Europe/Dublin exactly once. It also starts with an
 exhausted legacy local counter and verifies it no longer blocks requests; repeated
-notifications on the same connection do not issue another request. It performs no external
-HTTP calls or host timezone changes. bar-daemon covers bounded status parsing and
+notifications on the same connection do not issue another request. The fake enforces
+GeoClue's `Properties.Set(ssv)` wire signature: with introspection disabled, the
+authority must explicitly wrap property values as variants rather than infer
+`sss`/`ssu` calls that real GeoClue rejects with `UnknownMethod`. It performs no
+external HTTP calls or host timezone changes. bar-daemon covers bounded status parsing and
 zone projections. Shelllist Qt tests cover immediate offset/day rollover and
 existing-footer warning placement/clearing.
 

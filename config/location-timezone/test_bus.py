@@ -39,9 +39,13 @@ def services():
         def Get(self, interface, name):
             return self.values(interface)[name]
 
-        @dbus.service.method(PROPS, in_signature="ssv", out_signature="")
-        def Set(self, interface, name, value):
-            pass
+        @dbus.service.method(PROPS, in_signature="ssv", out_signature="", message_keyword="message")
+        def Set(self, interface, name, value, message=None):
+            # dbus-python dispatch otherwise accepts wrong wire signatures,
+            # unlike GeoClue's GDBus implementation.
+            if message.get_signature() != "ssv":
+                raise dbus.DBusException("Expected Properties.Set(ssv)",
+                                         name="org.freedesktop.DBus.Error.UnknownMethod")
 
         @dbus.service.signal(PROPS, signature="sa{sv}as")
         def PropertiesChanged(self, interface, changed, invalidated):

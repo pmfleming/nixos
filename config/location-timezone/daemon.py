@@ -254,8 +254,10 @@ class Authority:
         self.client = manager.GetClient(timeout=5)
         client = self.bus.get_object(GEO, self.client, introspect=False)
         props = dbus.Interface(client, PROPERTIES)
-        props.Set(GEO + ".Client", "DesktopId", dbus.String("location-timezone"), timeout=5)
-        props.Set(GEO + ".Client", "RequestedAccuracyLevel", dbus.UInt32(4), timeout=5)
+        # With introspection disabled, specify the variant-bearing wire
+        # signature; inference would send sss/ssu instead of Properties.Set(ssv).
+        props.Set(GEO + ".Client", "DesktopId", dbus.String("location-timezone"), signature="ssv", timeout=5)
+        props.Set(GEO + ".Client", "RequestedAccuracyLevel", dbus.UInt32(4), signature="ssv", timeout=5)
         self.location_signal = client.connect_to_signal("LocationUpdated", lambda old, new: self.geo_update(generation, new), dbus_interface=GEO + ".Client")
         dbus.Interface(client, GEO + ".Client").Start(timeout=5)
         self.geo_update(generation, props.Get(GEO + ".Client", "Location", timeout=5))
