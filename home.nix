@@ -157,6 +157,7 @@ in
         # Bootstrap fallback. Stable launchers prefer each checked vendor profile,
         # then the legacy shared profile, then these immutable system packages.
         unstablePkgs.codex
+        unstablePkgs.gemini-cli
       ]
       ++ (with pkgs; [
         ghostty
