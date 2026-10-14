@@ -125,6 +125,7 @@ in
 {
   imports = [
     inputs.shelllist.homeManagerModules.default
+    inputs.update-daemon.homeManagerModules.buildCache
     (import ./modules/home/yazi.nix {
       inherit
         palette
@@ -134,6 +135,26 @@ in
       clipDaemon = daemonPackages.clip-daemon;
     })
   ];
+
+  services.build-cache-trim = {
+    enable = true;
+    maxGiB = 4;
+    onCalendar = "hourly";
+    repositories = map (name: "${machine.homeDirectory}/Projects/${name}") [
+      "app-daemon"
+      "bar-daemon"
+      "bt-daemon"
+      "clip-daemon"
+      "daemon-framework"
+      "nm-daemon"
+      "update-daemon"
+      "rust-quality-lens"
+      "scratchpad"
+      "shelllist"
+      "scratchpad-performance-lens"
+      "shelllist-hyprland"
+    ];
+  };
 
   programs.shelllist = {
     enable = true;

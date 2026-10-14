@@ -23,7 +23,7 @@
     # persistent local-project locks. Checks and deployment use the same snapshot.
     daemon-framework = {
       url = "git+file:///home/laufan/Projects/daemon-framework";
-      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.nixpkgs.follows = "shelllist/nixpkgs";
       inputs.crane.follows = "crane";
     };
     update-daemon.url = "git+file:///home/laufan/Projects/update-daemon";
@@ -31,35 +31,35 @@
     nm-daemon = {
       url = "git+file:///home/laufan/Projects/nm-daemon";
       inputs = {
-        nixpkgs.follows = "nixpkgs";
+        nixpkgs.follows = "shelllist/nixpkgs";
         daemonFramework.follows = "daemon-framework";
       };
     };
     bt-daemon = {
       url = "git+file:///home/laufan/Projects/bt-daemon";
       inputs = {
-        nixpkgs.follows = "nixpkgs";
+        nixpkgs.follows = "shelllist/nixpkgs";
         daemonFramework.follows = "daemon-framework";
       };
     };
     clip-daemon = {
       url = "git+file:///home/laufan/Projects/clip-daemon";
       inputs = {
-        nixpkgs.follows = "nixpkgs";
+        nixpkgs.follows = "shelllist/nixpkgs";
         daemonFramework.follows = "daemon-framework";
       };
     };
     app-daemon = {
       url = "git+file:///home/laufan/Projects/app-daemon";
       inputs = {
-        nixpkgs.follows = "nixpkgs";
+        nixpkgs.follows = "shelllist/nixpkgs";
         daemonFramework.follows = "daemon-framework";
       };
     };
     bar-daemon = {
       url = "git+file:///home/laufan/Projects/bar-daemon";
       inputs = {
-        nixpkgs.follows = "nixpkgs";
+        nixpkgs.follows = "shelllist/nixpkgs";
         daemonFramework.follows = "daemon-framework";
       };
     };
@@ -67,7 +67,8 @@
     shelllist = {
       url = "git+file:///home/laufan/Projects/shelllist";
       inputs = {
-        nixpkgs.follows = "nixpkgs";
+        # Preserve Shelllist's approved product pin independently of the OS.
+        # The framework and all five daemons follow this same package set.
         daemon-framework.follows = "daemon-framework";
         nm-daemon.follows = "nm-daemon";
         bt-daemon.follows = "bt-daemon";

@@ -114,6 +114,11 @@ lib.mapAttrs' (
           ${./config/scripts} ${updateWorker.testDriver} ${updateWorker.testConfig}
       '';
   updater-state = updateWorker.tests;
+  build-cache-trim =
+    (inputs.update-daemon.lib.mkBuildCachePackage {
+      inherit pkgs;
+      repositories = [ ];
+    }).tests;
   # Catch npm lock/hash drift before the system deployment build.
   ts-react-quality-lens = inputs.ts-react-quality-lens.packages.${system}.default;
   vendor-ai-tools = vendorAiTools.tests;

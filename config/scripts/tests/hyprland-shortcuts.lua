@@ -12,10 +12,12 @@ local function stub(path)
 end
 
 local bindings = {}
+local binding_options = {}
 hl = stub("hl")
-hl.bind = function(key, action)
+hl.bind = function(key, action, options)
     assert(not bindings[key], "Duplicate shortcut: " .. key)
     bindings[key] = action
+    binding_options[key] = options
 end
 package.preload.monitors = function() end
 package.preload.workspaces = function() end
@@ -34,4 +36,13 @@ assert(power.arguments[1] == "shelllist:battery", "Wrong Power shortcut target")
 local notifications = assert(bindings["SUPER + period"], "Super+. must open Notifications")
 assert(notifications.dispatcher == "hl.dsp.global", "Notifications must use a global shortcut")
 assert(notifications.arguments[1] == "shelllist:notifications", "Wrong Notifications shortcut target")
+local middle_click = assert(bindings["mouse:274"], "Middle-click must be disabled")
+assert(type(middle_click) == "function", "Middle-click must use a no-op callback")
+assert(middle_click() == nil, "Middle-click must do nothing")
+local middle_options = assert(binding_options["mouse:274"])
+assert(middle_options.ignore_mods, "Middle-click must be disabled with modifiers")
+assert(middle_options.locked, "Middle-click must be disabled while locked")
+assert(middle_options.dont_inhibit, "Applications must not inhibit the middle-click block")
+assert(middle_options.submap_universal, "Middle-click must be disabled in every submap")
+assert(not middle_options.non_consuming, "Middle-click must not reach applications")
 print("Hyprland shortcut registration checks passed")

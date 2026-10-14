@@ -23,6 +23,8 @@ For validation without activation, use `local-build check /etc/nixos`. To switch
 
 Use `rebuild`, not direct `nixos-rebuild --flake`: the wrapper owns source selection, checks, deployment locking, session recovery and unattended-update approval.
 
+Shelllist retains its approved nixpkgs pin from its own lockfile; the shared framework and all five daemons follow `shelllist/nixpkgs`. The host OS pin stays independent. Do not override the product package set with the host pin: Shelllist's build-input policy rejects that drift.
+
 Local inputs are current Git worktrees under `/home/laufan/Projects`, including tracked uncommitted edits. Register new files with `git add` or `git add -N`; rebuild reports untracked files before sudo and never stages them itself. The native framework helper snapshots each worktree once and revalidates after authentication. Checks and deployment reuse that frozen graph even if editing continues. It does not fetch, push, change branches or update live local-project pins.
 
 **All five domain daemons share one current `daemon-framework` snapshot.** Vendored frameworks and per-daemon revision pins are rejected. Persistent locks retain remote dependencies; ordinary Nix flake commands can recreate unwanted local pins.

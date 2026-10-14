@@ -139,6 +139,16 @@ hl.window_rule({
     workspace = "5 silent",
 })
 
+-- Consume middle-click (including touchpad-generated clicks) without affecting
+-- wheel scrolling, even with modifiers, in submaps, or while locked.
+hl.bind("mouse:274", function() end, {
+    ignore_mods = true,
+    locked = true,
+    dont_inhibit = true,
+    submap_universal = true,
+    description = "Disable middle-click",
+})
+
 -- Applications and session actions
 hl.bind("SUPER + RETURN", hl.dsp.exec_cmd(app(terminal)))
 hl.bind("SUPER + SPACE", hl.dsp.global("shelllist:applications"))
