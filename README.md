@@ -55,9 +55,11 @@ Two independent lanes separate tool activation from system deployment. Finite sy
 
 ### AI tools: independent vendor releases
 
-Claude Code, Codex, Gemini CLI, Pi and T3 Code check official non-prerelease releases every **15 minutes**, including on battery, with boot/resume catch-up. Claude uses its latest public release channel, not its deliberately delayed `stable` channel. Availability within roughly an hour awake/online is a target, not a guarantee.
+Claude Code, Codex, Antigravity CLI, Pi and T3 Code check official non-prerelease releases every **15 minutes**, including on battery, with boot/resume catch-up. Claude uses its latest public release channel, not its deliberately delayed `stable` channel. Availability within roughly an hour awake/online is a target, not a guarantee.
 
-Gemini CLI is available as `gemini`, with `nixpkgs-unstable.gemini-cli` as its bootstrap fallback and the official stable GitHub bundle as its independently updated package. Provider sign-in remains user-managed. The pinned fallback carries an upstream migration warning for unpaid/Google AI Pro/Ultra users moving to Antigravity CLI; Gemini account eligibility is not guaranteed by installation.
+Antigravity CLI replaces Gemini CLI and runs as `agy`, with `nixpkgs-unstable.antigravity-cli` as its bootstrap fallback. Independent updates use Google's official Linux manifest and mandatory SHA-512 checksum; CLI self-updates are disabled in the launcher. This is the terminal agent, not the Antigravity IDE.
+
+After rebuilding, start `agy` and follow its migration/sign-in wizard. Existing `~/.gemini` settings, credentials and histories are left untouched; old Gemini vendor profiles are retained but no longer updated or launched. Google's [migration guide](https://antigravity.google/docs/cli/gcli-migration/) covers `agy plugin import gemini`, skills paths and MCP conversion. Provider sign-in remains user-managed; installation does not guarantee account eligibility.
 
 Each tool has separate checked packages, current/previous profiles and GC roots under `/var/lib/nixos-ai-tools/vendor/<tool>/`. Downloads require vendor hashes; sandboxed smoke checks precede activation. Pi extension tests gate only Pi; T3 includes CLI and desktop. Failures are isolated and existing sessions are untouched. Hashes trust vendor accounts, not independent publisher signatures.
 
@@ -66,7 +68,7 @@ The updater imports deployment-pinned packaging inputs directly: no host flake e
 ```sh
 ai-tools status --json
 sudo ai-tools check                 # Discover only
-sudo ai-tools update gemini          # Update one tool
+sudo ai-tools update antigravity     # Update one tool
 sudo systemctl start nixos-ai-tools-update.service  # Update all tools
 sudo ai-tools rollback pi            # Restore previous profile and hold updates
 sudo ai-tools resume pi              # Release that hold

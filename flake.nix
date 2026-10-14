@@ -115,6 +115,7 @@
         config.allowUnfreePredicate =
           pkg:
           builtins.elem (nixpkgs.lib.getName pkg) [
+            "antigravity-cli"
             "claude-code"
             "codex"
             "pi-coding-agent"
