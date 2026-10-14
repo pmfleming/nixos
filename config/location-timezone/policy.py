@@ -1,6 +1,5 @@
 """Pure policy for network-scoped, fail-closed timezone updates."""
 from dataclasses import dataclass
-from datetime import datetime, timezone
 import json
 import math
 import os
@@ -76,38 +75,36 @@ def agreement(wifi, ip, *, started, now, zone_at, canonical, countries):
 
 
 class Schedule:
-    """Generation fences survive same-network reconnects and resume."""
+    """One attempt per usable connection; timers never schedule another lookup."""
     def __init__(self):
         self.network = None
         self.generation = 0
         self.due = float("inf")
-        self.failures = 0
+        self.attempted_network = None
         self.started = None
 
     def invalidate(self, network, now):
         self.network = network
         self.generation += 1
-        self.failures = 0
         self.started = None
-        self.due = now + 10 if network else float("inf")
+        self.due = now + 10 if network and network != self.attempted_network else float("inf")
 
     def begin(self, now):
         if not self.network or self.started is not None or now < self.due:
             return None
         self.started = now
+        self.attempted_network = self.network
+        self.due = float("inf")
         return self.generation
 
     def current(self, generation):
         return self.network is not None and self.started is not None and generation == self.generation
 
-    def finish(self, generation, now, success=False, retry_after=0):
+    def finish(self, generation):
         if not self.current(generation):
             return False
         self.started = None
-        delay = 3600 if success else (60, 300, 900, 3600)[min(self.failures, 3)]
-        if not success:
-            self.failures += 1
-        self.due = now + max(delay, retry_after)
+        self.due = float("inf")
         return True
 
 
@@ -132,19 +129,6 @@ def atomic_json(path, value, mode=0o600):
             os.unlink(temporary)
 
 
-class Budget:
-    """Reserve before network I/O; persist quota/cooldown across service restarts."""
-    def __init__(self, state):
-        self.state = state
-
-    def reserve(self, now):
-        if now < self.state.get("ip_not_before", 0):
-            return False
-        day = datetime.fromtimestamp(now, timezone.utc).date().isoformat()
-        # A backward clock correction must not reset the budget.
-        if day > self.state.get("budget_day", ""):
-            self.state.update(budget_day=day, ip_calls=0)
-        if self.state.get("ip_calls", 0) >= 40:
-            return False
-        self.state["ip_calls"] = self.state.get("ip_calls", 0) + 1
-        return True
+def provider_wait(state, now):
+    """Honor a provider-issued cooldown only; there is no local request quota."""
+    return max(0, state.get("ip_not_before", 0) - now)

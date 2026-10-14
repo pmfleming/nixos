@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock, patch
 
-from policy import Budget, Fix, Schedule, agreement, atomic_json, ip_fix
+from policy import Fix, Schedule, agreement, atomic_json, ip_fix, provider_wait
 import daemon
 
 
@@ -71,44 +71,50 @@ class SchedulingTests(unittest.TestCase):
         self.assertIsNone(s.begin(20))
         s.invalidate(("connection-b", "ap-b"), 21)
         self.assertFalse(s.current(generation))
-        self.assertFalse(s.finish(generation, 22, success=True))
+        self.assertFalse(s.finish(generation))
         self.assertIsNone(s.begin(30))
         self.assertTrue(s.current(s.begin(31)))
 
-    def test_resume_and_same_network_reconnect_invalidate(self):
+    def test_new_connection_object_after_disconnect_rearms(self):
         s = Schedule()
-        s.invalidate("same-wifi", 0)
+        s.invalidate(("same-wifi", "/connection/1"), 0)
         old = s.begin(10)
         s.invalidate(None, 12)
         self.assertFalse(s.current(old))
-        s.invalidate("same-wifi", 20)
-        self.assertNotEqual(old, s.begin(30))
+        s.invalidate(("same-wifi", "/connection/2"), 20)
+        new = s.begin(30)
+        self.assertIsNotNone(new)
+        self.assertNotEqual(old, new)
 
-    def test_failure_backoff_success_periodic_and_retry_after(self):
+    def test_new_connections_have_no_daily_cap(self):
+        s = Schedule()
+        for connection in range(100):
+            s.invalidate(connection + 1, connection * 20)
+            generation = s.begin(connection * 20 + 10)
+            self.assertIsNotNone(generation)
+            self.assertTrue(s.finish(generation))
+
+    def test_completion_never_schedules_hourly_or_failure_retries(self):
         s = Schedule()
         s.invalidate("online", 0)
-        now = 10
-        for delay in (60, 300, 900, 3600, 3600):
-            generation = s.begin(now)
-            s.finish(generation, now)
-            self.assertEqual(s.due, now + delay)
-            now = s.due
-        generation = s.begin(now)
-        s.finish(generation, now, retry_after=7200)
-        self.assertEqual(s.due, now + 7200)
-        generation = s.begin(s.due)
-        s.finish(generation, s.due, success=True)
-        self.assertEqual(s.due, now + 10800)
+        generation = s.begin(10)
+        self.assertTrue(s.finish(generation))
+        for now in (60, 3600, 86400, 365 * 86400):
+            self.assertIsNone(s.begin(now))
+        s.invalidate(None, 100)
+        s.invalidate("online", 200)
+        self.assertIsNone(s.begin(220), "Connectivity flicker is not a new connection")
+        s.invalidate("new-connection-object", 300)
+        self.assertIsNotNone(s.begin(310))
 
-    def test_budget_and_rate_limit_survive_restart(self):
-        state = {}
-        for _ in range(40):
-            self.assertTrue(Budget(state).reserve(1791990000))
-        self.assertFalse(Budget(state).reserve(1791990000))
-        self.assertFalse(Budget(state).reserve(1791900000))
-        self.assertTrue(Budget(state).reserve(1792100000))
-        state["ip_not_before"] = 1792200000
-        self.assertFalse(Budget(state).reserve(1792100001))
+    def test_only_provider_cooldown_limits_requests(self):
+        state = {"budget_day": "2026-10-14", "ip_calls": 100000}
+        for now in (0, 1000, 1791990000):
+            self.assertEqual(provider_wait(state, now), 0)
+        state["ip_not_before"] = 2000
+        self.assertEqual(provider_wait(state, 1000), 1000)
+        self.assertEqual(provider_wait(json.loads(json.dumps(state)), 1500), 500)
+        self.assertEqual(provider_wait(state, 2000), 0)
 
     def test_atomic_private_state_and_public_status(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -131,6 +137,8 @@ class AuthorityTests(unittest.TestCase):
         a.schedule.invalidate("wifi-a", 0)
         a.schedule.begin(10)
         a.state = {}
+        a.ip_future = None
+        a.suspended = False
         a.started_wall = 1000
         a.wifi = Fix(53.3498, -6.2603, 1001, "WiFi", 1000)
         a.ip = Fix(53.34, -6.27, 1002, "IP", zone="Europe/Dublin", country="IE")
@@ -192,7 +200,7 @@ class AuthorityTests(unittest.TestCase):
         interface.return_value.SetTimezone.side_effect = daemon.dbus.DBusException("Denied")
         a.consider(a.schedule.generation)
         self.assertNotIn("accepted", a.state)
-        a.status.assert_called_with("Timezone not applied · retry pending")
+        a.status.assert_called_with("Timezone not applied · waiting for a new connection")
 
     def test_cached_geoclue_result_waits_instead_of_accepting(self):
         a = self.make_authority()
@@ -214,19 +222,64 @@ class AuthorityTests(unittest.TestCase):
         a.save.assert_called_once()
         a.consider.assert_not_called()
 
-    def test_network_and_resume_signals_invalidate_even_same_final_fingerprint(self):
+    @patch("daemon.GLib.idle_add")
+    def test_signals_recheck_identity_not_force_a_lookup(self, idle):
         a = self.make_authority()
         a.invalidate = MagicMock()
         a.network_signal(daemon.NM, {"Connectivity": 4}, [])
-        a.invalidate.assert_called_with(force=True)
-        a.invalidate.reset_mock()
-        a.network_signal(daemon.NM + ".Device.Wireless", {"LastScan": 123}, [])
+        idle.assert_called_once_with(a.refresh_network)
         a.invalidate.assert_not_called()
+        a.refresh_network()
+        a.invalidate.assert_called_once_with()
+        idle.reset_mock()
+        a.network_signal(daemon.NM + ".Device.Wireless", {"LastScan": 123}, [])
+        a.owner_signal(daemon.GEO, ":1.3", "")
+        a.owner_signal(daemon.GEO, "", ":1.4")
+        idle.assert_not_called()
         a.resume_signal(True)
         self.assertTrue(a.suspended)
+        self.assertIsNone(a.schedule.started)
         a.resume_signal(False)
+        idle.assert_called_once_with(a.refresh_network)
         self.assertFalse(a.suspended)
-        self.assertEqual(a.invalidate.call_count, 2)
+        self.assertIsNone(a.schedule.begin(10000))
+
+    def test_repeated_network_notifications_do_not_rearm_or_replace_status(self):
+        a = self.make_authority()
+        a.fail(a.schedule.generation, "Sources disagree")
+        a.status.reset_mock()
+        generation = a.schedule.generation
+        for _ in range(10):
+            a.invalidate()
+        self.assertEqual(a.schedule.generation, generation)
+        self.assertIsNone(a.schedule.begin(1000000))
+        a.status.assert_not_called()
+        a.network.return_value = None
+        a.invalidate()
+        a.network.return_value = "wifi-a"
+        a.invalidate()
+        self.assertIsNone(a.schedule.begin(1000000))
+        a.status.assert_called_with("Sources disagree")
+
+    @patch("daemon.dbus.Interface")
+    def test_cooldown_blocks_connection_attempt_without_a_fake_budget(self, interface):
+        a = self.make_authority()
+        a.state = {"ip_not_before": 2000, "ip_calls": 40}
+        with patch("daemon.time.time", return_value=1000):
+            a.start(a.schedule.generation)
+        interface.assert_not_called()
+        a.status.assert_called_with("Location provider rate limited · timezone unchanged")
+        self.assertIsNone(a.schedule.begin(5000))
+
+    @patch("daemon.dbus.Interface")
+    def test_no_request_counter_before_geo_or_ip_setup(self, interface):
+        a = self.make_authority()
+        a.state = {"ip_calls": 40, "budget_day": "2026-10-14"}
+        interface.return_value.GetClient.side_effect = daemon.dbus.DBusException("unavailable")
+        with self.assertRaises(daemon.dbus.DBusException):
+            a.start(a.schedule.generation)
+        self.assertEqual(a.state["ip_calls"], 40)
+        a.save.assert_not_called()
 
     def test_real_offline_zone_dataset_and_aliases(self):
         zones = daemon.Zones(Path(os.environ["TZDIR"]))

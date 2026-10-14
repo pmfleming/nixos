@@ -133,7 +133,11 @@ def authority():
     from policy import Fix
     # Only the remote IP adapter is replaced; real production scheduling,
     # GeoClue subscription, network fencing, status and timezone write run.
-    daemon.lookup_ip = lambda: (Fix(53.34, -6.27, time.time(), "IP", zone="Europe/Dublin", country="IE"), 0, "")
+    def lookup():
+        with open(os.environ["TEST_IP_LOG"], "a") as log:
+            log.write("request\n")
+        return Fix(53.34, -6.27, time.time(), "IP", zone="Europe/Dublin", country="IE"), 0, ""
+    daemon.lookup_ip = lookup
     daemon.main()
 
 
@@ -142,6 +146,10 @@ def smoke():
     with tempfile.TemporaryDirectory() as directory:
         os.environ["STATE_DIRECTORY"] = directory + "/state"
         os.environ["RUNTIME_DIRECTORY"] = directory + "/run"
+        os.environ["TEST_IP_LOG"] = directory + "/requests"
+        state_dir = Path(directory) / "state"
+        state_dir.mkdir()
+        (state_dir / "state.json").write_text(json.dumps({"ip_calls": 40, "budget_day": "2026-10-14"}))
         status = Path(directory) / "run/status.json"
         bus = dbus.SessionBus()
         server = subprocess.Popen([sys.executable, __file__, "services"])
@@ -171,8 +179,12 @@ def smoke():
             assert list(control.Writes()) == ["Europe/Dublin"]
             saved = json.loads((Path(directory) / "state/state.json").read_text())
             assert saved["accepted"]["timezone"] == "Europe/Dublin"
-            assert saved["ip_calls"] == 2
-            print("PASS: real D-Bus reconnect, cached GeoClue rejection, disagreement retention and agreed timezone application")
+            assert "ip_calls" not in saved and "budget_day" not in saved
+            control.Move(2)  # repeated FULL notification on the same connection
+            time.sleep(12)  # longer than debounce; must not cause another lookup
+            assert Path(os.environ["TEST_IP_LOG"]).read_text().splitlines() == ["request", "request"]
+            assert list(control.Writes()) == ["Europe/Dublin"]
+            print("PASS: real D-Bus connection-only lookup, legacy-cap migration, stale-fix rejection and timezone application")
         finally:
             for process in (worker, server):
                 if process is not None:

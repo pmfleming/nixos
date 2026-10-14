@@ -17,7 +17,7 @@ from dbus.mainloop.glib import DBusGMainLoop
 from gi.repository import GLib
 from timezonefinder import TimezoneFinder
 
-from policy import Budget, Fix, Schedule, agreement, atomic_json, coordinate, ip_fix
+from policy import Fix, Schedule, agreement, atomic_json, coordinate, ip_fix, provider_wait
 
 PROPERTIES = "org.freedesktop.DBus.Properties"
 NM = "org.freedesktop.NetworkManager"
@@ -97,7 +97,13 @@ class Authority:
         self.state = json.loads(self.state_path.read_text()) if self.state_path.exists() else {}
         if not isinstance(self.state, dict):
             raise ValueError("Invalid persistent location state")
-        self.budget = Budget(self.state)
+        # Migrate the obsolete local cap without discarding provider cooldowns,
+        # accepted location or the manual-pause state.
+        if any(key in self.state for key in ("budget_day", "ip_calls")):
+            self.state.pop("budget_day", None)
+            self.state.pop("ip_calls", None)
+            self.save()
+        self.last_result = "Waiting for a new network connection"
         self.zones = Zones(Path(os.environ["TZDIR"]))
         self.message = None
         self.client = None
@@ -135,17 +141,12 @@ class Authority:
             props = self.props(NM, "/org/freedesktop/NetworkManager", NM)
             if int(props.get("Connectivity", 0)) != 4 or int(props.get("State", 0)) != 70:
                 return None
-            # Active connection objects change on reconnect, even for the same
-            # saved network. AP paths detect roaming; VPN/default-route objects
-            # are also part of the generation fingerprint. No SSIDs are logged.
+            # Connection object paths change on reconnect, even for the same
+            # saved network. DHCP renewals, scans and AP roaming on an existing
+            # connection must not spend another provider request. Include NM's
+            # unique owner because paths can be reused after an NM restart.
             active = tuple(sorted(map(str, props.get("ActiveConnections", []))))
-            aps = []
-            for device in props.get("Devices", []):
-                info = self.props(NM, device, NM + ".Device")
-                if int(info.get("DeviceType", 0)) == 2 and int(info.get("State", 0)) == 100:
-                    wifi = self.props(NM, device, NM + ".Device.Wireless")
-                    aps.append(str(wifi.get("ActiveAccessPoint", "/")))
-            return (active, str(props.get("PrimaryConnection", "/")), tuple(sorted(aps)))
+            return (str(self.bus.get_name_owner(NM)), active, str(props.get("PrimaryConnection", "/")))
         except dbus.DBusException:
             return None
 
@@ -153,15 +154,25 @@ class Authority:
         watched = {"Connectivity", "State", "ActiveConnections", "PrimaryConnection",
                    "ActiveAccessPoint", "Ip4Config", "Ip6Config"}
         if str(interface).startswith(NM) and watched.intersection(set(changed) | set(invalidated)):
-            self.invalidate(force=True)
+            GLib.idle_add(self.refresh_network)
+
+    def refresh_network(self):
+        # Do not make nested synchronous D-Bus calls from a bus signal handler.
+        if not self.suspended:
+            self.invalidate()
+        return False
 
     def owner_signal(self, name, old, new):
-        if str(name) in (NM, GEO):
-            self.invalidate(force=True)
+        if str(name) == NM:
+            GLib.idle_add(self.refresh_network)
+        # GeoClue stopping/starting is not a network connection event.
 
     def resume_signal(self, sleeping):
         self.suspended = bool(sleeping)
-        self.invalidate(force=True)
+        if self.suspended:
+            self.fail(self.schedule.generation, "Location check interrupted · waiting for a new connection")
+        else:
+            GLib.idle_add(self.refresh_network)
 
     def resume_automatic(self):
         # Explicit administrator action: systemctl reload location-timezone.
@@ -187,7 +198,12 @@ class Authority:
             self.schedule.invalidate(network, time.monotonic())
             self.close_geo()
             self.wifi = self.ip = None
-            self.status("Checking current location…" if network else "Waiting for internet · timezone unchanged")
+            if not network:
+                self.status("Waiting for internet · timezone unchanged")
+            elif self.schedule.due != float("inf"):
+                self.status("Checking current location…")
+            else:
+                self.status(self.last_result)
 
     def close_geo(self):
         if self.location_signal:
@@ -204,6 +220,10 @@ class Authority:
 
     def tick(self):
         try:
+            if self.suspended:
+                return True
+            # This polls local connection state only, never periodically starts
+            # a remote lookup on an already-attempted connection.
             self.invalidate()
             if self.state.get("paused"):
                 self.status("Timezone changed manually · automatic location paused")
@@ -211,22 +231,22 @@ class Authority:
             now = time.monotonic()
             if self.schedule.started is not None and now - self.schedule.started > 90:
                 self.fail(self.schedule.generation, "Fresh location unavailable · timezone unchanged")
-            if self.ip_future is not None and not self.ip_future.done():
+            if self.ip_future is not None:
                 return True
             generation = self.schedule.begin(now)
             if generation is not None:
                 self.start(generation)
         except (dbus.DBusException, OSError, ValueError, KeyError) as error:
             # Avoid logging raw provider payloads/coordinates or request URLs.
-            LOG.warning("Location check failed (%s)", type(error).__name__)
+            name = error.get_dbus_name() if isinstance(error, dbus.DBusException) else type(error).__name__
+            LOG.warning("Location check failed (%s)", name)
             self.fail(self.schedule.generation, "Location service unavailable · timezone unchanged")
         return True
 
     def start(self, generation):
-        if not self.budget.reserve(time.time()):
-            self.fail(generation, "Location lookup budget exhausted · timezone unchanged", 3600)
+        if provider_wait(self.state, time.time()) > 0:
+            self.fail(generation, "Location provider rate limited · timezone unchanged")
             return
-        self.save()  # quota reservation must succeed before any request
         self.started_wall = time.time()
         self.wifi = self.ip = None
         self.status("Checking current location…")
@@ -263,6 +283,8 @@ class Authority:
             self.fail(generation, "Wi-Fi location unavailable · timezone unchanged")
 
     def ip_update(self, generation, future):
+        if self.ip_future is future:
+            self.ip_future = None
         try:
             fix, retry, error = future.result()
             if retry:
@@ -270,7 +292,7 @@ class Authority:
                 self.save()  # retain rate limit even for an invalidated generation
             if self.schedule.current(generation):
                 if error:
-                    self.fail(generation, error, retry)
+                    self.fail(generation, error)
                 else:
                     self.ip = fix
                     self.consider(generation)
@@ -306,17 +328,19 @@ class Authority:
             self.state["accepted"] = {"timezone": zone, "latitude": self.wifi.latitude,
                                       "longitude": self.wifi.longitude, "verified_at": time.time()}
             self.save()
-            self.schedule.finish(generation, time.monotonic(), success=True)
+            self.schedule.finish(generation)
             self.close_geo()
+            self.last_result = ""
             self.status("")
         except ValueError as error:
             self.fail(generation, str(error))
         except (dbus.DBusException, OSError):
-            self.fail(generation, "Timezone not applied · retry pending")
+            self.fail(generation, "Timezone not applied · waiting for a new connection")
 
-    def fail(self, generation, message, retry=0):
-        if self.schedule.finish(generation, time.monotonic(), retry_after=retry):
+    def fail(self, generation, message):
+        if self.schedule.finish(generation):
             self.close_geo()
+            self.last_result = message
             self.status(message)
 
 
