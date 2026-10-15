@@ -140,9 +140,6 @@ in
     enable = true;
     package = shelllist;
     systemd.target = "graphical-session.target";
-    # Transitional: daemon startup is owned by services.bar-daemon below.
-    systemd.startBarDaemon = false;
-    suspend.enable = false;
   };
 
   services.bar-daemon = {

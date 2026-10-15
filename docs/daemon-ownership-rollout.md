@@ -59,3 +59,18 @@ Shelllist disabled while daemon settings remain identical and hypridle stays
 notify-ready. This caught and fixed an unconditional host override that otherwise
 left a stub shelllist unit behind. Resource/network and helper module checks remain
 mandatory members of the deployment matrix. No live services have been changed.
+
+## Stage 3
+
+Shelllist now exports only the UI application; its NixOS/Home Manager modules no
+longer configure daemons, discovery, RAPL, privileged helpers or idle policy. Old
+options fail with migration instructions. Client binaries remain runtime adapters
+in its PATH, not exported service metadata (their shared server/client packages
+remain transitive dependencies). Bar runtime packaging no longer exports system
+activation/Polkit/location policy; those are separate integration packages.
+
+Validation: UI-only module/package checks, bar system/session/idle module checks,
+and the host UI-disabled independence check pass. Rebuilding bar-daemon also ran
+144 library tests, 11 battery helper tests and two integration test cases without
+failures. NixOS-managed sessions also get notify-ready idle integration when
+explicitly enabled. No deployed service has changed yet.
