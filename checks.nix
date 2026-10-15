@@ -39,6 +39,16 @@ lib.mapAttrs' (
   name: value: lib.nameValuePair "shelllist-${name}" value
 ) inputs.shelllist.checks.${system}
 // {
+  dbus-discovery =
+    let
+      host = self.nixosConfigurations.${machine.hostName}.config;
+    in
+    mkCheck "dbus-discovery-contract" [ pkgs.python3 pkgs.dbus pkgs.dbus-broker pkgs.systemd ] ''
+      python3 -B ${./config/scripts}/tests/canonical-dbus.py
+      python3 -B ${./config/scripts/tests/dbus-discovery.py} \
+        ${host.environment.etc."dbus-1".source} ${host.system.path} \
+        ${host.home-manager.users.${machine.username}.home.path}
+    '';
   daemon-modules = inputs.bar-daemon.checks.${system}.modules;
   resource-module = inputs.app-daemon.checks.${system}.modules;
   discovery-module = inputs.nm-daemon.checks.${system}.discoveryModule;

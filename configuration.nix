@@ -66,6 +66,7 @@ in
     ./hardware-configuration.nix
     ./modules/ai-tools-updates.nix
     ./modules/delayed-updates.nix
+    ./modules/dbus-discovery.nix
     ./modules/generation-retention.nix
     ./modules/location-timezone.nix
     ./modules/printers.nix

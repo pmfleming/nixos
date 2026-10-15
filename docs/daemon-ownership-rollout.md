@@ -74,3 +74,25 @@ and the host UI-disabled independence check pass. Rebuilding bar-daemon also ran
 144 library tests, 11 battery helper tests and two integration test cases without
 failures. NixOS-managed sessions also get notify-ready idle integration when
 explicitly enabled. No deployed service has changed yet.
+
+## Stage 4
+
+Added a canonical system activation directory and a supplemental session directory
+that excludes services already available through the system profile's standard
+XDG path. Standard session discovery and user override ordering remain intact.
+Authorization policies/includes are retained unchanged. Repeated package inputs
+are deduplicated; conflicting service contents fail the build. An obex package
+fix corrects its activation filename. Tests exposed a pre-existing nonportable
+battery activation file lacking Exec; it now has an explicit false fallback so
+only systemd can launch the sandboxed privileged helper.
+
+Validation: six generator tests pass, including conflicts, policy preservation,
+missing paths, duplicate symlinks and profile overlap. Built host inventory has
+32 unique system and 27 unique session activation definitions with no missing
+names or misnamed files. Both inventories pass private reference-daemon tests in
+the Nix sandbox. Private socket-activated production dbus-broker instances on the
+host also pass both inventories without duplicate/name warnings. Broker testing
+is separate because the ordinary build sandbox has no journald. No real service
+was activated by these tests and neither live bus was restarted. Nix formatting,
+deadnix and statix gate passes. Future user-installed overrides remain supported;
+this does not suppress warnings for arbitrary duplicate user definitions.
