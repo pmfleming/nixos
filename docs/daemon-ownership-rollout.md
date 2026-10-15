@@ -117,7 +117,7 @@ TypeScript, lint, daemon package checks and deployment tests all remain in the
 matrix (unchanged cached checks were reused). Log: `/tmp/ownership-full-checks.log`.
 A final retained snapshot and system build are still required before activation.
 
-## Stage 6 — built and checked; activation blocked
+## Stage 6 — activated and live-validated; fresh-boot/hardware acceptance pending
 
 The retained final graph passed `nix flake check --no-build`, the complete
 `rebuildChecks` aggregate, and the NixOS toplevel build. All 47 generated udev rule
@@ -134,32 +134,52 @@ Artifacts and logs are rooted under:
 - `evaluation.log`, `checks.log`, `system.log`, `private-bus-validation.log`.
 - `build.status`: zero.
 
-**Not rolled out:** the final `sudo -n true` probe still requires a password.
-`/run/current-system` remains the previous q0ibr4c65nhmfjj7h1bgf0b78kj0dgyw
-system generation. No live bus or graphical stack has been restarted. The
-remaining authorization cannot be replaced by build-time/private-bus tests.
+### Activation and live acceptance — 2026-10-15 17:48–17:51 MDT
 
-### Resume deployment
+The initial sudo blocker was resolved by the user running `rebuild` interactively.
+The rebuild completed successfully in 1m 5s, ran all mandatory gates, switched to
+the exact checked dcl8hlhrkm59nf8qxkj4m6qxwjz5xa1a generation, refreshed the stack
+and recorded the update baseline. Log:
+`~/.local/state/nixos-rebuild/rebuild-20261015T234744Z-50938.success.log`.
 
-Run `rebuild` from the user's interactive terminal and authenticate normally.
-It re-captures the committed graph, runs the same mandatory gates (using the
-available cached results), holds the deployment lock, switches, refreshes the
-stack and records the update baseline. Do not invoke an unchecked activation
-script or restart system D-Bus manually to bypass this workflow.
+Verified after activation:
 
-After switching:
+- Both brokers reloaded at 17:48:37 without restarting (system PID 825, user PID
+  1542). No duplicate-name or misnamed-service messages since activation. The
+  earlier boot warnings remain historical entries, not new failures.
+- Live activation inventories contain every expected service: 32 managed system
+  definitions and 27 managed session definitions, no duplicates or missing names.
+  ListActivatableNames additionally includes org.freedesktop.DBus on each bus.
+- All five daemon units, Shelllist, notify-ready hypridle and location-timezone
+  are active. Notification name ownership belongs to bar-daemon.
+- Stopped only Shelllist at 17:50:52, verified backend/idle PIDs unchanged and
+  bar.snapshot plus notification-server reads still available, then restarted
+  Shelllist at 17:50:54. The UI subsequently reported its loaded surfaces and
+  logged successful bar/network/Bluetooth snapshot reconstruction. No test
+  requested a hardware mutation or replayed an uncertain operation.
+- Battery helper activated on demand and GetThresholds(BAT0) returned 0/100.
+  Generic introspection is denied by the unchanged narrow interface policy;
+  calling the allowed read interface succeeds. No thresholds were changed.
+- A short test notification was accepted (ID 306). Wi-Fi is connected; speakers,
+  microphones and Bluetooth earbuds are present. This is not a hearing/visual
+  confirmation or a test of network/audio setting mutations.
+- No failed user units. The pre-existing printer issue recurred:
+  ensure-printers failed resolving EPSON4C18B4.local at 17:50:32. It is not a
+  missing D-Bus activation. Other observed diagnostics include ignored deprecated
+  eavesdropping policy, a Qt portal app-ID registration warning and a QML IPC
+  signal warning; this is not a claim of a globally warning-free desktop.
 
-1. Confirm the active generation and all six UI/daemon user units, hypridle,
-   location-timezone and the battery helper's activation metadata.
-2. Review system/user bus messages since the switch for duplicate or misnamed
-   service warnings. Review all failed units separately from unrelated offline
-   printer/update retries.
-3. Stop only Shelllist, check that daemon units and policies remain running, then
-   restore Shelllist and confirm snapshot reconstruction without action replay.
-4. Exercise notification delivery, normal network/audio controls and authorized
-   helper reads; validate display Preview/Revert and sleep/lock with user presence.
-5. Reboot when safe, then repeat boot-journal and service checks. A private bus
-   test does not establish successful real hardware or fresh-login acceptance.
+Live evidence: `live-independence.json` and `live-activation-inventory.json` in the
+artifact directory above. The independence log records both the initial not-yet-
+ready UI response and the subsequent successful readiness confirmation.
 
-Commit the actual rollout evidence only after those steps pass. Roll back with
-normal NixOS generation selection if needed; the previous closure remains rooted.
+### Remaining acceptance
+
+The active system is new, but `/run/booted-system` still points to the old q0ibr4c
+closure: no reboot has occurred. Reboot when convenient and review the new boot's
+bus logs and unit health. Display Preview/Revert, lock/suspend/resume, and visual/
+audible notification/audio acceptance need user-present testing. They were not
+silently exercised during an active session. Commit fresh-boot/hardware evidence
+only after those checks pass; do not label the full hardware plan complete yet.
+Roll back with normal NixOS generation selection if needed; the previous closure
+remains rooted.
