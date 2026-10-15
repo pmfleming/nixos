@@ -96,3 +96,23 @@ is separate because the ordinary build sandbox has no journald. No real service
 was activated by these tests and neither live bus was restarted. Nix formatting,
 deadnix and statix gate passes. Future user-installed overrides remain supported;
 this does not suppress warnings for arbitrary duplicate user definitions.
+
+## Stage 5
+
+Reconciled all eight historical domain migration candidates against current native
+implementations and UI consumers. Calendar day projections, Bluetooth coordinated
+apply/persist, epoch-fenced display baselines, native resource totals/confidence,
+application close observation, session-bound edit-and-prepare-paste, network form
+descriptors and canonical time/weather locations are already implemented. No
+redundant reimplementation or migration of legitimate UI drafts/focus was needed.
+The Shelllist review documents the concrete owners. Updated stale option names in
+installation/media/display guidance and the unavailable-display hint; added a Qt
+regression proving the hint does not enable or dispatch a mutation.
+
+Validation: the complete host `packages.x86_64-linux.rebuildChecks` gate passed
+against one captured graph. The Qt suite reported 316 passed, zero failed, one
+existing renderer skip; the new display-owner hint test passed. Consumer protocol
+fixtures, generated bindings/contracts, transport no-replay checks, Nix quality,
+TypeScript, lint, daemon package checks and deployment tests all remain in the
+matrix (unchanged cached checks were reused). Log: `/tmp/ownership-full-checks.log`.
+A final retained snapshot and system build are still required before activation.
