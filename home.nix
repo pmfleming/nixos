@@ -125,6 +125,7 @@ in
 {
   imports = [
     inputs.shelllist.homeManagerModules.default
+    inputs.bar-daemon.homeManagerModules.default
     (import ./modules/home/yazi.nix {
       inherit
         palette
@@ -139,8 +140,16 @@ in
     enable = true;
     package = shelllist;
     systemd.target = "graphical-session.target";
+    # Transitional: daemon startup is owned by services.bar-daemon below.
+    systemd.startBarDaemon = false;
+    suspend.enable = false;
+  };
+
+  services.bar-daemon = {
+    enable = true;
     displays.enable = true;
     media.youtubeMetadata.enable = true;
+    suspend.enable = true;
   };
 
   home = {
@@ -365,12 +374,17 @@ in
   # Bound both frontend and backend shutdown: a blocked PipeWire worker must
   # not strand Home Manager's transaction with Shelllist stopped after a switch.
   systemd.user.services =
-    lib.genAttrs [ "shelllist" "bar-daemon" ] (_: {
-      Service = {
-        Slice = "session-graphical.slice";
-        TimeoutStopSec = "5s";
-      };
-    })
+    lib.genAttrs
+      (
+        lib.optional config.programs.shelllist.enable "shelllist"
+        ++ lib.optional config.services.bar-daemon.enable "bar-daemon"
+      )
+      (_: {
+        Service = {
+          Slice = "session-graphical.slice";
+          TimeoutStopSec = "5s";
+        };
+      })
     // {
       hyprpaper = graphicalService "Hyprland wallpaper service" "${pkgs.hyprpaper}/bin/hyprpaper";
       hyprpolkitagent = graphicalService "Hyprland PolicyKit authentication agent" "${pkgs.hyprpolkitagent}/libexec/hyprpolkitagent";

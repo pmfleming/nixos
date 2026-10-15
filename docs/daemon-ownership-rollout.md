@@ -45,3 +45,17 @@ absence of unrelated activation files in location/battery integration packages.
 Standalone app-daemon permission and nm-daemon discovery module contracts also
 pass (enabled/disabled/custom policy). Host-composed Home Manager checks are
 required in stage 2.
+
+## Stage 2
+
+Host configuration now explicitly enables bar-daemon's Home Manager session,
+managed idle/display/media policy and the NixOS battery helper. Network discovery
+and resource access use their daemon-owned modules. Existing host resolver mode
+and inherited mDNS profile policy are preserved. Shelllist's old daemon startup is
+disabled temporarily, pending removal of those options in stage 3.
+
+Validation: the composed host ownership check passes, including evaluation with
+Shelllist disabled while daemon settings remain identical and hypridle stays
+notify-ready. This caught and fixed an unconditional host override that otherwise
+left a stub shelllist unit behind. Resource/network and helper module checks remain
+mandatory members of the deployment matrix. No live services have been changed.

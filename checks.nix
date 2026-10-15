@@ -39,6 +39,37 @@ lib.mapAttrs' (
   name: value: lib.nameValuePair "shelllist-${name}" value
 ) inputs.shelllist.checks.${system}
 // {
+  daemon-modules = inputs.bar-daemon.checks.${system}.modules;
+  resource-module = inputs.app-daemon.checks.${system}.modules;
+  discovery-module = inputs.nm-daemon.checks.${system}.discoveryModule;
+  daemon-ownership =
+    let
+      host = self.nixosConfigurations.${machine.hostName}.config;
+      home = host.home-manager.users.${machine.username};
+      headless =
+        (self.nixosConfigurations.${machine.hostName}.extendModules {
+          modules = [
+            { home-manager.users.${machine.username}.programs.shelllist.enable = lib.mkForce false; }
+          ];
+        }).config.home-manager.users.${machine.username};
+    in
+    assert home.services.bar-daemon.enable;
+    assert headless.services.bar-daemon.enable;
+    assert !(headless.systemd.user.services ? shelllist);
+    assert
+      home.systemd.user.services.bar-daemon.Service == headless.systemd.user.services.bar-daemon.Service;
+    assert home.systemd.user.services.hypridle.Service.Type == "notify";
+    assert lib.hasPrefix "${home.services.bar-daemon.package}/bin/bar-daemon idle" (
+      lib.head home.systemd.user.services.hypridle.Service.ExecStart
+    );
+    assert builtins.elem "BAR_DAEMON_DISPLAY_CONTROL=1"
+      home.systemd.user.services.bar-daemon.Service.Environment;
+    assert builtins.elem "BAR_DAEMON_YOUTUBE_METADATA=1"
+      home.systemd.user.services.bar-daemon.Service.Environment;
+    assert host.services.bar-daemon.batteryHelper.enable;
+    assert host.services.resolved.settings.Resolve.MulticastDNS == "true";
+    assert host.networking.networkmanager.connectionConfig."connection.mdns" == -1;
+    pkgs.runCommand "daemon-ownership-contract" { } "touch $out";
   rebuild-sources =
     mkCheck "rebuild-source-identity-tests"
       (with pkgs; [

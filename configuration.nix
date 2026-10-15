@@ -13,7 +13,6 @@ let
   deploymentLock = import ./lib/deployment-lock.nix { inherit pkgs; };
   mkScript = (import ./lib/scripts.nix).mkScriptFrom pkgs ./config/scripts;
   locale = "en_IE.UTF-8";
-  shelllistPackage = inputs.shelllist.packages.${pkgs.stdenv.hostPlatform.system}.default;
   unfreePackageNames = [
     "android-studio"
     "google-chrome"
@@ -71,6 +70,9 @@ in
     ./modules/location-timezone.nix
     ./modules/printers.nix
     inputs.update-daemon.nixosModules.buildCache
+    inputs.bar-daemon.nixosModules.default
+    inputs.app-daemon.nixosModules.default
+    inputs.nm-daemon.nixosModules.discovery
   ];
 
   services.build-cache-trim = {
@@ -106,7 +108,6 @@ in
   # Expose the new wrapper for bootstrapping before the installed rebuild updates.
   system.build.rebuild = rebuild;
 
-  systemd.packages = [ shelllistPackage ];
   systemd.tmpfiles.rules = deploymentLock.tmpfilesRules;
 
   boot = {
@@ -137,10 +138,6 @@ in
   networking = {
     inherit (machine) hostName;
     networkmanager = {
-      enable = true;
-      # Keep NetworkManager and systemd-resolved on one DNS backend. This also
-      # provides the resolve1 D-Bus service NetworkManager flushes on reconnect.
-      dns = "systemd-resolved";
       settings.connectivity = {
         enabled = true;
         uri = "http://nmcheck.gnome.org/check_network_status.txt";
@@ -148,12 +145,7 @@ in
         interval = 300;
       };
     };
-    firewall = {
-      enable = true;
-      # systemd-resolved is the sole mDNS engine and listens for local
-      # DNS-SD traffic on the standard multicast port.
-      allowedUDPPorts = [ 5353 ];
-    };
+    firewall.enable = true;
   };
   # NetworkManager-wait-online can take ~10s on Wi-Fi while autoconnect/DHCP
   # settle. This does not block graphical login; it only gates units that
@@ -170,27 +162,20 @@ in
   services = {
     automatic-timezoned.enable = false;
     location-timezone.enable = true;
-    # Shelllist runs as a user service, but its privileged battery helper must
-    # be registered with the system D-Bus instance.
-    dbus.packages = [ shelllistPackage ];
-    # Allow the user-level app daemon to sample CPU package energy through RAPL.
-    # Desktop users already receive hardware access through the video group.
-    udev = {
-      extraRules = ''
-        ACTION=="add|change", SUBSYSTEM=="powercap", TEST=="energy_uj", ATTR{enabled}="1", RUN+="${pkgs.coreutils}/bin/chgrp video /sys%p/energy_uj", RUN+="${pkgs.coreutils}/bin/chmod 0440 /sys%p/energy_uj"
-      '';
-      # FIDO2/WebAuthn security key support for browser passkeys.
-      packages = [ pkgs.libfido2 ];
+    bar-daemon.batteryHelper.enable = true;
+    app-daemon.resources.enableRaplAccess = true;
+    # Preserve this host's existing resolver mode and inherited profile policy.
+    # Integration belongs to nm-daemon, not the presentation shell.
+    nm-daemon.discovery = {
+      enable = true;
+      multicastDNS = "true";
+      defaultMdns = -1;
     };
+    # FIDO2/WebAuthn security key support for browser passkeys.
+    udev.packages = [ pkgs.libfido2 ];
     # Automatic timezone detection only needs GeoClue's Wi-Fi provider. Keep
     # local-network NMEA discovery disabled without an Avahi service browser.
     geoclue2.enableNmea = false;
-    resolved = {
-      enable = true;
-      # Own .local resolution and DNS-SD multicast traffic instead of running
-      # a second mDNS engine through Avahi.
-      settings.Resolve.MulticastDNS = true;
-    };
     # WirePlumber and desktop battery consumers expect UPower on a laptop.
     upower.enable = true;
     greetd = {
@@ -335,10 +320,6 @@ in
   };
 
   environment.systemPackages = with pkgs; [
-    # Polkit only discovers action definitions linked into the system profile.
-    # The helper's D-Bus/systemd registration alone is not sufficient.
-    shelllistPackage
-
     (mkScript {
       name = "google-chrome-fullscreen";
       runtimeInputs = [ google-chrome ];
