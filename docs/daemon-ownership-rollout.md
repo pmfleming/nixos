@@ -116,3 +116,50 @@ fixtures, generated bindings/contracts, transport no-replay checks, Nix quality,
 TypeScript, lint, daemon package checks and deployment tests all remain in the
 matrix (unchanged cached checks were reused). Log: `/tmp/ownership-full-checks.log`.
 A final retained snapshot and system build are still required before activation.
+
+## Stage 6 — built and checked; activation blocked
+
+The retained final graph passed `nix flake check --no-build`, the complete
+`rebuildChecks` aggregate, and the NixOS toplevel build. All 47 generated udev rule
+files passed the system build's verifier. Both final system/session inventories
+also passed private reference-daemon and production-broker checks on the host.
+
+Artifacts and logs are rooted under:
+`/home/laufan/.local/state/daemon-ownership-rollout/`
+
+- `snapshot/`, `snapshot.json`: the exact graph used for checks and system build.
+- `checks`: `/nix/store/hmgi0rf4k6a39q7dz192c7zhhbpb81i6-rebuild-checks`.
+- `system`: `/nix/store/dcl8hlhrkm59nf8qxkj4m6qxwjz5xa1a-nixos-system-thinkpad-26.05.20260719.fd14620`.
+- `previous-system`: GC-rooted known-running generation for rollback.
+- `evaluation.log`, `checks.log`, `system.log`, `private-bus-validation.log`.
+- `build.status`: zero.
+
+**Not rolled out:** the final `sudo -n true` probe still requires a password.
+`/run/current-system` remains the previous q0ibr4c65nhmfjj7h1bgf0b78kj0dgyw
+system generation. No live bus or graphical stack has been restarted. The
+remaining authorization cannot be replaced by build-time/private-bus tests.
+
+### Resume deployment
+
+Run `rebuild` from the user's interactive terminal and authenticate normally.
+It re-captures the committed graph, runs the same mandatory gates (using the
+available cached results), holds the deployment lock, switches, refreshes the
+stack and records the update baseline. Do not invoke an unchecked activation
+script or restart system D-Bus manually to bypass this workflow.
+
+After switching:
+
+1. Confirm the active generation and all six UI/daemon user units, hypridle,
+   location-timezone and the battery helper's activation metadata.
+2. Review system/user bus messages since the switch for duplicate or misnamed
+   service warnings. Review all failed units separately from unrelated offline
+   printer/update retries.
+3. Stop only Shelllist, check that daemon units and policies remain running, then
+   restore Shelllist and confirm snapshot reconstruction without action replay.
+4. Exercise notification delivery, normal network/audio controls and authorized
+   helper reads; validate display Preview/Revert and sleep/lock with user presence.
+5. Reboot when safe, then repeat boot-journal and service checks. A private bus
+   test does not establish successful real hardware or fresh-login acceptance.
+
+Commit the actual rollout evidence only after those steps pass. Roll back with
+normal NixOS generation selection if needed; the previous closure remains rooted.
