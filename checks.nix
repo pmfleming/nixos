@@ -67,25 +67,8 @@ lib.mapAttrs' (
         deadnix --fail ${nixSources}
         statix check ${nixSources}
       '';
-  location-timezone =
-    mkCheck "location-timezone-tests"
-      [
-        pkgs.dbus
-        (pkgs.python3.withPackages (ps: [
-          ps.dbus-python
-          ps.pygobject3
-          ps.timezonefinder
-        ]))
-      ]
-      ''
-        export TZDIR=${pkgs.tzdata}/share/zoneinfo
-        export PYTHONTZPATH=$TZDIR
-        export PYTHONDONTWRITEBYTECODE=1
-        export NUMBA_DISABLE_JIT=1
-        cd ${./config/location-timezone}
-        python3 -m unittest -v test_location
-        dbus-run-session --config-file=test-session.conf -- python3 test_bus.py
-      '';
+  # Includes Rust location policy/retry and private D-Bus boundary tests.
+  location-timezone = inputs.bar-daemon.checks.${pkgs.system}.default;
   shellcheck = mkCheck "shellcheck" [ pkgs.shellcheck ] ''
     find ${./config/scripts} -type f -name '*.sh' \
       -exec shellcheck -s bash -x -e SC1091 {} +
