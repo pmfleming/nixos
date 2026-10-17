@@ -174,9 +174,6 @@ in
     };
     # FIDO2/WebAuthn security key support for browser passkeys.
     udev.packages = [ pkgs.libfido2 ];
-    # Automatic timezone detection only needs GeoClue's Wi-Fi provider. Keep
-    # local-network NMEA discovery disabled without an Avahi service browser.
-    geoclue2.enableNmea = false;
     # WirePlumber and desktop battery consumers expect UPower on a laptop.
     upower.enable = true;
     greetd = {
