@@ -7,6 +7,7 @@ flake_dir=@CONFIG_DIRECTORY@
 flake_attr=@FLAKE_ATTR@
 source_state_helper=@SOURCE_STATE_HELPER@
 approval_helper=@APPROVAL_HELPER@
+report_helper=@REPORT_HELPER@
 # Fail closed: nixos-rebuild has aliases and deployment modes that bypass our
 # checked snapshot. Only accept build tuning, never arbitrary Nix options.
 build_arguments=()
@@ -79,6 +80,17 @@ exec > >(tee -a "$log_file" >&3) 2>&1
 log_writer_pid=$!
 
 started_at=$(date +%s)
+stage_file="$log_file.stages"
+: > "$stage_file"
+monotonic_ticks() {
+  local uptime _ignored
+  read -r uptime _ignored < /proc/uptime
+  printf '%s' "${uptime/./}"
+}
+stage_started=$(monotonic_ticks)
+active_stage=initialization
+stages_closed=false
+deployed=false
 system_before=$(readlink -f /run/current-system 2>/dev/null || true)
 rebuild_stage=initialization
 session_result='not reached'
@@ -121,7 +133,19 @@ closure_bytes() {
   printf '%s\n' "$size"
 }
 
+close_stage() {
+  local now elapsed
+  now=$(monotonic_ticks)
+  elapsed=$((now - stage_started))
+  jq -cn --arg name "$active_stage" --argjson ticks "$elapsed" \
+    '{name:$name,seconds:($ticks / 100)}' >> "$stage_file"
+  printf '    completed in %s\n' "$(human_duration "$((elapsed / 100))")"
+  stage_started=$now
+}
+
 stage() {
+  close_stage
+  active_stage=$1
   rebuild_stage=$1
   printf '\n==> %s\n' "$rebuild_stage"
 }
@@ -134,6 +158,7 @@ finish() {
 
   trap - EXIT HUP INT TERM
   set +e
+  if ! $stages_closed; then close_stage; fi
   release_deployment_lock
   [[ -z $snapshot_dir ]] || rm -rf -- "$snapshot_dir"
   [[ -z $cache_pending ]] || rm -rf -- "$cache_pending"
@@ -193,7 +218,7 @@ finish() {
     if ((status != 0)); then
       printf 'Failed at:  %s (exit %d)\n' "$rebuild_stage" "$status"
     fi
-    printf 'Nix work:   %d derivations built; %d store paths copied' \
+    printf 'Nix work:   %d derivations attempted; %d store paths copied' \
       "${#built_paths[@]}" "${#copied_paths[@]}"
     [[ -z $copied_bytes ]] || printf ' (%s)' "$(human_bytes "$copied_bytes")"
     printf '\n'
@@ -219,6 +244,18 @@ finish() {
     [[ $session_result == 'not reached' ]] || printf 'Session:    %s\n' "$session_result"
     [[ $baseline_result == 'not reached' ]] || printf 'Baseline:   %s\n' "$baseline_result"
     printf 'Log:        %s\n' "$log_file"
+    jq -n --argjson started "$started_at" --argjson finished "$(date +%s)" \
+      --argjson status "$status" --arg outcome "$outcome" --arg stage "$rebuild_stage" \
+      --arg before "$system_before" --arg after "$system_after" --arg log "$log_file" \
+      --arg baseline "$baseline_result" --arg session "$session_result" \
+      --arg cb "$closure_before" --arg ca "$closure_after" --argjson deployed "$deployed" \
+      '{started_at:$started,finished_at:$finished,exit_code:$status,outcome:$outcome,
+        failed_stage:(if $status == 0 then null else $stage end),system_before:$before,
+        system_after:$after,log:$log,baseline:$baseline,session:$session,deployed:$deployed,
+        closure_before:($cb|tonumber? // null),closure_after:($ca|tonumber? // null),
+        closure_delta:(if $cb != "" and $ca != "" then ($ca|tonumber)-($cb|tonumber) else null end)}' | \
+      python3 "$report_helper" "$stage_file" || printf 'Warning: rebuild history could not be saved.\n'
+    rm -f -- "$stage_file"
 
     if [[ -n $system_before && -n $system_after && $system_before != "$system_after" ]]; then
       printf '\nPackage changes:\n'
@@ -333,7 +370,7 @@ switch_status=0
 failed_stage=
 stage 'Building and switching the NixOS generation'
 if /run/wrappers/bin/sudo nixos-rebuild switch --flake "$snapshot_flake#$flake_attr" --no-update-lock-file "${build_arguments[@]}"; then
-  :
+  deployed=true
 else
   switch_status=$?
   failed_stage=$rebuild_stage
@@ -406,4 +443,6 @@ else
   baseline_result='not approved (see reason above; deployment succeeded)'
   printf 'Warning: deployment succeeded, but no new unattended-update baseline was approved.\n' >&2
 fi
+close_stage
+stages_closed=true
 rebuild_stage=complete

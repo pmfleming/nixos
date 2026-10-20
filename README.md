@@ -47,6 +47,8 @@ Crane caches compiled dependencies for the daemons, framework tools/tests and Sc
 
 Rebuild, rollback, unattended system staging and generation pruning share `/run/lock/nixos-deployment/lock`. Interactive contention exits 75; timer jobs skip. Direct `nixos-rebuild` bypasses this coordination. Host scripts bind helper paths and the deployment-lock path at build time; environment variables cannot substitute them. Tests render private script fixtures instead (`config/scripts/tests/render-deployment.sh`).
 
+Each stage reports elapsed monotonic time. The final summary includes a stage breakdown and the first Nix error with a `nix log` hint. Private `history.jsonl` (last 1,000 attempts), `latest-run.json`, and `last-deployment.json` live beside the logs; concurrent attempts serialize history publication. Build counts mean **attempted** derivations, not proven successes. Missing closure measurements are recorded as null.
+
 Logs live in `~/.local/state/nixos-rebuild/` (or `$XDG_STATE_HOME/nixos-rebuild/`). `latest.log` identifies the newest attempt, not necessarily the running one; `latest-failed.log` identifies the latest failure. Completed logs end in `.success.log` or `.failed.log`; logs older than 30 days are pruned on subsequent runs. Skipped baseline approval after a successful deployment exits zero and reports **SUCCESS WITH WARNINGS**, with the reason in the log.
 
 ## Automatic updates

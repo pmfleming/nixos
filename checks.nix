@@ -99,6 +99,7 @@ lib.mapAttrs' (
         util-linux
       ])
       ''
+        python3 -B ${./config/scripts}/tests/rebuild-report.py
         python3 ${./config/scripts/tests/rebuild-sources.py} ${./config/scripts} \
           ${updateWorker.testDriver} ${updateWorker.testConfig}
       '';

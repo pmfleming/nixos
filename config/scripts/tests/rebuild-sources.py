@@ -158,6 +158,7 @@ else:
         "@FLAKE_ATTR@": "thinkpad",
         "@SOURCE_STATE_HELPER@": str(approval),
         "@APPROVAL_HELPER@": str(approval),
+        "@REPORT_HELPER@": str(scripts / "rebuild-report.py"),
         "/run/wrappers/bin/sudo": str(sudo),
     }.items():
         rendered = rendered.replace(old, new)
@@ -195,6 +196,11 @@ else:
     logs = root / "state/nixos-rebuild"
     assert (logs / "latest.log").resolve().name.endswith(".success.log")
     assert "SUCCESS WITH WARNINGS" in (logs / "latest.log").read_text()
+    report = json.loads((logs / "latest-run.json").read_text())
+    assert report["deployed"] and report["exit_code"] == 0
+    assert report["stages"] and all(s["seconds"] >= 0 for s in report["stages"])
+    assert report["derivations_built"] is None
+    assert len((logs / "history.jsonl").read_text().splitlines()) == 1
     assert not Path(checked.removeprefix("check path:")).exists(), "snapshot leaked after exit"
     forbidden = [
         ["--override-input", "daemon-framework", "old"], ["--flake", "other"],
