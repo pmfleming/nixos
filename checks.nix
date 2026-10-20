@@ -79,6 +79,13 @@ lib.mapAttrs' (
     assert host.services.bar-daemon.batteryHelper.enable;
     assert host.services.resolved.settings.Resolve.MulticastDNS == "true";
     assert host.networking.networkmanager.connectionConfig."connection.mdns" == -1;
+    assert host.networking.networkmanager.enable;
+    assert
+      toString host.networking.networkmanager.package
+      == toString inputs.nm-daemon.packages.${system}.networkmanagerStable;
+    assert
+      toString home.xdg.configFile."systemd/user/nm-daemon.service".source
+      == "${inputs.nm-daemon.packages.${system}.default}/share/systemd/user/nm-daemon.service";
     pkgs.runCommand "daemon-ownership-contract" { } "touch $out";
   rebuild-sources =
     mkCheck "rebuild-source-identity-tests"

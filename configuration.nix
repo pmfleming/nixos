@@ -75,6 +75,8 @@ in
     inputs.app-daemon.nixosModules.default
     inputs.bt-daemon.nixosModules.audio-stack
     inputs.nm-daemon.nixosModules.discovery
+    # Explicitly deploy the validated stable NM package alongside its adapter.
+    inputs.nm-daemon.nixosModules.networkManager
   ];
 
   services.build-cache-trim = {
