@@ -74,7 +74,36 @@ def save(record, directory):
             atomic_json(directory / "last-deployment.json", record)
 
 
+def sources(action, snapshot_path, saved_path, system, detailed=False):
+    snapshot = json.loads(Path(snapshot_path).read_text())["sourceManifest"]
+    saved_path = Path(saved_path)
+    if action == "save":
+        atomic_json(saved_path, {"system": system, **snapshot})
+        return
+    try:
+        previous = json.loads(saved_path.read_text())
+        if previous.get("system") != system:
+            raise ValueError("active system is not the recorded deployment")
+    except (OSError, ValueError) as error:
+        print(f"Changed since last deploy: unknown ({error})")
+        return
+    changes = []
+    for repo in sorted(previous["sources"].keys() | snapshot["sources"].keys()):
+        before, after = previous["sources"].get(repo, {}), snapshot["sources"].get(repo, {})
+        names = sorted(name for name in before.keys() | after.keys() if before.get(name) != after.get(name))
+        if names:
+            changes.append(f"{Path(repo).name} ({len(names)} files)")
+            if detailed:
+                print(f"  {repo}: " + ", ".join(repr(name) for name in names))
+    if previous.get("remote_lock") != snapshot.get("remote_lock"):
+        changes.append("remote flake.lock pins")
+    print("Changed since last deploy: " + (", ".join(changes) or "none"))
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "sources":
+        sources(*sys.argv[2:6], detailed="--files" in sys.argv[6:])
+        return
     record = json.load(sys.stdin)
     record["schema_version"] = 1
     record["stages"] = [json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines()]

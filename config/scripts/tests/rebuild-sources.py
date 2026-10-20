@@ -237,6 +237,18 @@ else:
         if "-j4" in arguments:
             assert check_arguments[-4:] == ["--max-jobs", "4", "--cores", "2"]
         assert len(list(cache.glob("entry-*/checks"))) == 2, "check cache is not bounded"
+    # Baseline flags are wrapper-owned, never forwarded to Nix. Dirty root
+    # refusal happens before authentication; explicit skip never calls approval.
+    (flake / "flake.nix").write_text("dirty\n")
+    before_sudo = (root / "sudo-events").read_text()
+    result = subprocess.run(["bash", str(script), "--require-baseline"], env=environment, text=True, capture_output=True)
+    assert result.returncode == 1 and "flake.nix" in result.stdout
+    assert (root / "sudo-events").read_text() == before_sudo
+    (flake / "flake.nix").write_text("before\n")
+    result = subprocess.run(["bash", str(script), "--skip-baseline", "--show-source-files"], env=environment, text=True, capture_output=True)
+    assert result.returncode == 0 and "skipped by request" in result.stdout, result.stdout
+    assert "Changed since last deploy:" in result.stdout
+    assert (logs / "last-sources.json").exists()
     before_sudo = (root / "sudo-events").read_text()
     with (logs / "rebuild.lock").open("r+") as held:
         fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)

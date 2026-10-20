@@ -11,6 +11,8 @@ report_helper=@REPORT_HELPER@
 # Fail closed: nixos-rebuild has aliases and deployment modes that bypass our
 # checked snapshot. Only accept build tuning, never arbitrary Nix options.
 build_arguments=()
+baseline_policy=warn
+source_detail=()
 parse_build_arguments() {
   # Bound both levels of parallelism: two derivations must not each spawn all
   # sixteen hardware threads. Explicit command-line values still win.
@@ -20,6 +22,14 @@ parse_build_arguments() {
     argument=$1
     shift
     case "$argument" in
+      --require-baseline|--skip-baseline)
+        if [[ $baseline_policy != warn ]]; then
+          printf 'Choose only one baseline policy flag.\n' >&2
+          return 2
+        fi
+        baseline_policy=${argument#--}
+        ;;
+      --show-source-files) source_detail=( --files ) ;;
       --verbose|-v|--quiet|--print-build-logs|-L|--show-trace|--keep-going|-k|--keep-failed|-K|--fallback|--repair|--offline)
         build_arguments+=( "$argument" )
         ;;
@@ -49,7 +59,7 @@ parse_build_arguments() {
         ;;
       *)
         printf 'rebuild owns source selection and local deployment; unsupported argument: %s\n' "$argument" >&2
-        printf 'Supported: -v, --quiet, -L, --show-trace, -k, -K, --fallback, --repair, --offline, -j/--max-jobs N|auto, --cores N.\n' >&2
+        printf 'Supported: --require-baseline, --skip-baseline, --show-source-files, -v, --quiet, -L, --show-trace, -k, -K, --fallback, --repair, --offline, -j/--max-jobs N|auto, --cores N.\n' >&2
         return 2
         ;;
     esac
@@ -305,7 +315,14 @@ fi
 
 stage 'Checking all local worktrees'
 cd "$flake_dir"
-"$source_state_helper" source preflight "$flake_dir"
+preflight_json=$("$source_state_helper" source preflight "$flake_dir")
+printf '%s\n' "$preflight_json" | jq .
+if [[ $(jq -r '.baseline.eligible' <<< "$preflight_json") == false ]]; then
+  printf 'Baseline preflight: configuration edits will prevent approval:\n'
+  jq -r '.baseline | .repository, (.blockers[] | "  " + .)' <<< "$preflight_json"
+  [[ $baseline_policy != require-baseline ]] || exit 1
+fi
+[[ $baseline_policy != skip-baseline ]] || printf 'Baseline approval explicitly skipped for this run.\n'
 # The preflight above only discovers sources; authenticate before snapshot
 # resolution, compatibility checks, and the expensive system build.
 stage 'Authorizing the generation switch'
@@ -322,8 +339,14 @@ stage 'Snapshotting current local worktrees'
 snapshot_dir=$(mktemp -d)
 snapshot_json=$("$source_state_helper" source prepare \
   "$flake_dir" "$snapshot_dir/sources" "$snapshot_dir/baseline.json")
-printf '%s\n' "$snapshot_json" | jq .
+printf '%s\n' "$snapshot_json" > "$snapshot_dir/snapshot.json"
+printf '%s\n' "$snapshot_json" | jq 'del(.sourceManifest)'
 snapshot_flake=$(jq -er .flake <<< "$snapshot_json")
+if [[ $(jq -r '.baseline.eligible' <<< "$snapshot_json") == false ]]; then
+  printf 'Baseline capture: %s\n' "$(jq -r '.baseline.reason' <<< "$snapshot_json")"
+  [[ $baseline_policy != require-baseline ]] || exit 1
+fi
+python3 "$report_helper" sources show "$snapshot_dir/snapshot.json" "$log_dir/last-sources.json" "$system_before" "${source_detail[@]}"
 
 # Fail evaluation before scheduling release builds. --keep-going is opt-in,
 # rather than spending minutes compiling after an already-fatal error.
@@ -371,6 +394,8 @@ failed_stage=
 stage 'Building and switching the NixOS generation'
 if /run/wrappers/bin/sudo nixos-rebuild switch --flake "$snapshot_flake#$flake_attr" --no-update-lock-file "${build_arguments[@]}"; then
   deployed=true
+  python3 "$report_helper" sources save "$snapshot_dir/snapshot.json" "$log_dir/last-sources.json" \
+    "$(readlink -f /run/current-system)" || printf 'Warning: deployed source history could not be saved.\n'
 else
   switch_status=$?
   failed_stage=$rebuild_stage
@@ -437,11 +462,16 @@ fi
 # lock for this command. Pass the captured identity explicitly, not via global
 # systemd environment or a mutable shared request file.
 stage 'Recording the update baseline'
-if /run/wrappers/bin/sudo "$approval_helper" approve-current "$snapshot_dir/baseline.json"; then
+if [[ $baseline_policy == skip-baseline ]]; then
+  baseline_result='skipped by request (previous approval unchanged)'
+elif approval_output=$(/run/wrappers/bin/sudo "$approval_helper" approve-current "$snapshot_dir/baseline.json" 2>&1); then
+  printf '%s\n' "$approval_output"
   baseline_result=recorded
 else
-  baseline_result='not approved (see reason above; deployment succeeded)'
+  printf '%s\n' "$approval_output"
+  baseline_result="not approved ($approval_output; deployment succeeded)"
   printf 'Warning: deployment succeeded, but no new unattended-update baseline was approved.\n' >&2
+  [[ $baseline_policy != require-baseline ]] || exit 1
 fi
 close_stage
 stages_closed=true

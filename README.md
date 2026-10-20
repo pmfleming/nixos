@@ -87,6 +87,8 @@ Local projects are snapshotted afresh, never deployed from persistent revision p
 
 The unprivileged `update-worker source` commands capture and verify rebuild manifests; privileged approval invokes verification as the source owner. Manifest v1 remains compatible with the former Python helper. Rebuild approval binds the captured configuration revision, source identity, original lock and active system. `/etc/nixos` must be clean except for `flake.lock`; dirty or unpushed sibling projects are supported. Configuration/lock changes during the build, or remote-pin changes during disposable resolution, prevent new approval without undoing a successful deployment. Refusal preserves existing approval and pending transactions. After committing configuration changes, rebuild again to establish the matching baseline; review and commit automatic lock changes intentionally.
 
+Preflight predicts eligibility before sudo; capture and final verification remain authoritative. `rebuild --require-baseline` rejects known ineligibility early (and reports failure if final approval fails after deployment). `--skip-baseline` leaves previous approval untouched. Neither flag bypasses checks. Refusal names the configuration files and distinguishes capture dirtiness from later changes. `--show-source-files` expands the changed-since-deploy summary. Captured per-file hashes in private `last-sources.json` are saved after a successful switch, independently of approval or graphical recovery; an unknown active generation is not compared against an unrelated deployment.
+
 ```sh
 # Discover/build a matured candidate without applying it.
 sudo systemctl start nixos-update-check-all.service
