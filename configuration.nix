@@ -166,6 +166,8 @@ in
   services = {
     automatic-timezoned.enable = false;
     location-timezone.enable = true;
+    # Allow diagnostic location clients without changing timezone management.
+    geoclue2.enable = true;
     bar-daemon.batteryHelper.enable = true;
     # Deploy bt-daemon's matched BlueZ/PipeWire/WirePlumber runtime packages.
     bt-daemon.audioStack.enable = true;
