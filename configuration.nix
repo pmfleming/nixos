@@ -73,6 +73,7 @@ in
     inputs.update-daemon.nixosModules.buildCache
     inputs.bar-daemon.nixosModules.default
     inputs.app-daemon.nixosModules.default
+    inputs.bt-daemon.nixosModules.audio-stack
     inputs.nm-daemon.nixosModules.discovery
   ];
 
@@ -164,6 +165,8 @@ in
     automatic-timezoned.enable = false;
     location-timezone.enable = true;
     bar-daemon.batteryHelper.enable = true;
+    # Deploy bt-daemon's matched BlueZ/PipeWire/WirePlumber runtime packages.
+    bt-daemon.audioStack.enable = true;
     app-daemon.resources.enableRaplAccess = true;
     # Preserve this host's existing resolver mode and inherited profile policy.
     # Integration belongs to nm-daemon, not the presentation shell.
