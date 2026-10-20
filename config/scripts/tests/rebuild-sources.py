@@ -81,24 +81,31 @@ case "$2" in
     [ "$4" = --no-link ]
     printf 'preflight path:%s\\n' "$source" >> "$GATE_EVENTS"
     exit "${PREFLIGHT_STATUS:-0}" ;;
-  *#rebuildChecks)
+  *#rebuildDeployment)
     [ "$4" = --out-link ]
     printf 'check path:%s\\n' "$source" >> "$EVENTS"
     printf '%s\\n' "${@:6}" > "$CHECK_ARGUMENTS"
     if [ "${CHECK_STATUS:-0}" != 0 ]; then exit "$CHECK_STATUS"; fi
-    ln -s "/nix/store/${CACHE_TARGET:-fake-check-cache-$$}" "$5" ;;
+    if [ "${SYSTEM_STATUS:-0}" != 0 ]; then exit "$SYSTEM_STATUS"; fi
+    mkdir "$5"
+    ln -s "/nix/store/${CACHE_TARGET:-fake-check-cache-$$}" "$5/checks"
+    ln -s "$BUILT_SYSTEM" "$5/system" ;;
   *) exit 99 ;;
 esac
 ''')
+    executable("nix-store", '''
+[ "$1" = --add-root ]
+[ "$3" = --indirect ]
+[ "$4" = --realise ]
+ln -s "$5" "$2"
+''')
     executable("nixos-rebuild", '''
 [ "$1" = switch ]
-[ "$2" = --flake ]
-[ "$4" = --no-update-lock-file ]
-source=${3#path:}
-source=${source%#thinkpad}
-[ "$(< "$source/flake.nix")" = before ]
-printf 'switch %s\n' "$3" >> "$EVENTS"
-printf '%s\\n' "${@:5}" > "$SWITCH_ARGUMENTS"
+[ "$2" = --store-path ]
+[ "$3" = "$BUILT_SYSTEM" ]
+[ "$#" -eq 3 ]
+printf 'switch %s\\n' "$3" >> "$EVENTS"
+: > "$SWITCH_ARGUMENTS"
 exit "${SWITCH_STATUS:-0}"
 ''')
     helper = root / "local-build"
@@ -155,7 +162,7 @@ else:
     rendered = (rendered_scripts / "rebuild.sh").read_text()
     for old, new in {
         "@CONFIG_DIRECTORY@": str(flake),
-        "@FLAKE_ATTR@": "thinkpad",
+        "$system_path == /nix/store/*": f"$system_path == {root}/*",
         "@SOURCE_STATE_HELPER@": str(approval),
         "@APPROVAL_HELPER@": str(approval),
         "@REPORT_HELPER@": str(scripts / "rebuild-report.py"),
@@ -171,9 +178,10 @@ else:
                        GATE_EVENTS=str(root / "gate-events"),
                        STACK_EVENTS=str(root / "stack-events"), SUDO_EVENTS=str(root / "sudo-events"),
                        CHECK_ARGUMENTS=str(root / "check-arguments"), SWITCH_ARGUMENTS=str(root / "switch-arguments"),
-                       SNAPSHOT_PATH=str(root / "snapshot-path"), FLAKE_DIR=str(flake))
+                       SNAPSHOT_PATH=str(root / "snapshot-path"), FLAKE_DIR=str(flake),
+                       BUILT_SYSTEM=str(active_system))
     for name in ("MUTATION", "AUTH_STATUS", "LATE_UNTRACKED", "CHECK_STATUS", "SWITCH_STATUS",
-                 "EVAL_STATUS", "PREFLIGHT_STATUS", "CACHE_TARGET",
+                 "EVAL_STATUS", "PREFLIGHT_STATUS", "CACHE_TARGET", "SYSTEM_STATUS",
                  "GRAPHICAL_STATUS", "INACTIVE_UNIT", "DAEMON_RESTART_STATUS", "NIXOS_UPDATE_LIB_ONLY"):
         environment.pop(name, None)
     environment.pop("NIXOS_LOCAL_BUILD_HELPER", None)
@@ -181,7 +189,7 @@ else:
     result = subprocess.run(["bash", str(script)], env=environment, text=True, capture_output=True)
     assert result.returncode == 0, result.stdout + result.stderr
     checked, switched = events.read_text().splitlines()
-    assert switched == "switch " + checked.removeprefix("check ") + "#thinkpad"
+    assert switched == "switch " + str(active_system)
     frozen = checked.removeprefix("check ")
     assert (root / "gate-events").read_text().splitlines() == [
         "evaluate " + frozen, "preflight " + frozen,
@@ -231,8 +239,8 @@ else:
         assert result.returncode == 0, result.stdout + result.stderr
         check_arguments = (root / "check-arguments").read_text().splitlines()
         switch_arguments = (root / "switch-arguments").read_text().splitlines()
-        assert check_arguments == switch_arguments
-        assert "--cores" in switch_arguments and "--max-jobs" in switch_arguments
+        assert switch_arguments == [], "activation must not evaluate or build again"
+        assert "--cores" in check_arguments and "--max-jobs" in check_arguments
         assert ("--keep-going" in check_arguments) == ("--keep-going" in arguments)
         if "-j4" in arguments:
             assert check_arguments[-4:] == ["--max-jobs", "4", "--cores", "2"]
@@ -360,7 +368,8 @@ else:
         ({"AUTH_STATUS": "9"}, 9, "Authorizing the generation switch"),
         ({"EVAL_STATUS": "12"}, 12, "Evaluating the frozen deployment graph"),
         ({"PREFLIGHT_STATUS": "13"}, 13, "Running inexpensive deployment checks"),
-        ({"CHECK_STATUS": "11"}, 11, "Running framework, daemon, Shelllist, and configuration checks"),
+        ({"CHECK_STATUS": "11"}, 11, "Building the system and all deployment checks"),
+        ({"SYSTEM_STATUS": "14"}, 14, "Building the system and all deployment checks"),
         ({"LATE_UNTRACKED": "1"}, 1, "Snapshotting current local worktrees"),
     ]:
         retained = sorted(str(path) for path in cache.glob("entry-*/checks"))

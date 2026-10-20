@@ -4,7 +4,6 @@ set -euo pipefail
 source "@DEPLOYMENT_LOCK_HELPER@"
 
 flake_dir=@CONFIG_DIRECTORY@
-flake_attr=@FLAKE_ATTR@
 source_state_helper=@SOURCE_STATE_HELPER@
 approval_helper=@APPROVAL_HELPER@
 report_helper=@REPORT_HELPER@
@@ -356,7 +355,7 @@ nix flake check "$snapshot_flake" --no-update-lock-file --no-build "${build_argu
 stage 'Running inexpensive deployment checks'
 nix build "$snapshot_flake#rebuildPreflight" --no-update-lock-file --no-link "${build_arguments[@]}"
 
-stage 'Running framework, daemon, Shelllist, and configuration checks'
+stage 'Building the system and all deployment checks'
 cache_dir="$state_home/nixos-rebuild/check-cache"
 mkdir -p "$cache_dir"
 # Recover abandoned attempts (e.g. SIGKILL). The interactive lock guarantees
@@ -367,8 +366,15 @@ done < <(find "$cache_dir" -mindepth 1 -maxdepth 1 -type d -name 'entry-*')
 cache_pending=$(mktemp -d "$cache_dir/entry-$(date --utc +%Y%m%dT%H%M%S%N)-XXXXXXXX")
 # This aggregate contains EVERY checks.${system} derivation and the reusable
 # Rust dependency artifacts. Nix registers the out-link as an indirect GC root.
-nix build "$snapshot_flake#rebuildChecks" --no-update-lock-file \
-  --out-link "$cache_pending/checks" "${build_arguments[@]}"
+nix build "$snapshot_flake#rebuildDeployment" --no-update-lock-file \
+  --out-link "$snapshot_dir/deployment" "${build_arguments[@]}"
+system_path=$(readlink -f "$snapshot_dir/deployment/system")
+checks_path=$(readlink -f "$snapshot_dir/deployment/checks")
+[[ $system_path == /nix/store/* && -x $system_path/bin/switch-to-configuration ]]
+[[ $checks_path == /nix/store/* ]]
+# Preserve checks independently of the temporary deployment aggregate. This
+# realizes an already-built store path, not another flake evaluation.
+nix-store --add-root "$cache_pending/checks" --indirect --realise "$checks_path"
 # Never move the link: Nix's indirect GC root records its absolute location.
 # Failed attempts leave the previous two successful check sets intact.
 touch "$cache_pending/complete"
@@ -391,8 +397,8 @@ done
 # a known state before returning that status.
 switch_status=0
 failed_stage=
-stage 'Building and switching the NixOS generation'
-if /run/wrappers/bin/sudo nixos-rebuild switch --flake "$snapshot_flake#$flake_attr" --no-update-lock-file "${build_arguments[@]}"; then
+stage 'Switching the checked NixOS generation'
+if /run/wrappers/bin/sudo nixos-rebuild switch --store-path "$system_path"; then
   deployed=true
   python3 "$report_helper" sources save "$snapshot_dir/snapshot.json" "$log_dir/last-sources.json" \
     "$(readlink -f /run/current-system)" || printf 'Warning: deployed source history could not be saved.\n'

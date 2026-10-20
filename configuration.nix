@@ -56,7 +56,6 @@ let
     replacements = {
       "@DEPLOYMENT_LOCK_HELPER@" = "${deploymentLock.helper}";
       "@CONFIG_DIRECTORY@" = machine.configDirectory;
-      "@FLAKE_ATTR@" = machine.hostName;
       "@SOURCE_STATE_HELPER@" = "${config.system.build.delayedNixosUpdate}/bin/update-worker";
       "@REPORT_HELPER@" = "${./config/scripts/rebuild-report.py}";
       "@APPROVAL_HELPER@" = "${config.system.build.delayedNixosUpdate}/bin/delayed-nixos-update";

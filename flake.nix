@@ -206,6 +206,18 @@
                 )
               )
         );
+        # Checks and the system can build in parallel; the wrapper activates
+        # only after this entire aggregate succeeds, using its exact store path.
+        rebuildDeployment = pkgs.linkFarm "rebuild-deployment" [
+          {
+            name = "checks";
+            path = self.packages.${system}.rebuildChecks;
+          }
+          {
+            name = "system";
+            path = self.nixosConfigurations.${machine.hostName}.config.system.build.toplevel;
+          }
+        ];
         inherit connectParityProbe;
         ai-tools-updater = vendorAiTools.updater;
         rebuild = self.nixosConfigurations.${machine.hostName}.config.system.build.rebuild;
