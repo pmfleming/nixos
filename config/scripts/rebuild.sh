@@ -113,6 +113,7 @@ session_result='not reached'
 baseline_result='not reached'
 snapshot_dir=
 cache_pending=
+sudo_keepalive_pid=
 
 human_duration() {
   local seconds=$1
@@ -189,6 +190,11 @@ finish() {
 
   trap - EXIT HUP INT TERM
   set +e
+  # Stop the refresh loop before closing the logger or releasing any locks.
+  if [[ -n $sudo_keepalive_pid ]]; then
+    kill "$sudo_keepalive_pid" 2>/dev/null
+    wait "$sudo_keepalive_pid" 2>/dev/null
+  fi
   if ! $stages_closed; then close_stage; fi
   # Capture while still serialized; a later deploy must not become this run's
   # reported system merely because telemetry takes a moment to finish.
@@ -351,6 +357,22 @@ fi
 # resolution, compatibility checks, and the expensive system build.
 stage 'Authorizing the generation switch'
 /run/wrappers/bin/sudo -v
+# A build can outlive sudo's timestamp. Refresh silently and noninteractively;
+# never retain the log pipe or lock descriptors in this background process.
+(
+  refresh_pid=
+  trap '[[ -z $refresh_pid ]] || { kill "$refresh_pid" 2>/dev/null || true; wait "$refresh_pid" 2>/dev/null || true; }; exit 0' HUP INT TERM
+  while kill -0 "$$" 2>/dev/null; do
+    sleep 60 &
+    refresh_pid=$!
+    wait "$refresh_pid" || exit
+    kill -0 "$$" 2>/dev/null || exit
+    /run/wrappers/bin/sudo -n -v &
+    refresh_pid=$!
+    wait "$refresh_pid" || exit
+  done
+) </dev/null >/dev/null 2>&1 3>&- 4>&- 8<&- 9>&- &
+sudo_keepalive_pid=$!
 
 stage 'Acquiring the shared deployment lock'
 acquire_deployment_lock

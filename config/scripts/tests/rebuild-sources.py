@@ -41,6 +41,12 @@ if [ "$1" = -v ]; then
   if [ "${LATE_UNTRACKED:-0}" = 1 ]; then touch "$FLAKE_DIR/late.txt"; fi
   exit "${AUTH_STATUS:-0}"
 fi
+if [ "$*" = '-n -v' ]; then
+  printf '%s' "$PPID" > "$KEEPALIVE_PID"
+  printf 'refresh output must be discarded\\n'
+  printf 'refresh stderr must be discarded\\n' >&2
+  exit 0
+fi
 exec "$@"
 ''')
     executable("systemctl", '''
@@ -86,6 +92,14 @@ case "$2" in
     [ "$4" = --out-link ]
     printf 'check path:%s\\n' "$source" >> "$EVENTS"
     printf '%s\\n' "${@:6}" > "$CHECK_ARGUMENTS"
+    if [ "${WAIT_FOR_REFRESH:-0}" = 1 ]; then
+      for _ in {1..200}; do
+        [ ! -f "$KEEPALIVE_PID" ] || break
+        sleep 0.01
+      done
+      [ -f "$KEEPALIVE_PID" ]
+    fi
+    if [ "${SIGNAL_DURING_BUILD:-0}" = 1 ]; then kill -TERM "$PPID"; fi
     if [ "${CHECK_STATUS:-0}" != 0 ]; then
       printf "error: Cannot build '/nix/store/failing-check.drv'.\\n       Reason: builder failed with exit code 1.\\n" >&2
       exit "$CHECK_STATUS"
@@ -188,10 +202,11 @@ else:
                        STACK_EVENTS=str(root / "stack-events"), SUDO_EVENTS=str(root / "sudo-events"),
                        CHECK_ARGUMENTS=str(root / "check-arguments"), SWITCH_ARGUMENTS=str(root / "switch-arguments"),
                        SNAPSHOT_PATH=str(root / "snapshot-path"), FLAKE_DIR=str(flake),
-                       BUILT_SYSTEM=str(active_system))
+                       BUILT_SYSTEM=str(active_system), KEEPALIVE_PID=str(root / "keepalive-pid"))
     for name in ("MUTATION", "AUTH_STATUS", "LATE_UNTRACKED", "CHECK_STATUS", "SWITCH_STATUS",
                  "EVAL_STATUS", "PREFLIGHT_STATUS", "CACHE_TARGET", "SYSTEM_STATUS",
-                 "GRAPHICAL_STATUS", "INACTIVE_UNIT", "DAEMON_RESTART_STATUS", "NIXOS_UPDATE_LIB_ONLY"):
+                 "GRAPHICAL_STATUS", "INACTIVE_UNIT", "DAEMON_RESTART_STATUS", "NIXOS_UPDATE_LIB_ONLY",
+                 "WAIT_FOR_REFRESH", "SIGNAL_DURING_BUILD"):
         environment.pop(name, None)
     environment.pop("NIXOS_LOCAL_BUILD_HELPER", None)
     environment.pop("NIXOS_DEPLOYMENT_LOCK_HELPER", None)
@@ -407,6 +422,26 @@ else:
         result = scenario()
     assert result.returncode == 75 and "Acquiring the shared deployment lock" in result.stdout
     assert not events.read_text(), "deployment lock contention reached checks or switch"
+
+    # Accelerate only this rendered fixture, never the deployed script's policy.
+    original_script = script.read_text()
+    script.write_text(original_script.replace("sleep 60 &", "sleep 0.05 &"))
+    for overrides, expected in [({}, 0), ({"CHECK_STATUS": "11"}, 11),
+                                ({"SIGNAL_DURING_BUILD": "1"}, 143)]:
+        (root / "keepalive-pid").unlink(missing_ok=True)
+        result = scenario(WAIT_FOR_REFRESH="1", MUTATION="edit", **overrides)
+        assert result.returncode == expected, result.stdout + result.stderr
+        pid = int((root / "keepalive-pid").read_text())
+        assert not Path(f"/proc/{pid}").exists(), "sudo refresh loop survived cleanup"
+        assert "refresh output" not in result.stdout and "refresh stderr" not in result.stderr
+        assert "refresh output" not in (logs / "latest.log").read_text()
+        assert "refresh stderr" not in (logs / "latest.log").read_text()
+        assert "=== REBUILD" in result.stdout, "logger did not drain during cleanup"
+        with (logs / "rebuild.lock").open("r+") as released:
+            fcntl.flock(released, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with lock.open("r+") as released:
+            fcntl.flock(released, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    script.write_text(original_script)
 
     result = subprocess.run([str(approval), "approve-current"], env=environment, text=True, capture_output=True)
     assert result.returncode == 1 and "approval requires an absolute manifest path" in result.stderr
