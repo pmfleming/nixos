@@ -36,6 +36,7 @@ pkgs.testers.runNixOSTest {
   name = "update-workflow";
   nodes.machine = {
     users.users.source.isNormalUser = true;
+    specialisation.alt.configuration.environment.etc."update-workflow-marker".text = "alt activated\n";
     environment.systemPackages = [
       pkgs.git
       pkgs.python3
@@ -71,10 +72,21 @@ pkgs.testers.runNixOSTest {
     machine.succeed(f"echo changed > {root}/flake/source-0")
     machine.fail(f"{root}/worker approve-current {root}/user/manifest.json")
     assert machine.succeed(f"cat {root}/state/approval.json") == approval
-    # Exercise real profile/boot/activation semantics, only inside this VM.
+    # Switch to an observably different closure, only inside this VM. Reusing
+    # the current system cannot prove either profile replacement or activation.
     system = machine.succeed("readlink -f /run/current-system").strip()
+    profile = machine.succeed("readlink -f /nix/var/nix/profiles/system").strip()
+    machine.fail("test -e /etc/update-workflow-marker")
+    alt = machine.succeed(f"readlink -f {system}/specialisation/alt").strip()
+    assert alt != system and alt != profile
+    machine.succeed(f"nixos-rebuild switch --store-path {alt} --no-reexec")
+    assert machine.succeed("readlink -f /nix/var/nix/profiles/system").strip() == alt
+    assert machine.succeed("readlink -f /run/current-system").strip() == alt
+    assert machine.succeed("cat /etc/update-workflow-marker") == "alt activated\n"
+    machine.wait_for_unit("multi-user.target")
     machine.succeed(f"nixos-rebuild switch --store-path {system} --no-reexec")
     assert machine.succeed("readlink -f /nix/var/nix/profiles/system").strip() == system
-    machine.wait_for_unit("multi-user.target")
+    assert machine.succeed("readlink -f /run/current-system").strip() == system
+    machine.fail("test -e /etc/update-workflow-marker")
   '';
 }

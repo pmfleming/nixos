@@ -36,8 +36,11 @@ read-only status, quiet output, incident notifications and a persistent bar indi
   five tools and four timers, with configuration drift correctly reported.
 - The isolated bootloader-enabled VM tests real root approval of a 100-file repo,
   a bounded number of PAM sessions (three observed; maximum five asserted),
-  approval refusal/preservation after an edit, and real store-path generation,
-  bootloader and activation handling.
+  approval refusal/preservation after an edit, and store-path switching to a
+  distinct specialisation and back. Profile and active-system pointers must
+  change, and an `/etc` marker must appear/disappear with activation. Switches
+  run with a real bootloader enabled; rebooting into the generated entries is
+  not tested.
 
 Reproduce the optional VM test (not part of every rebuild's checks):
 
