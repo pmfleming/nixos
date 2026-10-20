@@ -39,7 +39,7 @@ The checkout launcher requires Cargo/Rust, Git and Nix. The installed native `lo
 
 ### Checks, caching and recovery
 
-Rebuild evaluates the frozen flake without building, runs cheap configuration/TypeScript checks, then builds `rebuildDeployment`: the `rebuildChecks` aggregate and system toplevel in one scheduler invocation. Checks include every host check, the full Shelllist contract matrix, framework/daemon tests and reusable Rust dependencies. Both outputs must succeed before activation through `nixos-rebuild switch --store-path`; activation performs no flake evaluation. Temporary deployment roots survive through switching; the last two successful check aggregates remain rooted separately. The standalone evaluation gate remains until stage measurements justify changing its validation semantics. With a graphical session active, it restarts Shelllist and all five daemons even when their unit files are unchanged.
+Rebuild evaluates the frozen flake without building, runs cheap configuration/TypeScript checks, then builds `rebuildDeployment`: the `rebuildChecks` aggregate and system toplevel in one scheduler invocation. Checks include every host check, the full Shelllist contract matrix, framework/daemon tests and reusable Rust dependencies. Both outputs must succeed before activation through `nixos-rebuild switch --store-path … --no-reexec` (self-reexec otherwise evaluates the live configuration); activation performs no flake evaluation. Temporary deployment roots survive through switching; the last two successful check aggregates remain rooted separately. The standalone evaluation gate remains until stage measurements justify changing its validation semantics. With a graphical session active, it restarts Shelllist and all five daemons even when their unit files are unchanged.
 
 Interactive rebuild and Nix daemon defaults are **two jobs, eight cores**. Updater services explicitly use **one job, two cores**. Rebuild accepts `-j`/`--max-jobs N|auto`, `--cores N`, verbosity/logging flags, `--show-trace`, `--keep-going`, `--keep-failed`, `--fallback`, `--repair` and `--offline`. Keep-going is opt-in. Source overrides, arbitrary `--option`, remote deployment and rollback arguments are rejected; use the separate rollback command.
 
@@ -77,7 +77,7 @@ sudo ai-tools resume pi              # Release that hold
 journalctl -u nixos-ai-tools-update.service -n 100 --no-pager
 ```
 
-Hourly stale checks retry/wait before warning about checks older than four hours; notifications are limited to once per six hours. The native `ai-tools` command and recipes are owned by `/home/laufan/Projects/update-daemon`; its `nix/VENDOR.md` runbook covers trust boundaries, isolated validation and recovery. There is no production configuration-file override or Python updater.
+Hourly stale checks retry/wait before warning about checks older than four hours; notifications are deduplicated per unresolved incident. The native `ai-tools` command and recipes are owned by `/home/laufan/Projects/update-daemon`; its `nix/VENDOR.md` runbook covers trust boundaries, isolated validation and recovery. There is no production configuration-file override or Python updater.
 
 ### NixOS: quarantined remote inputs, next-boot activation
 

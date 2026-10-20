@@ -190,6 +190,9 @@ finish() {
   trap - EXIT HUP INT TERM
   set +e
   if ! $stages_closed; then close_stage; fi
+  # Capture while still serialized; a later deploy must not become this run's
+  # reported system merely because telemetry takes a moment to finish.
+  system_after=$(readlink -f /run/current-system 2>/dev/null || true)
   release_deployment_lock
   [[ -z $snapshot_dir ]] || rm -rf -- "$snapshot_dir"
   [[ -z $cache_pending ]] || rm -rf -- "$cache_pending"
@@ -217,7 +220,6 @@ finish() {
   fi
 
   elapsed=$(($(date +%s) - started_at))
-  system_after=$(readlink -f /run/current-system 2>/dev/null || true)
   [[ -z $system_after ]] || closure_after=$(closure_bytes "$system_after")
   disk_after=$(df -B1 --output=used,avail /nix/store 2>/dev/null | tail -n 1) || disk_after=
   if [[ $disk_after =~ ^[[:space:]]*([0-9]+)[[:space:]]+([0-9]+)[[:space:]]*$ ]]; then
@@ -421,7 +423,7 @@ done
 switch_status=0
 failed_stage=
 stage 'Switching the checked NixOS generation'
-if run_logged /run/wrappers/bin/sudo nixos-rebuild switch --store-path "$system_path"; then
+if run_logged /run/wrappers/bin/sudo nixos-rebuild switch --store-path "$system_path" --no-reexec; then
   deployed=true
   python3 "$report_helper" sources save "$snapshot_dir/snapshot.json" "$log_dir/last-sources.json" \
     "$(readlink -f /run/current-system)" || printf 'Warning: deployed source history could not be saved.\n'

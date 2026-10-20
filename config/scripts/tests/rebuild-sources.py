@@ -111,7 +111,8 @@ ln -s "$5" "$2"
 [ "$1" = switch ]
 [ "$2" = --store-path ]
 [ "$3" = "$BUILT_SYSTEM" ]
-[ "$#" -eq 3 ]
+[ "$#" -eq 4 ]
+[ "$4" = --no-reexec ]
 printf 'switch %s\\n' "$3" >> "$EVENTS"
 : > "$SWITCH_ARGUMENTS"
 exit "${SWITCH_STATUS:-0}"

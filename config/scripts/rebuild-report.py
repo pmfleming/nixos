@@ -95,7 +95,7 @@ def recover(directory):
             if process_alive(record) or log.parent != directory or str(marker) != str(log) + ".run.json":
                 continue
             stages = Path(str(log) + ".stages")
-            record.update(schema_version=1, exit_code=137, outcome="INTERRUPTED", finished_at=int(time.time()),
+            record.update(schema_version=1, exit_code=137, outcome="INTERRUPTED", status="interrupted", finished_at=int(time.time()),
                           deployed=None, baseline="unknown after interruption", error="Process exited without a final report; activation outcome may be unknown.",
                           stages=[json.loads(line) for line in stages.read_text().splitlines()] if stages.exists() else [])
             save(record, directory)
@@ -145,6 +145,7 @@ def main():
         return
     record = json.load(sys.stdin)
     record["schema_version"] = 1
+    record["status"] = "completed" if record["exit_code"] == 0 else "failed"
     record["stages"] = [json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines()]
     text = Path(record["log"]).read_text(errors="replace")
     record["error"] = error_excerpt(text) if record["exit_code"] else None

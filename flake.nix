@@ -156,6 +156,11 @@
     {
       formatter.${system} = pkgs.nixfmt-tree;
 
+      # Explicit opt-in: do not evaluate or boot a VM on every rebuild.
+      lib.updateWorkflowVmTest = import ./config/scripts/tests/update-workflow-vm.nix {
+        inherit pkgs updateWorker;
+      };
+
       checks.${system} = import ./checks.nix (specialArgs // { inherit self pkgs; });
 
       packages.${system} = {
