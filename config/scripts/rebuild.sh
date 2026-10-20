@@ -12,6 +12,8 @@ report_helper=@REPORT_HELPER@
 build_arguments=()
 baseline_policy=warn
 source_detail=()
+live_output=false
+monitor_output=false
 parse_build_arguments() {
   # Bound both levels of parallelism: two derivations must not each spawn all
   # sixteen hardware threads. Explicit command-line values still win.
@@ -29,8 +31,10 @@ parse_build_arguments() {
         baseline_policy=${argument#--}
         ;;
       --show-source-files) source_detail=( --files ) ;;
+      --monitor) monitor_output=true ;;
       --verbose|-v|--quiet|--print-build-logs|-L|--show-trace|--keep-going|-k|--keep-failed|-K|--fallback|--repair|--offline)
         build_arguments+=( "$argument" )
+        case "$argument" in --verbose|-v|--print-build-logs|-L) live_output=true ;; esac
         ;;
       --max-jobs|-j|--cores|--max-jobs=*|--cores=*|-j?*)
         case "$argument" in
@@ -58,7 +62,7 @@ parse_build_arguments() {
         ;;
       *)
         printf 'rebuild owns source selection and local deployment; unsupported argument: %s\n' "$argument" >&2
-        printf 'Supported: --require-baseline, --skip-baseline, --show-source-files, -v, --quiet, -L, --show-trace, -k, -K, --fallback, --repair, --offline, -j/--max-jobs N|auto, --cores N.\n' >&2
+        printf 'Supported: --require-baseline, --skip-baseline, --show-source-files, --monitor, -v, --quiet, -L, --show-trace, -k, -K, --fallback, --repair, --offline, -j/--max-jobs N|auto, --cores N.\n' >&2
         return 2
         ;;
     esac
@@ -90,6 +94,9 @@ log_writer_pid=$!
 
 started_at=$(date +%s)
 stage_file="$log_file.stages"
+run_record="$log_file.run.json"
+python3 "$report_helper" start "$run_record" "$log_file" "$$" "$started_at" || \
+  printf 'Warning: running rebuild status unavailable.\n'
 : > "$stage_file"
 monotonic_ticks() {
   local uptime _ignored
@@ -140,6 +147,21 @@ closure_bytes() {
   size=${output##*[[:space:]]}
   [[ $size =~ ^[0-9]+$ ]] || return 1
   printf '%s\n' "$size"
+}
+
+run_logged() {
+  if $live_output; then
+    "$@"
+  else
+    "$@" >> "$log_file" 2>&1
+  fi
+}
+run_build() {
+  if $monitor_output; then
+    "$@" 2>&1 | tee -a "$log_file" | nom >&3
+  else
+    run_logged "$@"
+  fi
 }
 
 close_stage() {
@@ -264,7 +286,7 @@ finish() {
         closure_before:($cb|tonumber? // null),closure_after:($ca|tonumber? // null),
         closure_delta:(if $cb != "" and $ca != "" then ($ca|tonumber)-($cb|tonumber) else null end)}' | \
       python3 "$report_helper" "$stage_file" || printf 'Warning: rebuild history could not be saved.\n'
-    rm -f -- "$stage_file"
+    rm -f -- "$stage_file" "$run_record"
 
     if [[ -n $system_before && -n $system_after && $system_before != "$system_after" ]]; then
       printf '\nPackage changes:\n'
@@ -315,7 +337,8 @@ fi
 stage 'Checking all local worktrees'
 cd "$flake_dir"
 preflight_json=$("$source_state_helper" source preflight "$flake_dir")
-printf '%s\n' "$preflight_json" | jq .
+printf '%s\n' "$preflight_json" | jq . >> "$log_file"
+printf 'Inspected %s local repositories.\n' "$(jq '.repositories | length' <<< "$preflight_json")"
 if [[ $(jq -r '.baseline.eligible' <<< "$preflight_json") == false ]]; then
   printf 'Baseline preflight: configuration edits will prevent approval:\n'
   jq -r '.baseline | .repository, (.blockers[] | "  " + .)' <<< "$preflight_json"
@@ -339,7 +362,7 @@ snapshot_dir=$(mktemp -d)
 snapshot_json=$("$source_state_helper" source prepare \
   "$flake_dir" "$snapshot_dir/sources" "$snapshot_dir/baseline.json")
 printf '%s\n' "$snapshot_json" > "$snapshot_dir/snapshot.json"
-printf '%s\n' "$snapshot_json" | jq 'del(.sourceManifest)'
+printf '%s\n' "$snapshot_json" | jq 'del(.sourceManifest)' >> "$log_file"
 snapshot_flake=$(jq -er .flake <<< "$snapshot_json")
 if [[ $(jq -r '.baseline.eligible' <<< "$snapshot_json") == false ]]; then
   printf 'Baseline capture: %s\n' "$(jq -r '.baseline.reason' <<< "$snapshot_json")"
@@ -350,10 +373,10 @@ python3 "$report_helper" sources show "$snapshot_dir/snapshot.json" "$log_dir/la
 # Fail evaluation before scheduling release builds. --keep-going is opt-in,
 # rather than spending minutes compiling after an already-fatal error.
 stage 'Evaluating the frozen deployment graph'
-nix flake check "$snapshot_flake" --no-update-lock-file --no-build "${build_arguments[@]}"
+run_logged nix flake check "$snapshot_flake" --no-update-lock-file --no-build "${build_arguments[@]}"
 
 stage 'Running inexpensive deployment checks'
-nix build "$snapshot_flake#rebuildPreflight" --no-update-lock-file --no-link "${build_arguments[@]}"
+run_build nix build "$snapshot_flake#rebuildPreflight" --no-update-lock-file --no-link "${build_arguments[@]}"
 
 stage 'Building the system and all deployment checks'
 cache_dir="$state_home/nixos-rebuild/check-cache"
@@ -366,7 +389,7 @@ done < <(find "$cache_dir" -mindepth 1 -maxdepth 1 -type d -name 'entry-*')
 cache_pending=$(mktemp -d "$cache_dir/entry-$(date --utc +%Y%m%dT%H%M%S%N)-XXXXXXXX")
 # This aggregate contains EVERY checks.${system} derivation and the reusable
 # Rust dependency artifacts. Nix registers the out-link as an indirect GC root.
-nix build "$snapshot_flake#rebuildDeployment" --no-update-lock-file \
+run_build nix build "$snapshot_flake#rebuildDeployment" --no-update-lock-file \
   --out-link "$snapshot_dir/deployment" "${build_arguments[@]}"
 system_path=$(readlink -f "$snapshot_dir/deployment/system")
 checks_path=$(readlink -f "$snapshot_dir/deployment/checks")
@@ -374,7 +397,7 @@ checks_path=$(readlink -f "$snapshot_dir/deployment/checks")
 [[ $checks_path == /nix/store/* ]]
 # Preserve checks independently of the temporary deployment aggregate. This
 # realizes an already-built store path, not another flake evaluation.
-nix-store --add-root "$cache_pending/checks" --indirect --realise "$checks_path"
+run_logged nix-store --add-root "$cache_pending/checks" --indirect --realise "$checks_path"
 # Never move the link: Nix's indirect GC root records its absolute location.
 # Failed attempts leave the previous two successful check sets intact.
 touch "$cache_pending/complete"
@@ -398,7 +421,7 @@ done
 switch_status=0
 failed_stage=
 stage 'Switching the checked NixOS generation'
-if /run/wrappers/bin/sudo nixos-rebuild switch --store-path "$system_path"; then
+if run_logged /run/wrappers/bin/sudo nixos-rebuild switch --store-path "$system_path"; then
   deployed=true
   python3 "$report_helper" sources save "$snapshot_dir/snapshot.json" "$log_dir/last-sources.json" \
     "$(readlink -f /run/current-system)" || printf 'Warning: deployed source history could not be saved.\n'

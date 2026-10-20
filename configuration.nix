@@ -50,6 +50,7 @@ let
       jq
       nix
       nixos-rebuild
+      nix-output-monitor
       python3
       util-linux
     ];

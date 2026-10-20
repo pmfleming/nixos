@@ -6,6 +6,7 @@ from pathlib import Path
 import re
 import sys
 import tempfile
+import time
 
 
 def error_excerpt(text):
@@ -50,6 +51,9 @@ def save(record, directory):
                     entries.append(json.loads(line))
                 except ValueError:
                     pass  # A crash can leave an incomplete last append.
+        record["run_id"] = str(record["started_at"]) + ":" + re.sub(r"\.(running|success|failed)\.log$", "", Path(record["log"]).name)
+        if any(entry.get("run_id") == record["run_id"] for entry in entries):
+            return  # A crash after publication but before marker cleanup.
         entries.append(record)
         # Rewrite under the lock to bound history and discard torn appends.
         fd, temporary = tempfile.mkstemp(dir=directory, prefix=".history-")
@@ -72,6 +76,33 @@ def save(record, directory):
             atomic_json(latest, record)
         if record.get("deployed"):
             atomic_json(directory / "last-deployment.json", record)
+
+
+def process_alive(record):
+    try:
+        boot = Path("/proc/sys/kernel/random/boot_id").read_text().strip()
+        stat = Path(f"/proc/{int(record['pid'])}/stat").read_text().rsplit(")", 1)[1].split()
+        return boot == record["boot_id"] and stat[0] not in ("Z", "X") and stat[19] == record["process_start"]
+    except (OSError, ValueError, KeyError, IndexError):
+        return False
+
+
+def recover(directory):
+    for marker in directory.glob("rebuild-*.running.log.run.json"):
+        try:
+            record = json.loads(marker.read_text())
+            log = Path(record["log"])
+            if process_alive(record) or log.parent != directory or str(marker) != str(log) + ".run.json":
+                continue
+            stages = Path(str(log) + ".stages")
+            record.update(schema_version=1, exit_code=137, outcome="INTERRUPTED", finished_at=int(time.time()),
+                          deployed=None, baseline="unknown after interruption", error="Process exited without a final report; activation outcome may be unknown.",
+                          stages=[json.loads(line) for line in stages.read_text().splitlines()] if stages.exists() else [])
+            save(record, directory)
+            marker.unlink()
+            stages.unlink(missing_ok=True)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            print(f"Warning: cannot recover rebuild record {marker}: {error}", file=sys.stderr)
 
 
 def sources(action, snapshot_path, saved_path, system, detailed=False):
@@ -101,6 +132,14 @@ def sources(action, snapshot_path, saved_path, system, detailed=False):
 
 
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "start":
+        _, _, destination, log, pid, started = sys.argv
+        stat = Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()
+        recover(Path(destination).parent)
+        atomic_json(Path(destination), {"schema_version": 1, "status": "running", "pid": int(pid),
+                    "started_at": int(started), "log": log, "process_start": stat[19],
+                    "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip()})
+        return
     if len(sys.argv) > 1 and sys.argv[1] == "sources":
         sources(*sys.argv[2:6], detailed="--files" in sys.argv[6:])
         return

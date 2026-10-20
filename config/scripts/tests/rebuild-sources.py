@@ -58,6 +58,7 @@ esac
     executable("nix", '''
 if [ "$1" = path-info ]; then exit 1; fi
 if [ "$1 $2" = 'flake check' ]; then
+  printf 'checking derivation noisy-test...\\n'
   [ "$4" = --no-update-lock-file ]
   [ "$5" = --no-build ]
   printf 'evaluate %s\\n' "$3" >> "$GATE_EVENTS"
@@ -85,13 +86,20 @@ case "$2" in
     [ "$4" = --out-link ]
     printf 'check path:%s\\n' "$source" >> "$EVENTS"
     printf '%s\\n' "${@:6}" > "$CHECK_ARGUMENTS"
-    if [ "${CHECK_STATUS:-0}" != 0 ]; then exit "$CHECK_STATUS"; fi
+    if [ "${CHECK_STATUS:-0}" != 0 ]; then
+      printf "error: Cannot build '/nix/store/failing-check.drv'.\\n       Reason: builder failed with exit code 1.\\n" >&2
+      exit "$CHECK_STATUS"
+    fi
     if [ "${SYSTEM_STATUS:-0}" != 0 ]; then exit "$SYSTEM_STATUS"; fi
     mkdir "$5"
     ln -s "/nix/store/${CACHE_TARGET:-fake-check-cache-$$}" "$5/checks"
     ln -s "$BUILT_SYSTEM" "$5/system" ;;
   *) exit 99 ;;
 esac
+''')
+    executable("nom", '''
+printf 'monitor enabled\\n'
+while IFS= read -r line; do printf '%s\\n' "$line"; done
 ''')
     executable("nix-store", '''
 [ "$1" = --add-root ]
@@ -208,6 +216,9 @@ else:
     assert report["deployed"] and report["exit_code"] == 0
     assert report["stages"] and all(s["seconds"] >= 0 for s in report["stages"])
     assert report["derivations_built"] is None
+    assert "checking derivation noisy-test" not in result.stdout
+    assert "checking derivation noisy-test" in (logs / "latest.log").read_text()
+    assert not list(logs.glob("*.run.json"))
     assert len((logs / "history.jsonl").read_text().splitlines()) == 1
     assert not Path(checked.removeprefix("check path:")).exists(), "snapshot leaked after exit"
     forbidden = [
@@ -232,7 +243,7 @@ else:
 
     for arguments in (["-L", "--show-trace", "--cores=2", "-j4"],
                       ["--max-jobs", "auto", "--cores", "0", "--offline"],
-                      ["--keep-going"]):
+                      ["--keep-going"], ["--monitor"]):
         (flake / "flake.nix").write_text("before\n")
         result = subprocess.run(["bash", str(script), *arguments],
                                 env=environment, text=True, capture_output=True)
@@ -242,6 +253,9 @@ else:
         assert switch_arguments == [], "activation must not evaluate or build again"
         assert "--cores" in check_arguments and "--max-jobs" in check_arguments
         assert ("--keep-going" in check_arguments) == ("--keep-going" in arguments)
+        if "--monitor" in arguments:
+            assert "monitor enabled" in result.stdout
+            assert "--monitor" not in check_arguments
         if "-j4" in arguments:
             assert check_arguments[-4:] == ["--max-jobs", "4", "--cores", "2"]
         assert len(list(cache.glob("entry-*/checks"))) == 2, "check cache is not bounded"
@@ -380,6 +394,9 @@ else:
         if "EVAL_STATUS" in overrides or "PREFLIGHT_STATUS" in overrides:
             assert not events.read_text(), "early failure reached expensive checks"
         assert f"Failed at:  {stage} (exit {expected})" in result.stdout
+        if "CHECK_STATUS" in overrides:
+            assert "Inspect: nix log /nix/store/failing-check.drv" in result.stdout
+            assert "failing-check.drv" in json.loads((logs / "latest-run.json").read_text())["error"]
         assert "switch " not in events.read_text(), "failure reached deployment"
         assert "Recording the update baseline" not in result.stdout
         (flake / "late.txt").unlink(missing_ok=True)

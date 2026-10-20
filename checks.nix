@@ -117,7 +117,7 @@ lib.mapAttrs' (
         statix check ${nixSources}
       '';
   # Includes Rust location policy/retry and private D-Bus boundary tests.
-  location-timezone = inputs.bar-daemon.checks.${pkgs.system}.default;
+  location-timezone = inputs.bar-daemon.checks.${pkgs.stdenv.hostPlatform.system}.default;
   shellcheck = mkCheck "shellcheck" [ pkgs.shellcheck ] ''
     find ${./config/scripts} -type f -name '*.sh' \
       -exec shellcheck -s bash -x -e SC1091 {} +

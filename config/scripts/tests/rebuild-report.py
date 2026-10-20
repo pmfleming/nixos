@@ -28,4 +28,15 @@ with tempfile.TemporaryDirectory() as temporary:
     assert all(child.wait() == 0 for child in children)
     assert len((root / "history.jsonl").read_text().splitlines()) == 8
     assert json.loads((root / "latest-run.json").read_text())["started_at"] == 7
+    abandoned = root / "rebuild-abandoned.running.log"
+    abandoned.write_text("==> interrupted stage\n")
+    marker = Path(str(abandoned) + ".run.json")
+    pending = {"started_at": 9, "pid": 0, "boot_id": "old", "process_start": "0", "log": str(abandoned)}
+    marker.write_text(json.dumps(pending))
+    report.recover(root)
+    assert not marker.exists()
+    assert json.loads((root / "latest-run.json").read_text())["outcome"] == "INTERRUPTED"
+    marker.write_text(json.dumps(pending))
+    report.recover(root)
+    assert len((root / "history.jsonl").read_text().splitlines()) == 9
 print("rebuild report tests passed")

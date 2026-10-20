@@ -21,6 +21,7 @@ in
   # Rebuild invokes approval directly to pass its private source manifest. The
   # updater still owns serialization of approval metadata through its state lock.
   system.build.delayedNixosUpdate = updateWorker;
+  environment.systemPackages = [ updateWorker ];
 
   systemd = {
     services = {
