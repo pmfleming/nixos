@@ -76,6 +76,7 @@ in
     inputs.bar-daemon.nixosModules.default
     inputs.app-daemon.nixosModules.default
     inputs.bt-daemon.nixosModules.audio-stack
+    inputs.bt-daemon.nixosModules.rssi-helper
     inputs.nm-daemon.nixosModules.discovery
     # Explicitly deploy the validated stable NM package alongside its adapter.
     inputs.nm-daemon.nixosModules.networkManager
@@ -173,6 +174,9 @@ in
     bar-daemon.batteryHelper.enable = true;
     # Deploy bt-daemon's matched BlueZ/PipeWire/WirePlumber runtime packages.
     bt-daemon.audioStack.enable = true;
+    # Connected-device signal strength for Shelllist; CAP_NET_ADMIN stays in
+    # this confined system helper, never the bt-daemon user service.
+    bt-rssi-helper.enable = true;
     app-daemon.resources.enableRaplAccess = true;
     # Preserve this host's existing resolver mode and inherited profile policy.
     # Integration belongs to nm-daemon, not the presentation shell.
