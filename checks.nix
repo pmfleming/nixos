@@ -49,6 +49,79 @@ lib.mapAttrs' (
         ${host.environment.etc."dbus-1".source} ${host.system.path} \
         ${host.home-manager.users.${machine.username}.home.path}
     '';
+  application-inventory =
+    let
+      fixture =
+        (import ./modules/application-inventory.nix {
+          inherit lib;
+          config = {
+            environment.systemPackages = [
+              {
+                pname = "editor";
+                version = "1.2";
+              }
+              {
+                pname = "editor";
+                version = "1.2";
+              }
+              { name = "wrapper"; }
+              { pname = "google-chrome"; version = "130.0"; }
+              { pname = "custom-editor"; version = "2.0";
+                passthru.shelllistReleaseSource = { provider = "github"; repo = "example/editor"; tag_prefix = "v"; };
+              }
+            ];
+            home-manager.users.test.home.packages = [
+              {
+                pname = "editor";
+                version = "1.3";
+              }
+            ];
+          };
+        }).environment.etc."shelllist/application-inventory.json".text;
+      actual =
+        builtins.fromJSON
+          self.nixosConfigurations.${machine.hostName}.config.environment.etc."shelllist/application-inventory.json".text;
+    in
+    assert
+      (builtins.fromJSON fixture) == {
+        schema_version = 1;
+        packages = [
+          {
+            scope = "system";
+            name = "editor";
+            version = "1.2";
+          }
+          {
+            scope = "system";
+            name = "wrapper";
+            version = null;
+          }
+          {
+            scope = "system";
+            name = "google-chrome";
+            version = "130.0";
+            release_source = { provider = "chrome-stable"; };
+          }
+          {
+            scope = "system";
+            name = "custom-editor";
+            version = "2.0";
+            release_source = { provider = "github"; repo = "example/editor"; tag_prefix = "v"; };
+          }
+          {
+            scope = "user:test";
+            name = "editor";
+            version = "1.3";
+          }
+        ];
+      };
+    assert actual.schema_version == 1;
+    assert builtins.any (p: p.scope == "system") actual.packages;
+    assert builtins.any (p: p.scope == "user:${machine.username}") actual.packages;
+    assert builtins.length actual.packages <= 512;
+    assert builtins.any (p: p.name == "google-chrome" && p.release_source.provider == "chrome-stable") actual.packages;
+    assert builtins.any (p: p.name == "vscode" && p.release_source.provider == "vscode-stable") actual.packages;
+    mkCheck "application-inventory-contract" [ ] "";
   daemon-modules = inputs.bar-daemon.checks.${system}.modules;
   resource-module = inputs.app-daemon.checks.${system}.modules;
   discovery-module = inputs.nm-daemon.checks.${system}.discoveryModule;

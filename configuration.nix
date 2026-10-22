@@ -67,6 +67,7 @@ in
   imports = [
     ./hardware-configuration.nix
     ./modules/ai-tools-updates.nix
+    ./modules/application-inventory.nix
     ./modules/delayed-updates.nix
     ./modules/dbus-discovery.nix
     ./modules/generation-retention.nix
