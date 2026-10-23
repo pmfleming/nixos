@@ -26,6 +26,14 @@ assert(loadfile(assert(arg[1], "Expected rendered Hyprland config path")))()
 local media = assert(bindings["SUPER + M"], "Super+M must open Media")
 assert(media.dispatcher == "hl.dsp.global", "Media must use a global shortcut")
 assert(media.arguments[1] == "shelllist:media", "Wrong Media shortcut target")
+for key, target in pairs({
+    ["SUPER + U"] = "shelllist:updates",
+    ["SUPER + SHIFT + U"] = "shelllist:update-logs",
+}) do
+    local updates = assert(bindings[key], key .. " must open Updates")
+    assert(updates.dispatcher == "hl.dsp.global", "Updates must use a global shortcut")
+    assert(updates.arguments[1] == target, "Wrong Updates shortcut target")
+end
 local displays = assert(bindings["SUPER + D"], "Super+D must open Displays")
 assert(displays.dispatcher == "hl.dsp.global", "Displays must use a global shortcut")
 assert(displays.arguments[1] == "shelllist:displays", "Wrong Displays shortcut target")
