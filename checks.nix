@@ -65,9 +65,18 @@ lib.mapAttrs' (
                 version = "1.2";
               }
               { name = "wrapper"; }
-              { pname = "google-chrome"; version = "130.0"; }
-              { pname = "custom-editor"; version = "2.0";
-                passthru.shelllistReleaseSource = { provider = "github"; repo = "example/editor"; tag_prefix = "v"; };
+              {
+                pname = "google-chrome";
+                version = "130.0";
+              }
+              {
+                pname = "custom-editor";
+                version = "2.0";
+                passthru.shelllistReleaseSource = {
+                  provider = "github";
+                  repo = "example/editor";
+                  tag_prefix = "v";
+                };
               }
             ];
             home-manager.users.test.home.packages = [
@@ -78,6 +87,72 @@ lib.mapAttrs' (
             ];
           };
         }).environment.etc."shelllist/application-inventory.json".text;
+      # Exercise package-name aliases, catalogue identities and override priority
+      # independently of the packages currently installed on this host.
+      expectedSources = {
+        acl = {
+          provider = "archive";
+          project = "acl";
+        };
+        attr = {
+          provider = "archive";
+          project = "attr";
+        };
+        libfido2 = {
+          provider = "archive";
+          project = "libfido2";
+        };
+        coreutils-full = {
+          provider = "archive";
+          project = "coreutils";
+        };
+        glibc-locales = {
+          provider = "archive";
+          project = "glibc";
+        };
+        adwaita-icon-theme = {
+          provider = "gnome";
+          project = "adwaita-icon-theme";
+        };
+        adwaita-qt = {
+          provider = "github";
+          repo = "FedoraQt/adwaita-qt";
+          tag_prefix = "";
+        };
+        android-tools = {
+          provider = "github";
+          repo = "nmeum/android-tools";
+          tag_prefix = "";
+        };
+        xz = {
+          provider = "github";
+          repo = "tukaani-project/xz";
+          tag_prefix = "v";
+        };
+      };
+      sourceFixture =
+        builtins.fromJSON
+          (import ./modules/application-inventory.nix {
+            inherit lib;
+            config.environment.systemPackages =
+              (map (pname: {
+                inherit pname;
+                version = "1.0";
+              }) (builtins.attrNames expectedSources))
+              ++ [
+                {
+                  pname = "unmapped";
+                  version = "1.0";
+                }
+                {
+                  pname = "acl";
+                  version = "2.0";
+                  passthru.shelllistReleaseSource = {
+                    provider = "vscode-stable";
+                  };
+                }
+              ];
+          }).environment.etc."shelllist/application-inventory.json".text;
       actual =
         builtins.fromJSON
           self.nixosConfigurations.${machine.hostName}.config.environment.etc."shelllist/application-inventory.json".text;
@@ -100,13 +175,19 @@ lib.mapAttrs' (
             scope = "system";
             name = "google-chrome";
             version = "130.0";
-            release_source = { provider = "chrome-stable"; };
+            release_source = {
+              provider = "chrome-stable";
+            };
           }
           {
             scope = "system";
             name = "custom-editor";
             version = "2.0";
-            release_source = { provider = "github"; repo = "example/editor"; tag_prefix = "v"; };
+            release_source = {
+              provider = "github";
+              repo = "example/editor";
+              tag_prefix = "v";
+            };
           }
           {
             scope = "user:test";
@@ -115,12 +196,27 @@ lib.mapAttrs' (
           }
         ];
       };
+    assert builtins.all (
+      p:
+      if p.name == "unmapped" then
+        !(p ? release_source)
+      else if p.version == "2.0" then
+        p.release_source == { provider = "vscode-stable"; }
+      else
+        p.release_source == expectedSources.${p.name}
+    ) sourceFixture.packages;
+    assert
+      builtins.length sourceFixture.packages == builtins.length (builtins.attrNames expectedSources) + 2;
     assert actual.schema_version == 1;
     assert builtins.any (p: p.scope == "system") actual.packages;
     assert builtins.any (p: p.scope == "user:${machine.username}") actual.packages;
     assert builtins.length actual.packages <= 512;
-    assert builtins.any (p: p.name == "google-chrome" && p.release_source.provider == "chrome-stable") actual.packages;
-    assert builtins.any (p: p.name == "vscode" && p.release_source.provider == "vscode-stable") actual.packages;
+    assert builtins.any (
+      p: p.name == "google-chrome" && p.release_source.provider == "chrome-stable"
+    ) actual.packages;
+    assert builtins.any (
+      p: p.name == "vscode" && p.release_source.provider == "vscode-stable"
+    ) actual.packages;
     mkCheck "application-inventory-contract" [ ] "";
   daemon-modules = inputs.bar-daemon.checks.${system}.modules;
   resource-module = inputs.app-daemon.checks.${system}.modules;
