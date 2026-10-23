@@ -11,6 +11,8 @@
 let
   inherit (pkgs) lib;
   inherit (machine) system;
+  host = self.nixosConfigurations.${machine.hostName}.config;
+  home = host.home-manager.users.${machine.username};
   # Filter before interpolation: ${self}/subdir would still depend on the
   # entire flake (including the disposable local-input lock).
   nixSources = lib.fileset.toSource {
@@ -40,15 +42,13 @@ lib.mapAttrs' (
 ) inputs.shelllist.checks.${system}
 // {
   dbus-discovery =
-    let
-      host = self.nixosConfigurations.${machine.hostName}.config;
-    in
-    mkCheck "dbus-discovery-contract" [ pkgs.python3 pkgs.dbus pkgs.dbus-broker pkgs.systemd ] ''
-      python3 -B ${./config/scripts}/tests/canonical-dbus.py
-      python3 -B ${./config/scripts/tests/dbus-discovery.py} \
-        ${host.environment.etc."dbus-1".source} ${host.system.path} \
-        ${host.home-manager.users.${machine.username}.home.path}
-    '';
+    mkCheck "dbus-discovery-contract" [ pkgs.python3 pkgs.dbus pkgs.dbus-broker pkgs.systemd ]
+      ''
+        python3 -B ${./config/scripts}/tests/canonical-dbus.py
+        python3 -B ${./config/scripts/tests/dbus-discovery.py} \
+          ${host.environment.etc."dbus-1".source} ${host.system.path} \
+          ${home.home.path}
+      '';
   application-inventory =
     let
       fixture =
@@ -153,9 +153,7 @@ lib.mapAttrs' (
                 }
               ];
           }).environment.etc."shelllist/application-inventory.json".text;
-      actual =
-        builtins.fromJSON
-          self.nixosConfigurations.${machine.hostName}.config.environment.etc."shelllist/application-inventory.json".text;
+      actual = builtins.fromJSON host.environment.etc."shelllist/application-inventory.json".text;
     in
     assert
       (builtins.fromJSON fixture) == {
@@ -223,8 +221,6 @@ lib.mapAttrs' (
   discovery-module = inputs.nm-daemon.checks.${system}.discoveryModule;
   daemon-ownership =
     let
-      host = self.nixosConfigurations.${machine.hostName}.config;
-      home = host.home-manager.users.${machine.username};
       headless =
         (self.nixosConfigurations.${machine.hostName}.extendModules {
           modules = [
@@ -293,7 +289,6 @@ lib.mapAttrs' (
   '';
   sleep-recovery =
     let
-      base = self.nixosConfigurations.${machine.hostName}.config;
       versions = config: {
         kernel = config.boot.kernelPackages.kernel.version;
         hyprland = config.programs.hyprland.package.version;
@@ -307,11 +302,10 @@ lib.mapAttrs' (
       };
       fixture = pkgs.writeText "sleep-recovery.json" (
         builtins.toJSON {
-          idle = base.home-manager.users.${machine.username}.services.hypridle.settings;
-          hyprlandConfig =
-            base.home-manager.users.${machine.username}.xdg.configFile."hypr/hyprland.lua".text;
-          defaultStack = versions base;
-          specialisations = builtins.attrNames base.specialisation;
+          idle = home.services.hypridle.settings;
+          hyprlandConfig = home.xdg.configFile."hypr/hyprland.lua".text;
+          defaultStack = versions host;
+          specialisations = builtins.attrNames host.specialisation;
         }
       );
     in
@@ -336,7 +330,6 @@ lib.mapAttrs' (
   updater-state = updateWorker.tests;
   build-cache-trim =
     let
-      host = self.nixosConfigurations.${machine.hostName}.config;
       service = host.systemd.services.build-cache-trim;
     in
     assert service.serviceConfig.User == machine.username;
@@ -359,7 +352,7 @@ lib.mapAttrs' (
     assert host.services.build-cache-trim.workspaceRoots != [ ];
     assert !service.restartIfChanged && !service.stopIfChanged;
     assert !(host.systemd.timers ? build-cache-trim);
-    assert !(host.home-manager.users.${machine.username}.systemd.user.timers ? build-cache-trim);
+    assert !(home.systemd.user.timers ? build-cache-trim);
     (inputs.update-daemon.lib.mkBuildCachePackage {
       inherit pkgs;
       repositories = [ ];

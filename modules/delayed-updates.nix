@@ -2,18 +2,15 @@
 
 let
   systemdLib = import ../lib/systemd.nix;
-  commonService = systemdLib.nixBuildService "nixos-delayed-updates-v2";
   mkService =
     description: command:
-    commonService
+    systemdLib.nixBuildService {
+      ExecStart = "${updateWorker}/bin/update-worker ${command}";
+      StateDirectory = "nixos-delayed-updates-v2";
+      TimeoutStartSec = "6h";
+    }
     // {
       inherit description;
-      serviceConfig = commonService.serviceConfig // {
-        ExecStart = "${updateWorker}/bin/update-worker ${command}";
-        TimeoutStartSec = "6h";
-        TimeoutStopSec = "3min";
-        KillMode = "mixed";
-      };
     };
   onACPower = service: service // { unitConfig.ConditionACPower = true; };
 in
@@ -39,9 +36,38 @@ in
 
       nixos-update-apply-delayed = mkService "Stage a checked NixOS update for next boot" "apply-delayed";
 
+      # Metadata only: no builds/deployment, and no network work in status/Refresh.
+      nixos-update-application-releases = {
+        description = "Cache known upstream application release versions";
+        wants = [ "network-online.target" ];
+        after = [ "network-online.target" ];
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${updateWorker}/bin/update-worker check-applications";
+          StateDirectory = "nixos-delayed-updates-v2";
+          UMask = "0022";
+          TimeoutStartSec = "6min";
+          NoNewPrivileges = true;
+          PrivateTmp = true;
+          ProtectSystem = "strict";
+          ProtectHome = "read-only";
+          RestrictAddressFamilies = [
+            "AF_UNIX"
+            "AF_INET"
+            "AF_INET6"
+          ];
+        };
+      };
     };
 
     timers = {
+      nixos-update-application-releases = systemdLib.timer "Refresh cached application release metadata" {
+        OnBootSec = "10min";
+        OnUnitActiveSec = "1h";
+        RandomizedDelaySec = "5min";
+        Persistent = false;
+      };
+
       nixos-update-delayed = systemdLib.timer "Check quarantined NixOS flake inputs daily" {
         OnCalendar = "*-*-* 03:00:00";
         AccuracySec = "30m";

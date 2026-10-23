@@ -71,10 +71,10 @@ in
     ./modules/delayed-updates.nix
     ./modules/dbus-discovery.nix
     ./modules/generation-retention.nix
-    ./modules/location-timezone.nix
     ./modules/printers.nix
     inputs.update-daemon.nixosModules.buildCache
     inputs.bar-daemon.nixosModules.default
+    inputs.bar-daemon.nixosModules.location-timezone
     inputs.app-daemon.nixosModules.default
     inputs.bt-daemon.nixosModules.audio-stack
     inputs.bt-daemon.nixosModules.rssi-helper

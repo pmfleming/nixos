@@ -2,25 +2,24 @@
 
 let
   systemdLib = import ../lib/systemd.nix;
-  commonService = systemdLib.nixBuildService "nixos-ai-tools";
+  stateDirectories = [
+    "nixos-ai-tools"
+    "nixos-delayed-updates-v2"
+  ];
 in
 {
   environment.systemPackages = [ vendorAiTools.updater ];
 
   systemd.services = {
-    nixos-ai-tools-update = commonService // {
-      description = "Check official AI releases and independently activate checked tools";
-      serviceConfig = commonService.serviceConfig // {
+    nixos-ai-tools-update =
+      systemdLib.nixBuildService {
         ExecStart = "${vendorAiTools.updater}/bin/ai-tools update";
-        StateDirectory = [
-          "nixos-ai-tools"
-          "nixos-delayed-updates-v2"
-        ];
+        StateDirectory = stateDirectories;
         TimeoutStartSec = "50min";
-        TimeoutStopSec = "3min";
-        KillMode = "mixed";
+      }
+      // {
+        description = "Check official AI releases and independently activate checked tools";
       };
-    };
 
     nixos-ai-tools-stale = {
       description = "Report a stale AI coding-tools profile";
@@ -30,10 +29,7 @@ in
       after = [ "nixos-ai-tools-update.service" ];
       serviceConfig = {
         Type = "oneshot";
-        StateDirectory = [
-          "nixos-ai-tools"
-          "nixos-delayed-updates-v2"
-        ];
+        StateDirectory = stateDirectories;
         StateDirectoryMode = "0755";
         UMask = "0022";
         ExecStart = "${vendorAiTools.updater}/bin/ai-tools stale";

@@ -1,7 +1,6 @@
 {
   config,
   lib,
-  updateWorker ? null,
   ...
 }:
 
@@ -121,38 +120,5 @@ in
   environment.etc."shelllist/application-inventory.json".text = builtins.toJSON {
     schema_version = 1;
     packages = inventory;
-  };
-  # Finite metadata checks only; no build/deployment command, and no network work
-  # in status --json or panel Refresh. Activation enables this schedule normally.
-  systemd.services.nixos-update-application-releases = lib.mkIf (updateWorker != null) {
-    description = "Cache known upstream application release versions";
-    wants = [ "network-online.target" ];
-    after = [ "network-online.target" ];
-    serviceConfig = {
-      Type = "oneshot";
-      ExecStart = "${updateWorker}/bin/update-worker check-applications";
-      StateDirectory = "nixos-delayed-updates-v2";
-      UMask = "0022";
-      TimeoutStartSec = "6min";
-      NoNewPrivileges = true;
-      PrivateTmp = true;
-      ProtectSystem = "strict";
-      ProtectHome = "read-only";
-      RestrictAddressFamilies = [
-        "AF_UNIX"
-        "AF_INET"
-        "AF_INET6"
-      ];
-    };
-  };
-  systemd.timers.nixos-update-application-releases = lib.mkIf (updateWorker != null) {
-    description = "Refresh cached application release metadata";
-    wantedBy = [ "timers.target" ];
-    timerConfig = {
-      OnBootSec = "10min";
-      OnUnitActiveSec = "1h";
-      RandomizedDelaySec = "5min";
-      Persistent = false;
-    };
   };
 }

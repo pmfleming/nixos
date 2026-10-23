@@ -15,6 +15,10 @@ set -euo pipefail
 
 case " $* " in
   *" --list-generations "*)
+    if [[ -n ${PRUNE_TEST_GENERATIONS:-} ]]; then
+      printf '%s\n' "$PRUNE_TEST_GENERATIONS"
+      exit 0
+    fi
     if [ "${PRUNE_TEST_SMALL_PROFILE:-0}" = 1 ]; then
       printf '1 2020-01-01 00:00:00\n'
       exit 0
@@ -82,6 +86,20 @@ if PATH="$test_root/bin:$PATH" PRUNE_TEST_BOOT_STATUS=1 \
   printf 'A boot refresh failure was ignored.\n' >&2
   exit 1
 fi
+
+# Consume a calendar bucket only once, retaining its newest generation even
+# outside the five recent slots. All aliases of the profile target are protected.
+month=$(date --date="$(date +%Y-%m-01) - 4 months" +%F)
+export PRUNE_TEST_GENERATIONS
+PRUNE_TEST_GENERATIONS=$(printf '1 %s 00:00:00\n2 %s 00:00:00\n' "$month" "$month";
+  for gen in {3..9}; do printf '%s 2020-01-01 00:00:00\n' "$gen"; done)
+for gen in 3 4; do ln -s "$test_root/staged-system" "$test_root/profile-$gen-link"; done
+PATH="$test_root/bin:$PATH" bash "$script_path" --profile "$test_root/profile" --no-refresh-boot
+[ "$(cat "$PRUNE_TEST_LOG")" = "1" ]
+rm "$test_root/profile-3-link" "$test_root/profile-4-link"
+PATH="$test_root/bin:$PATH" bash "$script_path" --profile "$test_root/profile" --no-refresh-boot
+[ "$(cat "$PRUNE_TEST_LOG")" = "1 3 4" ]
+unset PRUNE_TEST_GENERATIONS
 
 # Fail before deleting anything when the intended boot target is unavailable.
 rm "$test_root/profile" "$PRUNE_TEST_LOG"

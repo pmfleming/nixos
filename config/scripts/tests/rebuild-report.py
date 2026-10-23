@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from unittest.mock import patch
 
 helper = Path(__file__).resolve().parents[1] / "rebuild-report.py"
 spec = importlib.util.spec_from_file_location("report", helper)
@@ -12,8 +13,23 @@ report = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(report)
 assert "nix log /nix/store/a.drv" in report.error_excerpt("error: Cannot build '/nix/store/a.drv'.\n       Reason: builder failed\nerror: aggregate")
 assert report.error_excerpt("all good") is None
+assert report.error_excerpt("noise\nfatal: first\n detail\nstop\n ignored") == "fatal: first\n detail"
+assert len(report.error_excerpt("error: first\n" + " detail\n" * 20).splitlines()) == 12
+assert len(report.error_excerpt("error: " + "x" * 5000)) == 4000
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
+    destination = root / "atomic.json"
+    report.atomic_json(destination, {"old": True})
+    with patch.object(report.os, "replace", side_effect=OSError("publication failed")):
+        try:
+            report.atomic_json_lines(destination, [{"new": True}])
+        except OSError:
+            pass
+        else:
+            raise AssertionError("publication failure was swallowed")
+    assert json.loads(destination.read_text()) == {"old": True}
+    assert destination.stat().st_mode & 0o777 == 0o600
+    assert not list(root.glob(".report-*"))
     log = root / "build.log"
     log.write_text("error: test\n")
     stages = root / "stages"
@@ -39,4 +55,9 @@ with tempfile.TemporaryDirectory() as temporary:
     marker.write_text(json.dumps(pending))
     report.recover(root)
     assert len((root / "history.jsonl").read_text().splitlines()) == 9
+    history = root / "history.jsonl"
+    history.write_text('{}\n' * 1001 + '{torn append')
+    report.save({"started_at": 10, "log": str(log)}, root)
+    entries = [json.loads(line) for line in history.read_text().splitlines()]
+    assert len(entries) == 1000 and entries[-1]["started_at"] == 10
 print("rebuild report tests passed")

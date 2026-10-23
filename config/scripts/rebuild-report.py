@@ -1,5 +1,6 @@
 """Read-only build diagnostics and private, bounded rebuild history."""
 import fcntl
+from itertools import takewhile
 import json
 import os
 from pathlib import Path
@@ -13,11 +14,7 @@ def error_excerpt(text):
     lines = text.splitlines()
     for index, line in enumerate(lines):
         if re.match(r"^(?:error:|fatal:)", line):
-            block = [line]
-            for following in lines[index + 1:index + 12]:
-                if not following.startswith(" "):
-                    break
-                block.append(following)
+            block = [line, *takewhile(lambda item: item.startswith(" "), lines[index + 1:index + 12])]
             drv = re.search(r"/nix/store/[^\s'\"]+\.drv", line)
             if drv:
                 block.append("Inspect: nix log " + drv[0])
@@ -25,18 +22,22 @@ def error_excerpt(text):
     return None
 
 
-def atomic_json(path, value):
+def atomic_json_lines(path, values):
     fd, temporary = tempfile.mkstemp(dir=path.parent, prefix=".report-")
     try:
         with os.fdopen(fd, "w") as stream:
-            json.dump(value, stream, separators=(",", ":"))
-            stream.write("\n")
+            for value in values:
+                stream.write(json.dumps(value, separators=(",", ":")) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+def atomic_json(path, value):
+    atomic_json_lines(path, [value])
 
 
 def save(record, directory):
@@ -56,17 +57,7 @@ def save(record, directory):
             return  # A crash after publication but before marker cleanup.
         entries.append(record)
         # Rewrite under the lock to bound history and discard torn appends.
-        fd, temporary = tempfile.mkstemp(dir=directory, prefix=".history-")
-        try:
-            with os.fdopen(fd, "w") as stream:
-                for entry in entries[-1000:]:
-                    stream.write(json.dumps(entry, separators=(",", ":")) + "\n")
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary, history)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
+        atomic_json_lines(history, entries[-1000:])
         latest = directory / "latest-run.json"
         try:
             old = json.loads(latest.read_text())

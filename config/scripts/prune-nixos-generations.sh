@@ -111,13 +111,14 @@ if (( total <= keep_recent )); then
   exit 0
 fi
 
-profile_current="$(readlink -f "$profile" 2>/dev/null || true)"
-run_current="$(readlink -f /run/current-system 2>/dev/null || true)"
-run_booted="$(readlink -f /run/booted-system 2>/dev/null || true)"
+# Protect targets, not generation numbers: multiple links may name one system.
+declare -A protected_targets=()
+for target in "$profile" /run/current-system /run/booted-system; do
+  target="$(readlink -f "$target" 2>/dev/null || true)"
+  [[ -z "$target" ]] || protected_targets["$target"]=1
+done
 
 declare -A keep_by_policy=()
-declare -A selected_weeks=()
-declare -A selected_months=()
 
 # Traverse newest to oldest so each bucket retains its newest generation.
 for ((idx = total - 1; idx >= 0; idx--)); do
@@ -134,15 +135,15 @@ for ((idx = total - 1; idx >= 0; idx--)); do
   fi
 
   week_bucket="$(date --date="@$epoch" +%G-W%V)"
-  if [[ -n "${allowed_weeks[$week_bucket]+set}" && -z "${selected_weeks[$week_bucket]+set}" ]]; then
+  if [[ -n "${allowed_weeks[$week_bucket]+set}" ]]; then
     keep_by_policy["$gen"]=1
-    selected_weeks["$week_bucket"]="$gen"
+    unset 'allowed_weeks[$week_bucket]'
   fi
 
   month_bucket="$(date --date="@$epoch" +%Y-%m)"
-  if [[ -n "${allowed_months[$month_bucket]+set}" && -z "${selected_months[$month_bucket]+set}" ]]; then
+  if [[ -n "${allowed_months[$month_bucket]+set}" ]]; then
     keep_by_policy["$gen"]=1
-    selected_months["$month_bucket"]="$gen"
+    unset 'allowed_months[$month_bucket]'
   fi
 done
 
@@ -151,21 +152,8 @@ delete=()
 
 for gen in "${gens[@]}"; do
   link="$(readlink -f "$profile-$gen-link" 2>/dev/null || true)"
-  keep_gen=0
-
-  if [[ -n "${keep_by_policy[$gen]+set}" ]]; then
-    keep_gen=1
-  fi
-
-  # Never delete the active profile target or a running/booted system target.
-  for active_target in "$profile_current" "$run_current" "$run_booted"; do
-    if [[ -n "$link" && -n "$active_target" && "$link" == "$active_target" ]]; then
-      keep_gen=1
-      break
-    fi
-  done
-
-  if (( keep_gen )); then
+  if [[ -n "${keep_by_policy[$gen]+set}" ]] ||
+     [[ -n "$link" && -n "${protected_targets[$link]+set}" ]]; then
     keep+=("$gen")
   else
     delete+=("$gen")

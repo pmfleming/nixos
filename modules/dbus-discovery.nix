@@ -6,6 +6,7 @@
 }:
 let
   cfg = config.services.dbus;
+  unit = if cfg.implementation == "broker" then "dbus-broker" else "dbus";
   upstream = pkgs.makeDBusConf.override {
     inherit (cfg) apparmor;
     dbus = cfg.dbusPackage;
@@ -34,13 +35,7 @@ in
     ];
     environment.etc."dbus-1".source = lib.mkForce canonical;
     # Keep the upstream reload-only behaviour. Never restart the live bus.
-    systemd.services.${
-      if cfg.implementation == "broker" then "dbus-broker" else "dbus"
-    }.restartTriggers =
-      [ canonical ];
-    systemd.user.services.${
-      if cfg.implementation == "broker" then "dbus-broker" else "dbus"
-    }.restartTriggers =
-      [ canonical ];
+    systemd.services.${unit}.restartTriggers = [ canonical ];
+    systemd.user.services.${unit}.restartTriggers = [ canonical ];
   };
 }
