@@ -49,6 +49,66 @@ lib.mapAttrs' (
           ${host.environment.etc."dbus-1".source} ${host.system.path} \
           ${home.home.path}
       '';
+  file-associations =
+    let
+      mime = home.xdg.mimeApps;
+      yaziRules = home.programs.yazi.settings.open.prepend_rules;
+    in
+    assert lib.all
+      (
+        name:
+        mime.defaultApplications.${name} == [ "scratchpad.desktop" ]
+        && mime.associations.added.${name} == [ "scratchpad.desktop" ]
+      )
+      [
+        "text/plain"
+        "text/x-csrc"
+        "text/x-python"
+        "text/x-nix"
+        "text/x-log"
+        "text/markdown"
+        "application/json"
+        "application/xml"
+        "application/yaml"
+      ];
+    assert lib.all (name: mime.defaultApplications.${name} == [ "zen.desktop" ]) [
+      "text/html"
+      "application/xhtml+xml"
+    ];
+    assert lib.all
+      (
+        name:
+        (lib.findFirst (
+          rule:
+          builtins.elem (rule.mime or "") [
+            name
+            "text/*"
+          ]
+        ) { } yaziRules).use == "open"
+      )
+      [
+        "text/html"
+        "application/xhtml+xml"
+      ];
+    assert lib.all (url: (lib.findFirst (rule: (rule.url or "") == url) { } yaziRules).use == "open") [
+      "*.html"
+      "*.htm"
+      "*.xhtml"
+    ];
+    assert mime.defaultApplications."application/pdf" == [ "okularApplication_pdf.desktop" ];
+    assert lib.all (name: !(builtins.hasAttr name mime.defaultApplications)) [
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      "application/vnd.oasis.opendocument.text"
+    ];
+    assert lib.all (scheme: mime.defaultApplications."x-scheme-handler/${scheme}" == [ "zen.desktop" ])
+      [
+        "http"
+        "https"
+      ];
+    assert builtins.any (
+      rule: (rule.mime or "") == "text/*" && rule.use == "scratchpad"
+    ) home.programs.yazi.settings.open.prepend_rules;
+    mkCheck "file-associations-contract" [ ] "";
   application-inventory =
     let
       fixture =

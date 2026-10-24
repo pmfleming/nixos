@@ -1,6 +1,7 @@
 {
   palette,
   scratchpad,
+  textMimeTypes,
   clipDaemon,
   uwsmApp,
 }:
@@ -58,7 +59,7 @@ in
           {
             run = ''${uwsmApp} -- ${scratchpad}/bin/scratchpad "$@"'';
             orphan = true;
-            desc = "Edit Markdown in Scratchpad";
+            desc = "Edit text in Scratchpad";
           }
         ];
         # Satty replaced Swappy for screenshot, clipboard, and Yazi image
@@ -84,20 +85,22 @@ in
         ];
       };
       open.prepend_rules =
+        # Browser rules must precede the text/* Scratchpad fallback.
         openerRules "url" [
-          "*.md"
-          "*.markdown"
-        ] "scratchpad"
-        ++ openerRules "mime" [ "text/markdown" ] "scratchpad"
-        ++ openerRules "mime" [ "image/*" ] "satty"
-        ++ openerRules "url" [
           "*.html"
           "*.htm"
+          "*.xhtml"
         ] "open"
         ++ openerRules "mime" [
           "text/html"
           "application/xhtml+xml"
-        ] "open";
+        ] "open"
+        ++ openerRules "url" [
+          "*.md"
+          "*.markdown"
+        ] "scratchpad"
+        ++ openerRules "mime" ([ "text/*" ] ++ textMimeTypes) "scratchpad"
+        ++ openerRules "mime" [ "image/*" ] "satty";
     };
 
     theme = {
