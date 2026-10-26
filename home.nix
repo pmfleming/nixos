@@ -273,6 +273,10 @@ in
         source = ./config/pi/recent-sessions-sidebar;
         force = true;
       };
+      ".pi/agent/extensions/worker-dashboard" = {
+        source = ./config/pi/worker-dashboard;
+        force = true;
+      };
     };
   };
 
