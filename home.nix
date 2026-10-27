@@ -284,6 +284,15 @@ in
         source = ./config/pi/worker-dashboard;
         force = true;
       };
+      ".pi/agent/extensions/instances" = {
+        source = ./config/pi/instances;
+        force = true;
+      };
+      ".local/bin/pi-instances" = {
+        source = ./config/scripts/pi-instances.sh;
+        executable = true;
+        force = true;
+      };
     };
   };
 
