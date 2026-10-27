@@ -1,10 +1,10 @@
 import type { Attachment } from "./attachment.ts";
+import { array, object } from "../lib/data.ts";
 import { RpcConnection, type Connection, type RecordValue } from "./rpc.ts";
 import { plain } from "./state.ts";
 
 export type ChatMessage = { role: string; text: string };
 export type ChatStatus = "opening" | "idle" | "running" | "error" | "closed";
-function object(value: unknown): RecordValue { return value && typeof value === "object" && !Array.isArray(value) ? value as RecordValue : {}; }
 function display(value: unknown, limit = 16 * 1024): string {
   return typeof value === "string" ? value.slice(0, limit).split("\n").map(line => plain(line, limit)).join("\n") : "";
 }
@@ -14,7 +14,7 @@ export function chatMessage(value: unknown): ChatMessage | undefined {
   const role = plain(message.role, 40) || "message";
   let text = "";
   if (typeof message.content === "string") text = message.content;
-  else if (Array.isArray(message.content)) text = message.content.map(raw => {
+  else if (Array.isArray(message.content)) text = array(message.content).map(raw => {
     const block = object(raw);
     if (block.type === "text") return String(block.text ?? "");
     if (block.type === "thinking") return "[thinking]";
@@ -43,11 +43,7 @@ export class ChatSession {
   private settlements = 0;
   private unsubscribe: () => void;
   private disposed?: Promise<void>;
-  readonly attachment: Attachment;
-  private connection: Connection;
-  private changed: () => void;
-  constructor(attachment: Attachment, connection: Connection, changed: () => void) {
-    this.attachment = attachment; this.connection = connection; this.changed = changed;
+  constructor(readonly attachment: Attachment, private connection: Connection, private changed: () => void) {
     this.unsubscribe = connection.subscribe(event => this.event(event));
   }
   get key(): string { return this.attachment.key; }
@@ -69,7 +65,7 @@ export class ChatSession {
     const data = await this.connection.request("get_messages");
     if (this.disposed) throw new Error("Chat runtime stopped during history loading");
     this.messages = [];
-    for (const raw of Array.isArray(data.messages) ? data.messages : []) {
+    for (const raw of array(data.messages)) {
       const message = chatMessage(raw);
       if (message) this.append(message);
     }
@@ -135,7 +131,7 @@ export class ChatSession {
     let queued: string[] = [];
     try {
       const queue = await this.connection.request("clear_queue");
-      queued = [queue.steering, queue.followUp].flatMap(value => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : []);
+      queued = [queue.steering, queue.followUp].flatMap(array).filter((item): item is string => typeof item === "string");
       await this.connection.request("abort");
     } catch (error) { this.error = display(String(error), 8192); }
     finally {
@@ -159,8 +155,7 @@ export class MultiSessionRuntime {
   private listeners = new Set<() => void>();
   private disposed = false;
   private stopping?: Promise<void>;
-  private connect: (attachment: Attachment) => Connection;
-  constructor(connect: (attachment: Attachment) => Connection = attachment => new RpcConnection(attachment.spec)) { this.connect = connect; }
+  constructor(private connect: (attachment: Attachment) => Connection = attachment => new RpcConnection(attachment.spec)) {}
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   private changed = () => { if (!this.disposed) for (const listener of this.listeners) listener(); };
   list(): ChatSession[] { return [...this.ready.values()]; }

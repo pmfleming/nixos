@@ -3,17 +3,15 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { SessionManager, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { acquireDirectoryLock } from "./maintenance-lock.ts";
+import { object } from "../lib/data.ts";
 import { run } from "./shell.ts";
 import type { ProjectInfo, RecentContext, SessionGroup, SessionInfo, SessionRow } from "./types.ts";
 
-export const BRANCH_ENTRY_TYPE = "recent-sessions-sidebar.branch";
+const BRANCH_ENTRY_TYPE = "recent-sessions-sidebar.branch";
 export const PIN_ENTRY_TYPE = "recent-sessions-sidebar.pin";
 const recordedBranches = new Map<string, string>();
 type StoredMetadata = { mtimeMs: number; size: number; branch?: string; pinned: boolean; userTurns: number };
 const storedMetadataCache = new Map<string, StoredMetadata>();
-
-type StoredBranchData = { branch?: unknown };
-type StoredPinData = { pinned?: unknown };
 
 function clean(value?: string): string {
   return (value ?? "").replace(/\s+/g, " ").trim();
@@ -31,13 +29,9 @@ function storedMetadata(sessionPath: string): StoredMetadata {
     for (const entry of SessionManager.open(sessionPath).getEntries()) {
       if (entry.type === "message" && entry.message.role === "user") userTurns++;
       if (entry.type !== "custom") continue;
-      if (entry.customType === BRANCH_ENTRY_TYPE) {
-        const data = entry.data as StoredBranchData | undefined;
-        if (typeof data?.branch === "string" && data.branch) branch = data.branch;
-      } else if (entry.customType === PIN_ENTRY_TYPE) {
-        const data = entry.data as StoredPinData | undefined;
-        if (typeof data?.pinned === "boolean") pinned = data.pinned;
-      }
+      const data = object(entry.data);
+      if (entry.customType === BRANCH_ENTRY_TYPE && typeof data.branch === "string" && data.branch) branch = data.branch;
+      if (entry.customType === PIN_ENTRY_TYPE && typeof data.pinned === "boolean") pinned = data.pinned;
     }
 
     const metadata = { mtimeMs, size, branch, pinned, userTurns };
@@ -67,14 +61,11 @@ export function recordCurrentBranch(pi: ExtensionAPI, cwd: string, sessionPath?:
   if (!branch) return;
 
   const previous = recordedBranches.get(sessionPath) ?? storedMetadata(sessionPath).branch;
-  if (previous === branch) {
-    recordedBranches.set(sessionPath, branch);
-    return;
+  if (previous !== branch) {
+    pi.appendEntry(BRANCH_ENTRY_TYPE, { branch });
+    storedMetadataCache.delete(sessionPath);
   }
-
-  pi.appendEntry(BRANCH_ENTRY_TYPE, { branch });
   recordedBranches.set(sessionPath, branch);
-  storedMetadataCache.delete(sessionPath);
 }
 
 export function sessionTitle(session: SessionInfo): string {
@@ -120,23 +111,17 @@ function enrich(session: SessionInfo, projectCache: Map<string, ProjectInfo>): S
   };
 }
 
-export function buildGroups(sessions: SessionRow[], current?: string): SessionGroup[] {
+function buildGroups(sessions: SessionRow[], current?: string): SessionGroup[] {
   const groups = new Map<string, SessionGroup>();
 
   for (const session of sessions) {
-    const existing = groups.get(session.project.key);
-    if (existing) {
-      existing.sessions.push(session);
-      existing.latestMs = Math.max(existing.latestMs, session.modified.getTime());
-      existing.hasCurrent ||= session.path === current;
-    } else {
-      groups.set(session.project.key, {
-        ...session.project,
-        latestMs: session.modified.getTime(),
-        sessions: [session],
-        hasCurrent: session.path === current,
-      });
-    }
+    const group: SessionGroup = groups.get(session.project.key) ?? {
+      ...session.project, latestMs: session.modified.getTime(), sessions: [], hasCurrent: false,
+    };
+    group.sessions.push(session);
+    group.latestMs = Math.max(group.latestMs, session.modified.getTime());
+    group.hasCurrent ||= session.path === current;
+    groups.set(session.project.key, group);
   }
 
   return [...groups.values()]
@@ -146,9 +131,7 @@ export function buildGroups(sessions: SessionRow[], current?: string): SessionGr
 
 export async function loadGroups(current?: string): Promise<SessionGroup[]> {
   const projectCache = new Map<string, ProjectInfo>();
-  const sessions = (await SessionManager.listAll())
-    .map((session) => enrich(session, projectCache))
-    .sort((a, b) => b.modified.getTime() - a.modified.getTime());
+  const sessions = (await SessionManager.listAll()).map((session) => enrich(session, projectCache));
   return buildGroups(sessions, current);
 }
 
@@ -160,7 +143,7 @@ export function projectIcon(kind: ProjectInfo["kind"]): string {
   return kind === "git" ? "" : kind === "folder" ? "📁" : "💬";
 }
 
-export function groupLabel(group: SessionGroup): string {
+function groupLabel(group: SessionGroup): string {
   const active = group.hasCurrent ? "●" : " ";
   const icon = projectIcon(group.kind);
   const cwd = group.cwd ? ` — ${compactPath(group.cwd)}` : "";
@@ -288,57 +271,40 @@ function maintenanceDue(now: number): boolean {
   }
 }
 
+type ArchiveTotals = Pick<RetentionResult, "archived" | "archivedBytes" | "errors" | "remainingBytes">;
+function archiveSession(session: SessionRow, remaining: Map<string, SessionRow>, totals: ArchiveTotals, now: number): boolean {
+  if (!remaining.has(session.path)) return false;
+  try {
+    renameSync(session.path, archivePath(session.path, now));
+    remaining.delete(session.path);
+    invalidateSessionMetadata(session.path);
+    totals.archived++;
+    totals.archivedBytes += session.size;
+    totals.remainingBytes -= session.size;
+    return true;
+  } catch { totals.errors++; return false; }
+}
 function archiveExcess(groups: SessionGroup[], current: string | undefined, now: number): Omit<RetentionResult, "purged"> {
-  const sessions = groups.flatMap((group) => group.sessions);
-  const remaining = new Map(sessions.map((session) => [session.path, session]));
-  let archived = 0;
-  let archivedBytes = 0;
-  let errors = 0;
-
-  const archive = (session: SessionRow): boolean => {
-    if (!remaining.has(session.path)) return false;
-    try {
-      renameSync(session.path, archivePath(session.path, now));
-      remaining.delete(session.path);
-      invalidateSessionMetadata(session.path);
-      archived++;
-      archivedBytes += session.size;
-      return true;
-    } catch {
-      errors++;
-      return false;
-    }
-  };
-
+  const sessions = groups.flatMap(group => group.sessions);
+  const remaining = new Map(sessions.map(session => [session.path, session]));
+  const totals: ArchiveTotals = { archived: 0, archivedBytes: 0, errors: 0,
+    remainingBytes: [...remaining.values()].reduce((sum, session) => sum + session.size, 0) };
+  const eligible = (candidates: SessionRow[]) => candidates.filter(session => !protectedSession(session, current, now)).sort(removalOrder);
+  const count = (group: SessionGroup) => group.sessions.filter(session => remaining.has(session.path)).length;
   for (const group of groups) {
-    let excess = group.sessions.filter((session) => remaining.has(session.path)).length - retentionPolicy.maxPerProject;
-    if (excess <= 0) continue;
-    const candidates = group.sessions
-      .filter((session) => !protectedSession(session, current, now))
-      .sort(removalOrder);
-    for (const session of candidates) {
+    let excess = count(group) - retentionPolicy.maxPerProject;
+    for (const session of eligible(group.sessions)) {
       if (excess <= 0) break;
-      if (archive(session)) excess--;
+      if (archiveSession(session, remaining, totals, now)) excess--;
     }
   }
-
-  const globalCandidates = [...remaining.values()]
-    .filter((session) => !protectedSession(session, current, now))
-    .sort(removalOrder);
-  let remainingBytes = [...remaining.values()].reduce((sum, session) => sum + session.size, 0);
-
-  for (const session of globalCandidates) {
-    if (remaining.size <= retentionPolicy.maxTotal && remainingBytes <= retentionPolicy.maxBytes) break;
-    if (archive(session)) remainingBytes -= session.size;
+  const overGlobalLimit = () => remaining.size > retentionPolicy.maxTotal || totals.remainingBytes > retentionPolicy.maxBytes;
+  for (const session of eligible([...remaining.values()])) {
+    if (!overGlobalLimit()) break;
+    archiveSession(session, remaining, totals, now);
   }
-
-  remainingBytes = [...remaining.values()].reduce((sum, session) => sum + session.size, 0);
-  const projectLimitExceeded = groups.some(
-    (group) => group.sessions.filter((session) => remaining.has(session.path)).length > retentionPolicy.maxPerProject,
-  );
-  const limitedByProtection =
-    projectLimitExceeded || remaining.size > retentionPolicy.maxTotal || remainingBytes > retentionPolicy.maxBytes;
-  return { archived, archivedBytes, errors, remaining: remaining.size, remainingBytes, limitedByProtection };
+  return { ...totals, remaining: remaining.size,
+    limitedByProtection: overGlobalLimit() || groups.some(group => count(group) > retentionPolicy.maxPerProject) };
 }
 
 /** Run at most daily unless forced. Limits are soft when protected sessions alone exceed them. */

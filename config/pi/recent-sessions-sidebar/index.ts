@@ -12,7 +12,7 @@ import {
   sessionTitle,
   type RetentionResult,
 } from "./sessions.ts";
-import { RecentSessionsSidebar, type SidebarChoice, type SidebarTheme } from "./sidebar.ts";
+import { RecentSessionsSidebar, type SidebarChoice } from "./sidebar.ts";
 import { launchNewChat, launchSession } from "./terminal.ts";
 import { BACK, CANCEL, CONTINUE, NEW_CHAT, PIN, RENAME, UNPIN, type RecentContext, type SessionGroup, type SessionRow } from "./types.ts";
 
@@ -89,13 +89,7 @@ async function actOnSession(pi: ExtensionAPI, ctx: RecentContext, group: Session
   return "done";
 }
 
-type CustomRecentContext = ExtensionContext;
-
-function hasCustomTui(ctx: CustomRecentContext): boolean {
-  return ctx.mode === "tui";
-}
-
-async function openSidebar(pi: ExtensionAPI, ctx: CustomRecentContext): Promise<void> {
+async function openSidebar(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
   const current = ctx.sessionManager.getSessionFile();
   const groups = await loadGroups(current);
   if (groups.length === 0) {
@@ -104,23 +98,8 @@ async function openSidebar(pi: ExtensionAPI, ctx: CustomRecentContext): Promise<
   }
 
   const choice = await ctx.ui.custom<SidebarChoice>(
-    (tui, theme, _keybindings, done) => {
-      const sidebar = new RecentSessionsSidebar(
-        groups,
-        current,
-        theme as SidebarTheme,
-        () => Math.max(8, tui.terminal?.rows ?? process.stdout.rows ?? 24),
-        done,
-      );
-      return {
-        render: (width: number) => sidebar.render(width),
-        invalidate: () => sidebar.invalidate(),
-        handleInput: (data: string) => {
-          sidebar.handleInput(data);
-          tui.requestRender();
-        },
-      };
-    },
+    (tui, theme, _keybindings, done) => new RecentSessionsSidebar(groups, current, theme,
+      () => Math.max(8, tui.terminal.rows), done, () => tui.requestRender()),
     {
       overlay: true,
       overlayOptions: {
@@ -150,10 +129,10 @@ async function openSidebar(pi: ExtensionAPI, ctx: CustomRecentContext): Promise<
   notifyLaunch(ctx, await launchSession(choice.session, ctx.cwd || homedir()), "chat");
 }
 
-async function openRecentSessions(pi: ExtensionAPI, ctx: CustomRecentContext): Promise<void> {
+async function openRecentSessions(pi: ExtensionAPI, ctx: ExtensionContext): Promise<void> {
   if (!ctx.hasUI) return;
   recordCurrentBranch(pi, ctx.cwd, ctx.sessionManager.getSessionFile());
-  if (hasCustomTui(ctx)) {
+  if (ctx.mode === "tui") {
     await openSidebar(pi, ctx);
     return;
   }

@@ -1,0 +1,19 @@
+{
+  "project_name": "personal-pi-extensions",
+  "project_root": "../..",
+  "source_roots": ["config/pi"],
+  "test_roots": ["config/pi/tests"],
+  "output_dir": "target/quality",
+  "tsconfig": "tsconfig.json",
+  "framework": "auto",
+  "test_runner": "node",
+  "test_command": null,
+  "public_api": {
+    "entry": [
+      "config/pi/instances/index.ts",
+      "config/pi/worker-dashboard/index.ts",
+      "config/pi/recent-sessions-sidebar/index.ts"
+    ]
+  },
+  "policy": { "profile": "recommended" }
+}

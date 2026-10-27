@@ -6,6 +6,8 @@ import { tmpdir } from "node:os";
 import type { ExtensionAPI, ExtensionContext, KeybindingsManager, Theme } from "@earendil-works/pi-coding-agent";
 import { matchesKey, visibleWidth } from "@earendil-works/pi-tui";
 import extension from "../instances/index.ts";
+import { errorCode, isRecord, object, requireObject, strings } from "../lib/data.ts";
+import { fitLines, selectTheme, workerShortcut } from "../lib/tui.ts";
 import { discoverProcesses, mergeInventory, parseLog, parseStat, type LocalProcess } from "../instances/discovery.ts";
 import { decodeRecord, plain, STALE_MS, telemetryRow, textContent, type InstanceRecord, type FleetSnapshot } from "../instances/model.ts";
 import { Publisher } from "../instances/publisher.ts";
@@ -28,6 +30,19 @@ const keys = { matches: (data: string, action: string) => {
   const key = ({ "tui.select.up": "up", "tui.select.down": "down", "tui.select.cancel": "escape", "tui.select.confirm": "return" } as Record<string, string>)[action];
   return key ? matchesKey(data, key as Parameters<typeof matchesKey>[1]) : false;
 } } as KeybindingsManager;
+
+test("shared guards reject non-records and UI helpers preserve keys, colors and bounds", () => {
+  for (const value of [null, undefined, 0, "text", []]) {
+    assert.equal(isRecord(value), false); assert.deepEqual(object(value), {});
+    assert.throws(() => requireObject(value));
+  }
+  assert.equal(errorCode(Object.assign(new Error("missing"), { code: "ENOENT" })), "ENOENT");
+  assert.equal(errorCode(null), undefined);
+  assert.ok(strings(["a", "b"])); assert.ok(!strings(["a", 1]));
+  assert.equal(workerShortcut("\x1b9"), 9); assert.equal(workerShortcut("\x1b0"), undefined);
+  assert.equal(selectTheme(theme).selectedText("label"), "label");
+  assert.ok(fitLines(["界界界", "second"], 3, 1).every(line => visibleWidth(line) <= 3));
+});
 
 test("process stat parser handles parentheses/spaces and checks start identity", () => {
   const values = ["S", "50", ...Array(17).fill("0"), "123456", "0"];

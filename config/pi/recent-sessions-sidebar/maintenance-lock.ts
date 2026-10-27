@@ -1,10 +1,7 @@
 import { mkdirSync, rmSync, statSync } from "node:fs";
+import { errorCode } from "../lib/data.ts";
 
 const DEFAULT_STALE_MS = 60 * 60 * 1000;
-
-function errorCode(error: unknown): string | undefined {
-  return error && typeof error === "object" && "code" in error ? String(error.code) : undefined;
-}
 
 /** Acquire an atomic directory lock, recovering locks left by crashed processes. */
 export function acquireDirectoryLock(

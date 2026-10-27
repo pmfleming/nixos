@@ -31,16 +31,31 @@ export function workerState(task: Worker): string {
   return task.reportedStatus === "partial" ? `${label} (partial)` : label;
 }
 
-export function hasActiveWorkers(value: Observation, chats: ReadonlyMap<string, string> = new Map()): boolean {
+export function hasActiveWorkers(value: Observation, chats: ReadonlyMap<string, string> = new Map()): value is Observation & { snapshot: Snapshot } {
   return !!value.snapshot && (counts(value.snapshot).running > 0
     || [...chats.values()].some(status => status === "Chat running" || status === "Chat opening"));
+}
+
+function packLabels(labels: string[], width: number): { lines: string[]; shown: number } {
+  const lines: string[] = [];
+  let current = "", shown = 0;
+  for (const text of labels) {
+    if (current && visibleWidth(`${current}   ${text}`) > width) {
+      lines.push(current); current = "";
+      if (lines.length === 3) break;
+    }
+    current += `${current ? "   " : ""}${text}`;
+    shown++;
+  }
+  if (current) lines.push(current);
+  return { lines, shown };
 }
 
 export function renderWorkerBox(value: Observation, slots: WorkerSlots, theme: Pick<Theme, "fg">, width: number,
   chats: ReadonlyMap<string, string> = new Map()): string[] {
   width = Math.max(0, width);
-  const snapshot = value.snapshot;
   if (!hasActiveWorkers(value, chats)) return [];
+  const snapshot = value.snapshot;
   const inner = Math.max(0, width - 4);
   const border = (left: string, title: string, right: string) => {
     const text = truncateToWidth(title ? ` ${title} ` : "", Math.max(0, width - 2));
@@ -50,29 +65,18 @@ export function renderWorkerBox(value: Observation, slots: WorkerSlots, theme: P
     const clipped = truncateToWidth(text, inner);
     return truncateToWidth(`${theme.fg("dim", "│")} ${clipped}${" ".repeat(Math.max(0, inner - visibleWidth(clipped)))} ${theme.fg("dim", "│")}`, width);
   };
-  const lines: string[] = [];
-  if (snapshot) {
-    slots.update(snapshot);
-    const tasks = [...snapshot.tasks].sort((a, b) => slots.number(a.id) - slots.number(b.id));
-    let current = "";
-    let shown = 0;
-    for (const task of tasks) {
-      const label = chats.get(task.id) ?? workerState(task);
-      const color = label === "Running" || label === "Chat running" ? "accent"
-        : label === "Queued" || label === "Cancelled" || label === "Chat idle" ? "muted" : "warning";
-      const text = theme.fg(color, `${slots.number(task.id)} - ${label}`);
-      if (current && visibleWidth(`${current}   ${text}`) > inner) {
-        lines.push(row(current)); current = "";
-        if (lines.length === 3) break;
-      }
-      current += `${current ? "   " : ""}${text}`;
-      shown++;
-    }
-    if (current) lines.push(row(current));
-    if (shown < tasks.length) lines.push(row(theme.fg("dim", `+${tasks.length - shown} more · Alt+W lists all`)));
-    if (!tasks.length) lines.push(row(theme.fg("muted", "No workers")));
-  } else lines.push(row(theme.fg("warning", `Unavailable: ${value.error}`)));
+  slots.update(snapshot);
+  const tasks = [...snapshot.tasks].sort((a, b) => slots.number(a.id) - slots.number(b.id));
+  const labels = tasks.map(task => {
+    const label = chats.get(task.id) ?? workerState(task);
+    const color = ["Running", "Chat running"].includes(label) ? "accent"
+      : ["Queued", "Cancelled", "Chat idle"].includes(label) ? "muted" : "warning";
+    return theme.fg(color, `${slots.number(task.id)} - ${label}`);
+  });
+  const { lines, shown } = packLabels(labels, inner);
+  if (shown < tasks.length) lines.push(theme.fg("dim", `+${tasks.length - shown} more · Alt+W lists all`));
+  if (!tasks.length) lines.push(theme.fg("muted", "No workers"));
   return [border("╭", "", "╮"),
-    ...(snapshot && stale(snapshot) ? [row(theme.fg("warning", "STALE · states are last reported"))] : []),
-    ...lines, border("╰", "Alt+0 orchestrator", "╯")];
+    ...(stale(snapshot) ? [row(theme.fg("warning", "STALE · states are last reported"))] : []),
+    ...lines.map(row), border("╰", "Alt+0 orchestrator", "╯")];
 }

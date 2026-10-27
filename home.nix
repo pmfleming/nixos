@@ -277,15 +277,20 @@ in
 
     file = {
       ".pi/agent/extensions/recent-sessions-sidebar" = {
-        source = ./config/pi/recent-sessions-sidebar;
+        source = "${./config/pi}/recent-sessions-sidebar";
         force = true;
       };
       ".pi/agent/extensions/worker-dashboard" = {
-        source = ./config/pi/worker-dashboard;
+        source = "${./config/pi}/worker-dashboard";
+        force = true;
+      };
+      # Keep sibling lib/ imports available after Nix copies extensions to the store.
+      ".pi/agent/extensions/lib" = {
+        source = "${./config/pi}/lib";
         force = true;
       };
       ".pi/agent/extensions/instances" = {
-        source = ./config/pi/instances;
+        source = "${./config/pi}/instances";
         force = true;
       };
       ".local/bin/pi-instances" = {

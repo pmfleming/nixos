@@ -39,18 +39,13 @@ export default function workerDashboard(pi: ExtensionAPI) {
       invalidate: () => {},
     }), { placement: "belowEditor" });
   }
-  function closePanel(): void {
-    const current = panel;
-    panel = undefined;
-    current?.close?.();
-  }
-  function closeChat(): void {
-    const current = chatWindow;
-    chatWindow = undefined;
+  function closeView(kind: "reports" | "chat"): void {
+    const current = kind === "reports" ? panel : chatWindow;
+    if (kind === "reports") panel = undefined; else chatWindow = undefined;
     current?.close?.();
   }
   function stop(): void {
-    closeChat(); closePanel();
+    closeView("chat"); closeView("reports");
     unsubscribe?.(); unsubscribe = undefined;
     monitor?.stop(); monitor = undefined;
     context?.ui.setStatus("workers", undefined);
@@ -112,7 +107,7 @@ export default function workerDashboard(pi: ExtensionAPI) {
         ctx.ui.notify(`Worker ${interaction.number} is not available. Alt+W lists workers.`, "info");
         return;
       }
-      closePanel();
+      closeView("reports");
       await ctx.ui.custom<void>((tui, theme, _keys, done) => {
         interaction.close = () => done();
         interaction.view = new WorkerChatWindow(sessions, tui, theme, () => Math.max(1, tui.terminal.rows), async worker => {
@@ -120,7 +115,7 @@ export default function workerDashboard(pi: ExtensionAPI) {
           const task = run && slots.worker(run, worker);
           if (!run || !task) throw new Error(`Worker ${worker} is not available`);
           return sessions.open(`${run.run}/${task.id}`, () => prepareAttachment(run, task.id, worker, ctx.sessionManager.getSessionFile()));
-        }, interaction.close, () => { closeChat(); void openPanel(ctx); }, interaction.number);
+        }, interaction.close, () => { closeView("chat"); void openPanel(ctx); }, interaction.number);
         return interaction.view;
       }, { overlay: true, overlayOptions: { anchor: "center", width: "100%", maxHeight: "100%" } });
     } finally { if (chatWindow === interaction) chatWindow = undefined; }
@@ -130,7 +125,7 @@ export default function workerDashboard(pi: ExtensionAPI) {
     if (ctx.mode !== "tui") return;
     if (panel) {
       if (worker !== undefined) { panel.worker = worker; panel.view?.jump(worker); }
-      else closePanel();
+      else closeView("reports");
       return;
     }
     if (!monitor) start(ctx);
@@ -151,14 +146,14 @@ export default function workerDashboard(pi: ExtensionAPI) {
         interaction.close = () => done();
         interaction.view = new WorkerDashboard(current, theme,
           () => tui.requestRender(), () => Math.max(1, tui.terminal.rows), interaction.close, { slots, worker: target,
-            chat: number => { closePanel(); void openChat(ctx, number); } });
+            chat: number => { closeView("reports"); void openChat(ctx, number); } });
         return interaction.view;
       }, { overlay: true, overlayOptions: { anchor: "center", width: "94%", maxHeight: "96%" } });
     } finally { if (panel === interaction) panel = undefined; }
   }
 
   pi.registerShortcut("alt+w", { description: "Open workers / return to orchestrator", handler: ctx => openPanel(ctx) });
-  pi.registerShortcut("alt+0", { description: "Return to orchestrator; keep worker chats running", handler: () => { closeChat(); closePanel(); } });
+  pi.registerShortcut("alt+0", { description: "Return to orchestrator; keep worker chats running", handler: () => { closeView("chat"); closeView("reports"); } });
   for (const worker of [1, 2, 3, 4, 5, 6, 7, 8, 9] as const) {
     pi.registerShortcut(`alt+${worker}`, {
       description: `Foreground worker ${worker} chat; keep other sessions running`, handler: ctx => openChat(ctx, worker),
@@ -190,7 +185,7 @@ export default function workerDashboard(pi: ExtensionAPI) {
       if (option === "close-chats") {
         const busy = runtime?.busy;
         if (busy && !await ctx.ui.confirm("Stop worker chats?", "This aborts loaded worker activity. Alt+0 only backgrounds it.")) return;
-        closeChat(); unsubscribeRuntime?.(); unsubscribeRuntime = undefined;
+        closeView("chat"); unsubscribeRuntime?.(); unsubscribeRuntime = undefined;
         const old = runtime; runtime = undefined;
         const activeContext = context;
         await old?.stop();

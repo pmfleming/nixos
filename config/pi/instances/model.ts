@@ -1,3 +1,5 @@
+import { array, object } from "../lib/data.ts";
+
 export interface ProcessIdentity {
   pid: number;
   ppid: number;
@@ -61,13 +63,9 @@ export function plain(value: unknown, limit = 400): string {
     .replace(/[\x00-\x1f\x7f-\x9f\u200b-\u200f\u202a-\u202e\u2060-\u206f]/g, " ")
     .replace(/\s+/g, " ").trim().slice(0, limit) : "";
 }
-export function object(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
 export function textContent(value: unknown): string {
   if (typeof value === "string") return plain(value);
-  if (!Array.isArray(value)) return "";
-  return plain(value.filter(part => object(part).type === "text").slice(0, 8).map(part => object(part).text).join(" "));
+  return plain(array(value).filter(part => object(part).type === "text").slice(0, 8).map(part => object(part).text).join(" "));
 }
 export function identityKey(identity: ProcessIdentity): string {
   return `${identity.bootId}/${identity.pid}/${identity.startTicks}`;
@@ -79,21 +77,22 @@ export function decodeRecord(value: unknown): InstanceRecord {
     if (typeof n !== "number" || !Number.isSafeInteger(n) || n < 0) throw new Error(`Invalid ${key}`);
     return n;
   };
+  const state = v.state;
   if (v.version !== 1 || !/^[\w-]{1,80}$/.test(String(v.token))
     || !/^\d{1,30}$/.test(String(v.startTicks)) || !/^[\w-]{1,80}$/.test(String(v.bootId))
-    || !["idle", "working", "waiting"].includes(String(v.state))) throw new Error("Invalid instance record");
+    || (state !== "idle" && state !== "working" && state !== "waiting")) throw new Error("Invalid instance record");
   const record: InstanceRecord = {
     version: 1, token: String(v.token), pid: integer("pid"), ppid: integer("ppid"),
     bootId: String(v.bootId), startTicks: String(v.startTicks), registeredAt: integer("registeredAt"),
     updatedAt: integer("updatedAt"), lastActivityAt: integer("lastActivityAt"),
     sessionId: plain(v.sessionId, 200), sessionFile: plain(v.sessionFile, 2048),
     cwd: plain(v.cwd, 2048), name: plain(v.name, 160), mode: plain(v.mode, 40), model: plain(v.model, 160),
-    state: v.state as InstanceRecord["state"], tools: Array.isArray(v.tools) ? v.tools.slice(0, 32).map(x => plain(x, 80)) : [],
+    state, tools: array(v.tools).slice(0, 32).map(x => plain(x, 80)),
     turns: integer("turns"), toolCount: integer("toolCount"), prompt: plain(v.prompt), progress: plain(v.progress),
-    events: Array.isArray(v.events) ? v.events.slice(-12).flatMap(raw => {
+    events: array(v.events).slice(-12).flatMap(raw => {
       const e = object(raw);
       return typeof e.at === "number" && Number.isSafeInteger(e.at) && e.at >= 0 ? [{ at: e.at, text: plain(e.text) }] : [];
-    }) : [],
+    }),
   };
   if (v.endedAt !== undefined) record.endedAt = integer("endedAt");
   return record;

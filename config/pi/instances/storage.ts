@@ -3,6 +3,7 @@ import { lstat, mkdir, open, readdir, rename, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { decodeRecord, type InstanceRecord } from "./model.ts";
+import { errorCode } from "../lib/data.ts";
 
 export function registryPath(): string {
   return process.env.PI_INSTANCES_DIR || join(process.env.XDG_RUNTIME_DIR || tmpdir(), `pi-instances-${process.getuid?.() ?? "user"}`);
@@ -30,7 +31,7 @@ export async function readRecord(path: string): Promise<InstanceRecord> {
 export async function records(directory: string): Promise<{ records: InstanceRecord[]; warnings: string[] }> {
   try { await privateDirectory(directory); }
   catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return { records: [], warnings: [] };
+    if (errorCode(error) === "ENOENT") return { records: [], warnings: [] };
     throw error;
   }
   const names = (await readdir(directory)).filter(name => /^[\w-]+\.json$/.test(name));
@@ -39,7 +40,7 @@ export async function records(directory: string): Promise<{ records: InstanceRec
   let rejected = 0;
   for (const name of names) {
     try { result.push(await readRecord(join(directory, name))); }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") rejected++; }
+    catch (error) { if (errorCode(error) !== "ENOENT") rejected++; }
   }
   return { records: result, warnings: rejected ? [`${rejected} invalid/unreadable telemetry record(s) ignored`] : [] };
 }

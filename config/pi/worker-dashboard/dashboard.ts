@@ -1,5 +1,6 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { Key, SelectList, Text, matchesKey, truncateToWidth, type Component } from "@earendil-works/pi-tui";
+import { Key, SelectList, Text, matchesKey, type Component } from "@earendil-works/pi-tui";
+import { fitLines, selectTheme, workerShortcut } from "../lib/tui.ts";
 import { WorkerMonitor } from "./monitor.ts";
 import { age, detail, plain, stale, summary, type DetailFile, type Worker } from "./state.ts";
 import { WorkerSlots } from "./widget.ts";
@@ -7,11 +8,6 @@ import { WorkerSlots } from "./widget.ts";
 type Colors = Pick<Theme, "fg">;
 
 export class WorkerDashboard implements Component {
-  private monitor: WorkerMonitor;
-  private theme: Colors;
-  private redraw: () => void;
-  private rows: () => number;
-  private done: () => void;
   private unsubscribe: () => void;
   private list?: SelectList;
   private selected?: string;
@@ -29,9 +25,9 @@ export class WorkerDashboard implements Component {
   private slots: WorkerSlots;
   private openChat?: (number: number) => void;
 
-  constructor(monitor: WorkerMonitor, theme: Colors, redraw: () => void, rows: () => number, done: () => void,
+  constructor(private monitor: WorkerMonitor, private theme: Colors, private redraw: () => void,
+    private rows: () => number, private done: () => void,
     options: { slots?: WorkerSlots; worker?: number; chat?: (number: number) => void } = {}) {
-    this.monitor = monitor; this.theme = theme; this.redraw = redraw; this.rows = rows; this.done = done;
     this.slots = options.slots ?? new WorkerSlots();
     this.openChat = options.chat;
     this.unsubscribe = monitor.subscribe(() => {
@@ -69,10 +65,7 @@ export class WorkerDashboard implements Component {
     const list = new SelectList(tasks.map(task => ({ value: task.id,
       label: `${this.slots.number(task.id)} · ${task.state} · ${task.id}`,
       description: `${task.phase ? `${task.phase} · ` : ""}${age(task.started, task.ended)} · ${task.modelVerified ? "model verified" : "unverified"} · ${task.tools} tools`,
-    })), this.visibleRows, {
-      selectedPrefix: text => this.theme.fg("accent", text), selectedText: text => this.theme.fg("accent", text),
-      description: text => this.theme.fg("muted", text), scrollInfo: text => this.theme.fg("dim", text), noMatch: text => this.theme.fg("dim", text),
-    }, { minPrimaryColumnWidth: 10, maxPrimaryColumnWidth: 58 });
+    })), this.visibleRows, selectTheme(this.theme), { minPrimaryColumnWidth: 10, maxPrimaryColumnWidth: 58 });
     const index = Math.max(0, tasks.findIndex(task => task.id === this.selected));
     list.setSelectedIndex(index);
     const nextSelected = tasks[index]?.id;
@@ -106,11 +99,10 @@ export class WorkerDashboard implements Component {
   }
   handleInput(data: string): void {
     if (matchesKey(data, "alt+0") || matchesKey(data, "alt+w") || matchesKey(data, Key.ctrl("c"))) { this.done(); return; }
-    for (const number of [1, 2, 3, 4, 5, 6, 7, 8, 9] as const) {
-      if (matchesKey(data, `alt+${number}`)) {
-        if (this.openChat) this.openChat(number); else this.jump(number);
-        return;
-      }
+    const number = workerShortcut(data);
+    if (number !== undefined) {
+      if (this.openChat) this.openChat(number); else this.jump(number);
+      return;
     }
     if (matchesKey(data, Key.escape)) {
       if (this.inDetail) { this.inDetail = false; this.detailGeneration++; }
@@ -130,12 +122,10 @@ export class WorkerDashboard implements Component {
     this.redraw();
   }
   render(width: number): string[] {
-    width = Math.max(0, width);
-    const height = Math.max(1, this.rows() - 2);
     const snapshot = this.monitor.value.snapshot;
+    const height = Math.max(1, this.rows() - 2);
     if (!snapshot) {
-      return [this.theme.fg("accent", "Workers"), this.monitor.value.error || "No orchestration runs found.", "Esc closes · read-only"]
-        .slice(0, height).map(line => truncateToWidth(line, width));
+      return fitLines([this.theme.fg("accent", "Workers"), this.monitor.value.error || "No orchestration runs found.", "Esc closes · read-only"], width, height);
     }
     if (this.visibleRows !== Math.max(1, Math.min(12, this.rows() - 7))) this.rebuild();
     const task = this.task();
@@ -160,7 +150,7 @@ export class WorkerDashboard implements Component {
       lines.push(this.theme.fg("dim", "Alt+0 orchestrator · Alt+1–9 chat · ↑↓ select · Enter progress · r/l files · Esc closes"));
       lines.push(this.theme.fg("dim", "Review required ≠ accepted, integrated or rollout-approved."));
     }
-    return lines.slice(0, height).map(line => truncateToWidth(line, width));
+    return fitLines(lines, width, height);
   }
   invalidate(): void { this.list?.invalidate(); }
   dispose(): void { this.disposed = true; this.detailGeneration++; this.unsubscribe(); }

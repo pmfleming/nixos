@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { StringDecoder } from "node:string_decoder";
+import { errorCode, object, requireObject } from "../lib/data.ts";
 
 export type RecordValue = Record<string, unknown>;
 export type ProcessSpec = { command: string; args: string[]; cwd: string; env: NodeJS.ProcessEnv };
@@ -23,9 +24,7 @@ export class RpcConnection implements Connection {
   private buffer = "";
   private decoder = new StringDecoder("utf8");
 
-  private timeout: number;
-  constructor(spec: ProcessSpec, timeout = 30_000) {
-    this.timeout = timeout;
+  constructor(spec: ProcessSpec, private timeout = 30_000) {
     this.child = spawn(spec.command, spec.args, { cwd: spec.cwd, env: spec.env, stdio: ["pipe", "pipe", "pipe"], detached: true });
     this.exited = new Promise(resolve => {
       this.child.once("close", (code, signal) => {
@@ -44,9 +43,7 @@ export class RpcConnection implements Connection {
         this.buffer = this.buffer.slice(newline + 1);
         if (Buffer.byteLength(line) > 32 * 1024 * 1024) { this.protocolFailure("Worker RPC record exceeds 32 MiB"); return; }
         try {
-          const event: unknown = JSON.parse(line);
-          if (!event || typeof event !== "object" || Array.isArray(event)) throw new Error("not an object");
-          this.receive(event as RecordValue);
+          this.receive(requireObject(JSON.parse(line)));
         } catch { this.protocolFailure("Invalid worker RPC JSON record"); return; }
       }
       if (Buffer.byteLength(this.buffer) > 32 * 1024 * 1024) this.protocolFailure("Worker RPC record exceeds 32 MiB");
@@ -59,7 +56,7 @@ export class RpcConnection implements Connection {
       if (!pending) return;
       this.pending.delete(event.id); clearTimeout(pending.timer);
       if (event.success !== true) pending.reject(new Error(typeof event.error === "string" ? event.error : "Worker command rejected"));
-      else pending.resolve(event.data && typeof event.data === "object" ? event.data as RecordValue : {});
+      else pending.resolve(object(event.data));
     } else for (const listener of this.listeners) listener(event);
   }
   private fail(error: Error): void {
@@ -102,7 +99,7 @@ export class RpcConnection implements Connection {
       const signal = (name: NodeJS.Signals) => {
         if (!this.child.pid) return;
         try { process.kill(-this.child.pid, name); } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ESRCH") this.child.kill(name);
+          if (errorCode(error) !== "ESRCH") this.child.kill(name);
         }
       };
       // EOF requests orderly Pi disposal. Signal only the process group we own.

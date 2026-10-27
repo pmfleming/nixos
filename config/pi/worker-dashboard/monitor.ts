@@ -3,13 +3,12 @@ import { plain, type Observation } from "./state.ts";
 // One bounded read at a time. Session replacement/shutdown fences late reads.
 export class WorkerMonitor {
   value: Observation = {};
-  private read: () => Promise<Observation>;
   private listeners = new Set<(value: Observation) => void>();
   private timer?: ReturnType<typeof setInterval>;
   private pending?: Promise<void>;
   private generation = 0;
 
-  constructor(read: () => Promise<Observation>) { this.read = read; }
+  constructor(private read: () => Promise<Observation>) {}
   subscribe(listener: (value: Observation) => void): () => void {
     this.listeners.add(listener);
     listener(this.value);

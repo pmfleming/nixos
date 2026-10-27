@@ -8,3 +8,6 @@ result-*
 
 # Frequently changing proposals are not rebuild inputs.
 /docs/proposals/
+
+# Generated Pi extension quality evidence and analyzer cache.
+/config/pi/target/

@@ -1,5 +1,6 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
-import { Editor, Text, matchesKey, truncateToWidth, type Component, type Focusable, type TUI } from "@earendil-works/pi-tui";
+import { Editor, Text, matchesKey, type Component, type Focusable, type TUI } from "@earendil-works/pi-tui";
+import { fitLines, selectTheme, workerShortcut } from "../lib/tui.ts";
 import { MultiSessionRuntime, type ChatSession } from "./runtime.ts";
 import { plain } from "./state.ts";
 
@@ -21,22 +22,12 @@ export class WorkerChatWindow implements Component, Focusable {
   get focused(): boolean { return this.editor.focused; }
   set focused(value: boolean) { this.editor.focused = value; }
 
-  private runtime: MultiSessionRuntime;
-  private tui: TUI;
-  private theme: Colors;
-  private rows: () => number;
-  private load: (number: number) => Promise<ChatSession>;
-  private done: () => void;
-  private dashboard: () => void;
-  constructor(runtime: MultiSessionRuntime, tui: TUI, theme: Colors,
-    rows: () => number, load: (number: number) => Promise<ChatSession>,
-    done: () => void, dashboard: () => void, initial: number) {
-    this.runtime = runtime; this.tui = tui; this.theme = theme; this.rows = rows;
-    this.load = load; this.done = done; this.dashboard = dashboard;
+  constructor(private runtime: MultiSessionRuntime, private tui: TUI, private theme: Colors,
+    private rows: () => number, private load: (number: number) => Promise<ChatSession>,
+    private done: () => void, private dashboard: () => void, initial: number) {
     this.editor = new Editor(tui, {
       borderColor: text => theme.fg("accent", text),
-      selectList: { selectedPrefix: text => theme.fg("accent", text), selectedText: text => theme.fg("accent", text),
-        description: text => theme.fg("muted", text), scrollInfo: text => theme.fg("dim", text), noMatch: text => theme.fg("dim", text) },
+      selectList: selectTheme(theme),
     });
     this.editor.onChange = text => { if (this.current) this.current.draft = text; };
     this.editor.onSubmit = text => { this.editor.setText(text); void this.submit(text); };
@@ -96,9 +87,8 @@ export class WorkerChatWindow implements Component, Focusable {
   handleInput(data: string): void {
     if (matchesKey(data, "alt+0") || matchesKey(data, "ctrl+d")) { this.save(); this.done(); return; }
     if (matchesKey(data, "alt+w")) { this.save(); this.dashboard(); return; }
-    for (const number of [1, 2, 3, 4, 5, 6, 7, 8, 9] as const) {
-      if (matchesKey(data, `alt+${number}`)) { void this.switch(number); return; }
-    }
+    const number = workerShortcut(data);
+    if (number !== undefined) { void this.switch(number); return; }
     if (matchesKey(data, "escape")) { void this.abort(); return; }
     if (matchesKey(data, "pageUp")) {
       if (this.current) this.current.scroll += this.bodyHeight;
@@ -112,7 +102,6 @@ export class WorkerChatWindow implements Component, Focusable {
     this.redraw();
   }
   render(width: number): string[] {
-    width = Math.max(0, width);
     const height = Math.max(1, this.rows());
     const chat = this.current;
     const label = chat ? `Worker ${chat.attachment.number} · ${chat.attachment.id} · ${chat.status}` : "Worker chat";
@@ -137,7 +126,7 @@ export class WorkerChatWindow implements Component, Focusable {
     const end = this.history.length - (chat?.scroll ?? 0);
     const body = this.history.slice(Math.max(0, end - this.bodyHeight), end);
     while (body.length < this.bodyHeight) body.unshift("");
-    return [...header, ...body, ...editorLines, ...footer].slice(0, height).map(line => truncateToWidth(line, width));
+    return fitLines([...header, ...body, ...editorLines, ...footer], width, height);
   }
   invalidate(): void { this.cacheKey = ""; this.editor.invalidate(); }
   dispose(): void {

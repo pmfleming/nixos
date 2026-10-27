@@ -1,6 +1,7 @@
 import { constants } from "node:fs";
 import { lstat, open, readdir, realpath } from "node:fs/promises";
-import { join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { errorCode, requireObject as object } from "../lib/data.ts";
 
 export type Worker = {
   id: string; title: string; state: string; phase: string; modelVerified: boolean;
@@ -25,10 +26,8 @@ export function plain(value: unknown, limit = 300): string {
     ? value.slice(0, limit).replace(/[\u0000-\u001f\u007f-\u009f\u2028-\u202e\u2066-\u2069]/g, " ").trim()
     : "";
 }
-function object(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Malformed worker state object");
-  return value as Record<string, unknown>;
-}
+function number(value: unknown): number;
+function number(value: unknown, optional: true): number | undefined;
 function number(value: unknown, optional = false): number | undefined {
   if (value === undefined && optional) return undefined;
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > Number.MAX_SAFE_INTEGER)
@@ -36,7 +35,7 @@ function number(value: unknown, optional = false): number | undefined {
   return value;
 }
 function count(value: unknown): number {
-  const result = number(value ?? 0)!;
+  const result = number(value ?? 0);
   if (!Number.isInteger(result)) throw new Error("Malformed worker count");
   return result;
 }
@@ -44,16 +43,16 @@ function identifier(value: unknown): string {
   if (typeof value !== "string" || !IDENTIFIER.test(value)) throw new Error("Invalid run/task identifier");
   return value;
 }
-function inside(root: string, path: string): boolean {
+export function within(root: string, path: string): boolean {
   const rel = relative(root, path);
-  return rel !== ".." && !rel.startsWith(`..${sep}`) && !rel.startsWith(sep);
+  return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
 
 // Bound bytes before parsing, reject non-regular files and paths escaping the run.
 // Never read transcripts, credentials, arbitrary state-provided paths or FIFOs.
 export async function bounded(root: string, path: string, limit: number): Promise<string> {
   const [base, target] = await Promise.all([realpath(root), realpath(path)]);
-  if (!inside(base, target)) throw new Error("Worker file escapes its run directory");
+  if (!within(base, target)) throw new Error("Worker file escapes its run directory");
   const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
   try {
     const stat = await file.stat();
@@ -78,7 +77,7 @@ export async function listRuns(root: string): Promise<string[]> {
     return entries.filter(entry => entry.isDirectory() && IDENTIFIER.test(entry.name))
       .map(entry => entry.name).sort().reverse().slice(0, 32);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if (errorCode(error) === "ENOENT") return [];
     throw error;
   }
 }
@@ -101,7 +100,7 @@ export function decodeState(value: unknown, directory: string, expectedRun: stri
     };
   });
   return { directory, run: expectedRun, provider: plain(data.provider), model: plain(data.model), thinking: plain(data.thinking),
-    updated: number(data.updated)!, stopping: data.stopping === true, tasks };
+    updated: number(data.updated), stopping: data.stopping === true, tasks };
 }
 
 export async function observe(root: string, selected?: string): Promise<Observation> {
@@ -115,7 +114,7 @@ export async function observe(root: string, selected?: string): Promise<Observat
     let path = join(directory, "control", "dashboard.json");
     try { await lstat(path); }
     catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      if (errorCode(error) !== "ENOENT") throw error;
       path = join(directory, "control", "state.json");
     }
     const contents = await bounded(root, path, 256 * 1024);

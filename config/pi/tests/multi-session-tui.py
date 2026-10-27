@@ -186,8 +186,11 @@ def exercise(fake):
                     return current
             raise AssertionError('Missing '+text+'\n'+output[start:].decode('utf8','replace')[-12000:])
         try:
-            initial = read(3)
-            assert '2 review' in initial, initial[-5000:]
+            read(3)
+            # Idle handoffs intentionally have no automatic bottom box. The
+            # read-only list still exposes their state before any chat loads.
+            send('/workers\r'); wait_for('2 review')
+            send('\x1b0'); read(0.3)
             if fake:
                 send('RUN_OFFLINE_PARENT\r'); wait_for('ROOT_STREAM_STARTED')
             send('ORCHESTRATOR_DRAFT'); read(0.2)
