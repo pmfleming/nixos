@@ -215,6 +215,13 @@ in
     enable = true;
     package = shelllist;
     systemd.target = "graphical-session.target";
+    systemd.environment = {
+      SHELLLIST_BT_SOCKET = "1";
+      SHELLLIST_NM_SOCKET = "1";
+      SHELLLIST_APP_SOCKET = "1";
+      SHELLLIST_BAR_SOCKET = "1";
+      SHELLLIST_CLIP_SOCKET = "1";
+    };
   };
 
   services.bar-daemon = {
