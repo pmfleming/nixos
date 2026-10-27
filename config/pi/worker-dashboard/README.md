@@ -76,15 +76,19 @@ runtime. Live `Chat running` / `Chat idle` labels are separate from those handof
   worker must be explicitly aborted first.
 - `/workers close-chats`: dispose all owned RPC workers; asks for confirmation if
   activity/startup is in progress. This is different from Alt+0.
-- `/workers hide` / `/workers show`: hide/show the bottom box.
+- `/workers hide` / `/workers show`: disable/enable the automatic bottom box.
+  It appears only while workers are running/stopping or loaded chats are opening/running;
+  queued-only, completed, idle, missing and unavailable runs do not keep it visible.
+  Reports and chat shortcuts remain available when the box is hidden.
 - `/workers runs`, `/workers latest`, `/workers RUN-ID`: select a run. Unknown or
   unavailable IDs leave selection unchanged. Unload/close loaded chats first.
 
 Numbers remain stable across polling/reordering/insertion while following a run;
 a new run/reload assigns from sorted task IDs. Reports and chat headers include
 the original task ID. The box limits rows and shows a `+N more` hint as needed.
-Its handoff summary and labels refresh every two seconds; loaded chat activity
-also updates immediately. Review never means accepted/integrated/rollout-approved.
+Its labels refresh every two seconds; loaded chat activity also updates immediately.
+The box omits the summary heading, duplicate footer counts and worker/list shortcut
+hints, retaining only numbered states and the Alt+0 orchestrator hint. Review never means accepted/integrated/rollout-approved.
 
 Native `/new`, `/resume` and `/fork` are blocked while workers are busy/loading.
 **Quit, `/reload`, or replacement of an idle calling session ends this runtime**:

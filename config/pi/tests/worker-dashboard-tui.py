@@ -48,7 +48,8 @@ with tempfile.TemporaryDirectory(prefix='pi-workers-tui-') as tmp:
     def send(text): os.write(master,text.encode())
     try:
         initial=read_for(3)
-        assert '1 running' in initial, initial[-5000:]
+        assert '1 running' not in initial and 'Workers:' not in initial, initial[-5000:]
+        assert 'Alt+1' not in initial and 'Alt+W reports' not in initial, initial[-5000:]
         assert '1 - Running' in initial and '2 - Queued' in initial and '╭' in initial, initial[-5000:]
         # Opening a worker must not consume or submit the orchestrator's draft.
         send('ORCHESTRATOR_DRAFT'); read_for(0.3)

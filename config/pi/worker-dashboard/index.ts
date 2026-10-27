@@ -6,8 +6,8 @@ import { prepareAttachment } from "./attachment.ts";
 import { WorkerChatWindow } from "./chat.ts";
 import { MultiSessionRuntime } from "./runtime.ts";
 import { WorkerMonitor } from "./monitor.ts";
-import { listRuns, observe, plain, stale, summary, type Snapshot } from "./state.ts";
-import { renderWorkerBox, WorkerSlots } from "./widget.ts";
+import { listRuns, observe, plain, stale, type Snapshot } from "./state.ts";
+import { hasActiveWorkers, renderWorkerBox, WorkerSlots } from "./widget.ts";
 
 export default function workerDashboard(pi: ExtensionAPI) {
   const root = process.env.PI_WORKERS_ROOT || join(homedir(), "Projects", "shelllist-orchestration");
@@ -25,19 +25,17 @@ export default function workerDashboard(pi: ExtensionAPI) {
   let chatWindow: ChatWindow | undefined;
 
   function paint(ctx: ExtensionContext, current: WorkerMonitor): void {
-    const { snapshot, error } = current.value;
-    const chats = runtime?.list() ?? [];
-    const live = chats.length ? ` · Chats: ${chats.filter(chat => chat.status === "running").length} running / ${chats.length} loaded` : "";
-    ctx.ui.setStatus("workers", snapshot ? `Workers: ${summary(snapshot)}${live}` : error ? "Workers unavailable · /workers" : undefined);
-    if (!showWidget || (!snapshot && !error)) {
+    const { snapshot } = current.value;
+    const chats = () => new Map(runtime?.list().filter(chat => chat.key.startsWith(`${current.value.snapshot?.run}/`))
+      .map(chat => [chat.attachment.id, `Chat ${chat.status}`]));
+    ctx.ui.setStatus("workers", undefined);
+    if (!showWidget || !hasActiveWorkers(current.value, chats())) {
       ctx.ui.setWidget("workers", undefined);
       return;
     }
     if (snapshot) slots.update(snapshot);
     ctx.ui.setWidget("workers", (_tui, theme) => ({
-      render: (width: number) => renderWorkerBox(current.value, slots, theme, width,
-        new Map(runtime?.list().filter(chat => chat.key.startsWith(`${current.value.snapshot?.run}/`))
-          .map(chat => [chat.attachment.id, `Chat ${chat.status}`]))),
+      render: (width: number) => renderWorkerBox(current.value, slots, theme, width, chats()),
       invalidate: () => {},
     }), { placement: "belowEditor" });
   }

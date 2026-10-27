@@ -46,6 +46,7 @@ test("bottom box shows numbered states, bounded layout, stale/blocked/partial tr
   assert.match(lines, /2 - Running/);
   assert.match(lines, /3 - Review \(partial\)/);
   assert.match(lines, /Alt\+0 orchestrator/);
+  assert.doesNotMatch(lines, /Workers|handoffs|\d+ running|\d+ queued|Alt\+1|Alt\+W/);
   assert.equal(workerState({ ...run.tasks[0]!, state: "failed-review-required" }), "Failed / Review");
   for (let i = 0; i < 61; i++) run.tasks.push({ ...run.tasks[0]!, id: `extra-${i}` });
   run.updated = 1;
@@ -55,8 +56,28 @@ test("bottom box shows numbered states, bounded layout, stale/blocked/partial tr
     for (const line of rendered) assert.ok(visibleWidth(line) <= width, `overflow at ${width}`);
   }
   assert.match(renderWorkerBox({ snapshot: run }, slots, theme, 100).join("\n"), /STALE.*last reported/);
-  assert.match(renderWorkerBox({ error: "bad state" }, slots, theme, 100).join("\n"), /Unavailable: bad state/);
+  assert.deepEqual(renderWorkerBox({ error: "bad state" }, slots, theme, 100), []);
   assert.deepEqual(renderWorkerBox({}, slots, theme, 100), []);
+});
+
+test("bottom box is visible only for active workers or live chats", () => {
+  const run = snapshot();
+  const slots = new WorkerSlots();
+  const render = (chats = new Map<string, string>()) => renderWorkerBox({ snapshot: run }, slots, theme, 100, chats);
+  for (const state of ["queued", "review-required", "failed-review-required", "stopped-review-required", "launch-failed", "cancelled-before-launch"]) {
+    run.tasks.forEach(task => { task.state = state; });
+    assert.deepEqual(render(), [], state);
+  }
+  for (const state of ["running", "stopping"]) {
+    run.tasks[0]!.state = state;
+    assert.ok(render().length > 0, state);
+  }
+  run.tasks[0]!.state = "review-required";
+  assert.ok(render(new Map([["bt", "Chat running"]])).length > 0);
+  assert.ok(render(new Map([["bt", "Chat opening"]])).length > 0);
+  for (const status of ["idle", "closed", "error"]) assert.deepEqual(render(new Map([["bt", `Chat ${status}`]])), []);
+  run.tasks = [];
+  assert.deepEqual(render(), []);
 });
 
 test("direct worker view and local hotkeys switch details and return in one key", async () => {
@@ -88,11 +109,15 @@ test("shortcut UI uses below-editor box, preserves editor, fences shutdown and c
   const handlers = new Map<string, (event: unknown, ctx: ExtensionContext) => unknown>();
   const shortcuts = new Map<string, { handler: (ctx: ExtensionContext) => Promise<void> | void }>();
   const placements: unknown[] = [];
+  let widget: unknown;
   const panels: WorkerDashboard[] = [];
   const notices: string[] = [];
   const ctx = { mode: "tui", sessionManager: { getSessionFile: () => undefined }, ui: {
-    setStatus: () => {},
-    setWidget: (_key: string, _content: unknown, options?: unknown) => { if (options) placements.push(options); },
+    setStatus: (_key: string, text: unknown) => { assert.equal(text, undefined, "no duplicate footer summary"); },
+    setWidget: (_key: string, content: unknown, options?: unknown) => {
+      widget = content;
+      if (options) placements.push(options);
+    },
     notify: (text: string) => { notices.push(text); },
     // There is deliberately no editor/session control API on this mock.
     custom: (factory: (tui: unknown, theme: unknown, keys: unknown, done: () => void) => WorkerDashboard) =>
@@ -126,6 +151,13 @@ test("shortcut UI uses below-editor box, preserves editor, fences shutdown and c
     await opening;
     await shortcuts.get("alt+9")!.handler(ctx);
     assert.match(notices.join("\n"), /Worker 9 is not available/);
+    assert.equal(typeof widget, "function");
+    const statePath = join(root, "run-1", "control", "state.json");
+    for (const state of ["review-required", "queued", "running", "stopping", "cancelled-before-launch"]) {
+      await writeFile(statePath, JSON.stringify({ run: "run-1", updated: Date.now() / 1000, tasks: { bt: { state } } }));
+      await shortcuts.get("alt+9")!.handler(ctx); // Refresh the monitor without opening a view.
+      assert.equal(typeof widget, ["running", "stopping"].includes(state) ? "function" : "undefined", state);
+    }
     const pending = shortcuts.get("alt+w")!.handler(ctx);
     handlers.get("session_shutdown")!({}, ctx);
     await pending;

@@ -1,6 +1,6 @@
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
-import { plain, stale, summary, type Observation, type Snapshot, type Worker } from "./state.ts";
+import { counts, plain, stale, type Observation, type Snapshot, type Worker } from "./state.ts";
 
 // Keep numbers stable while a run is observed, even if tasks are reordered,
 // removed or added. New runs get their own numbering; numbers are never reused.
@@ -31,14 +31,19 @@ export function workerState(task: Worker): string {
   return task.reportedStatus === "partial" ? `${label} (partial)` : label;
 }
 
+export function hasActiveWorkers(value: Observation, chats: ReadonlyMap<string, string> = new Map()): boolean {
+  return !!value.snapshot && (counts(value.snapshot).running > 0
+    || [...chats.values()].some(status => status === "Chat running" || status === "Chat opening"));
+}
+
 export function renderWorkerBox(value: Observation, slots: WorkerSlots, theme: Pick<Theme, "fg">, width: number,
   chats: ReadonlyMap<string, string> = new Map()): string[] {
   width = Math.max(0, width);
   const snapshot = value.snapshot;
-  if (!snapshot && !value.error) return [];
+  if (!hasActiveWorkers(value, chats)) return [];
   const inner = Math.max(0, width - 4);
   const border = (left: string, title: string, right: string) => {
-    const text = truncateToWidth(` ${title} `, Math.max(0, width - 2));
+    const text = truncateToWidth(title ? ` ${title} ` : "", Math.max(0, width - 2));
     return truncateToWidth(theme.fg("dim", `${left}${text}${"─".repeat(Math.max(0, width - visibleWidth(text) - 2))}${right}`), width);
   };
   const row = (text: string) => {
@@ -67,7 +72,7 @@ export function renderWorkerBox(value: Observation, slots: WorkerSlots, theme: P
     if (shown < tasks.length) lines.push(row(theme.fg("dim", `+${tasks.length - shown} more · Alt+W lists all`)));
     if (!tasks.length) lines.push(row(theme.fg("muted", "No workers")));
   } else lines.push(row(theme.fg("warning", `Unavailable: ${value.error}`)));
-  return [border("╭", snapshot ? `Workers · handoffs: ${summary(snapshot)}` : "Workers unavailable", "╮"),
+  return [border("╭", "", "╮"),
     ...(snapshot && stale(snapshot) ? [row(theme.fg("warning", "STALE · states are last reported"))] : []),
-    ...lines, border("╰", "Alt+1–9 chat · Alt+W reports · Alt+0 orchestrator", "╯")];
+    ...lines, border("╰", "Alt+0 orchestrator", "╯")];
 }
