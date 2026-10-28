@@ -27,6 +27,17 @@ local media = assert(bindings["SUPER + M"], "Super+M must open Media")
 assert(media.dispatcher == "hl.dsp.global", "Media must use a global shortcut")
 assert(media.arguments[1] == "shelllist:media", "Wrong Media shortcut target")
 for key, target in pairs({
+    ["SUPER + Home"] = "shelllist:media-back",
+    ["SUPER + End"] = "shelllist:media-play-pause",
+    ["SUPER + Insert"] = "shelllist:media-forward",
+}) do
+    local action = assert(bindings[key], key .. " must control bar media")
+    assert(action.dispatcher == "hl.dsp.global", "Bar media must use a global shortcut")
+    assert(action.arguments[1] == target, "Wrong bar media shortcut target")
+    assert(not binding_options[key] or not binding_options[key].repeating,
+        "Bar media transport must not repeat while held")
+end
+for key, target in pairs({
     ["SUPER + U"] = "shelllist:updates",
     ["SUPER + SHIFT + U"] = "shelllist:update-logs",
 }) do
