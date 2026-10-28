@@ -8,7 +8,7 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import extension from "../worker-dashboard/index.ts";
 import { WorkerDashboard } from "../worker-dashboard/dashboard.ts";
 import { WorkerMonitor } from "../worker-dashboard/monitor.ts";
-import { counts, decodeState, detail, observe, plain, stale, summary } from "../worker-dashboard/state.ts";
+import { counts, decodeState, detail, listRuns, observe, plain, stale, summary } from "../worker-dashboard/state.ts";
 
 function state() {
   return { run: "run-1", provider: "openai-codex", model: "gpt-6.1-sol", thinking: "high", updated: 100,
@@ -80,6 +80,59 @@ test("missing/partial/latest-invalid files are explicit, never silently older st
     assert.ok(broken.error); assert.equal(broken.snapshot, undefined);
     assert.equal((await observe(f.root, "run-1")).snapshot?.run, "run-1");
     assert.match((await observe(f.root, "../escape")).error!, /identifier/);
+  } finally { await f.cleanup(); }
+});
+
+test("discovery ignores unrelated directories before applying the run limit", async () => {
+  const f = await fixture();
+  try {
+    await mkdir(join(f.root, "agenda-20261027", "control"), { recursive: true });
+    for (let i = 0; i < 40; i++) await mkdir(join(f.root, `z-unrelated-${i}`));
+    assert.deepEqual(await listRuns(f.root), ["run-1"]);
+    assert.equal((await observe(f.root)).snapshot?.run, "run-1");
+    assert.ok((await observe(f.root, "agenda-20261027")).error,
+      "explicit selection of unavailable directories still reports an error");
+    await rm(f.run, { recursive: true });
+    assert.deepEqual(await observe(f.root), {});
+  } finally { await f.cleanup(); }
+});
+
+test("timestamped runs remain discoverable before state exists", async () => {
+  const f = await fixture();
+  try {
+    await rm(f.run, { recursive: true });
+    const oldRun = "20261027T214423Z";
+    const newRun = "20261028T010000Z";
+    await mkdir(join(f.root, oldRun, "control"), { recursive: true });
+    await writeFile(join(f.root, oldRun, "control", "state.json"), JSON.stringify({ ...state(), run: oldRun }));
+    await mkdir(join(f.root, "agenda-20261027", "control"), { recursive: true });
+    assert.equal((await observe(f.root)).snapshot?.run, oldRun);
+    await mkdir(join(f.root, newRun));
+    assert.deepEqual(await listRuns(f.root), [newRun, oldRun]);
+    assert.match((await observe(f.root)).error!, /ENOENT/);
+    assert.equal((await observe(f.root, oldRun)).snapshot?.run, oldRun);
+  } finally { await f.cleanup(); }
+});
+
+test("named runs with manifests or broken state are not silently skipped", async () => {
+  const f = await fixture();
+  try {
+    const run = join(f.root, "run-2");
+    await mkdir(join(run, "control"), { recursive: true });
+    const manifest = join(run, "manifest.json");
+    await writeFile(manifest, "{}");
+    assert.deepEqual(await listRuns(f.root), ["run-2", "run-1"]);
+    assert.match((await observe(f.root)).error!, /ENOENT/);
+    await rm(manifest);
+    for (const name of ["state.json", "dashboard.json"]) {
+      const path = join(run, "control", name);
+      await symlink(join(run, "missing.json"), path);
+      assert.deepEqual(await listRuns(f.root), ["run-2", "run-1"]);
+      assert.match((await observe(f.root)).error!, /ENOENT/);
+      await rm(path);
+    }
+    await writeFile(join(run, "control", "dashboard.json"), JSON.stringify({ ...state(), run: "run-2" }));
+    assert.equal((await observe(f.root)).snapshot?.run, "run-2", "dashboard-only named runs are supported");
   } finally { await f.cleanup(); }
 });
 

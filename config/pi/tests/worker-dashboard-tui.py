@@ -13,6 +13,8 @@ with tempfile.TemporaryDirectory(prefix='pi-workers-tui-') as tmp:
     (run / 'control').mkdir(parents=True)
     (run / 'tasks' / 'bt').mkdir(parents=True)
     (run / 'tasks' / 'nm').mkdir(parents=True)
+    # Non-supervisor folders must not displace the run during discovery.
+    (root / 'runs' / 'z-unrelated-project' / 'control').mkdir(parents=True)
     state = {'run':'run-1','provider':'openai-codex','model':'gpt-6.1-sol','thinking':'high','updated':time.time(),
              'tasks':{'bt':{'title':'Bluetooth fixture','state':'running','started':time.time(),'last_event_at':time.time(),
                             'model_verified':True,'tools':3,'turns':1},

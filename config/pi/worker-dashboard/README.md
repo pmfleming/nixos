@@ -102,9 +102,18 @@ not exit the orchestrator. Nothing sends signals to legacy supervisor workers.
 
 `PI_WORKERS_ROOT` selects the orchestration parent directory; default:
 `~/Projects/shelllist-orchestration`. Newest run directory is selected by name
-unless pinned. Each supplies supervisor `control/state.json`; combined quality
+unless pinned. Discovery includes timestamped supervisor directories
+(`YYYYMMDDTHHMMSSZ`) and named directories containing `manifest.json`,
+`control/state.json`, or `control/dashboard.json`. Other directories (including
+unrelated projects with a `control/` folder) are ignored before applying the
+32-run display limit. Markers need only exist, not parse successfully; dangling
+state links also remain discoverable. Timestamped runs and manifest-bearing runs
+remain visible before their first state write.
+
+Each run supplies supervisor `control/state.json`; combined quality
 `control/dashboard.json` takes precedence when present. Malformed/latest missing
 state is unavailable, never silently replaced by older/pre-quality success.
+Explicit run selection still reports missing state rather than ignoring it.
 
 An unfinished run with heartbeat older than 15 seconds, or over five seconds in
 the future, is marked **STALE / last reported**. Terminal handoffs need no continuing

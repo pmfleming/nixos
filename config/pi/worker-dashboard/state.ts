@@ -74,8 +74,28 @@ export async function listRuns(root: string): Promise<string[]> {
   try {
     const entries = await readdir(root, { withFileTypes: true });
     if (entries.length > 512) throw new Error("Too many orchestration directories; select a narrower PI_WORKERS_ROOT");
-    return entries.filter(entry => entry.isDirectory() && IDENTIFIER.test(entry.name))
-      .map(entry => entry.name).sort().reverse().slice(0, 32);
+    const candidates = entries.filter(entry => entry.isDirectory() && IDENTIFIER.test(entry.name))
+      .map(entry => entry.name).sort().reverse();
+    const runs: string[] = [];
+    for (const name of candidates) {
+      // Timestamped supervisor runs count even before their first state write.
+      // Named runs must advertise the supervisor format, not merely control/.
+      let isRun = /^\d{8}T\d{6}Z$/.test(name);
+      for (const marker of ["control/dashboard.json", "control/state.json", "manifest.json"]) {
+        if (isRun) break;
+        try {
+          // Existence, not validity: malformed files and dangling links must
+          // remain selectable so observe() reports errors instead of old success.
+          await lstat(join(root, name, marker));
+          isRun = true;
+        } catch (error) {
+          if (errorCode(error) !== "ENOENT") throw error;
+        }
+      }
+      if (isRun) runs.push(name);
+      if (runs.length === 32) break;
+    }
+    return runs;
   } catch (error) {
     if (errorCode(error) === "ENOENT") return [];
     throw error;
