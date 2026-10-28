@@ -14,8 +14,21 @@ export class InstancesView {
   private disposed = false;
   private timer?: ReturnType<typeof setInterval>;
   private pending?: Promise<void>;
-  constructor(private theme: Theme, private keys: KeybindingsManager, private height: () => number,
-    private renderAgain: () => void, private close: () => void, private load: () => Promise<FleetSnapshot>) {}
+  private theme: Theme;
+  private keys: KeybindingsManager;
+  private height: () => number;
+  private renderAgain: () => void;
+  private close: () => void;
+  private load: () => Promise<FleetSnapshot>;
+  constructor(theme: Theme, keys: KeybindingsManager, height: () => number,
+    renderAgain: () => void, close: () => void, load: () => Promise<FleetSnapshot>) {
+    this.theme = theme;
+    this.keys = keys;
+    this.height = height;
+    this.renderAgain = renderAgain;
+    this.close = close;
+    this.load = load;
+  }
   start(): void {
     void this.refresh();
     this.timer = setInterval(() => { void this.refresh(); }, 2000);

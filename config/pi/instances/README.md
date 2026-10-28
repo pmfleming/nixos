@@ -103,6 +103,12 @@ Canonical source: `/etc/nixos/config/pi/instances`. Home Manager installs that
 directory and `config/scripts/pi-instances.sh` as `~/.local/bin/pi-instances`.
 Development symlinks allow immediate use without a NixOS rebuild.
 
+The rebuild gate checks compatibility with bootstrap Pi 0.84.1; vendor updates
+also check against their own Pi SDK. Bootstrap Pi lacks UI-prompt events and an
+abort flag: it reports settlement but cannot distinguish UI waiting or aborted
+runs. Newer Pi retains those richer states. Legacy user prompts and newer
+user/custom-message payloads are both supported.
+
 Typecheck `config/pi/tsconfig.json` and run `config/pi/tests/instances.test.ts`
 against the installed Pi dependencies. Native offline acceptance:
 

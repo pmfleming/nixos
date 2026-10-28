@@ -152,7 +152,8 @@ hl.bind("mouse:274", function() end, {
 -- Applications and session actions
 hl.bind("SUPER + RETURN", hl.dsp.exec_cmd(app(terminal)))
 hl.bind("SUPER + SPACE", hl.dsp.global("shelllist:applications"))
-hl.bind("SUPER + A", hl.dsp.global("shelllist:activity"))
+hl.bind("SUPER + A", hl.dsp.global("shelllist:agenda"))
+hl.bind("SUPER + SHIFT + A", hl.dsp.global("shelllist:calendar"))
 hl.bind("SUPER + T", hl.dsp.global("shelllist:time-weather"))
 hl.bind("SUPER + M", hl.dsp.global("shelllist:media"))
 hl.bind("SUPER + U", hl.dsp.global("shelllist:updates"))

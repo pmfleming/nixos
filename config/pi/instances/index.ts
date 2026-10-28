@@ -71,7 +71,8 @@ export default function instances(pi: ExtensionAPI) {
   });
   pi.on("before_agent_start", (event, ctx) => {
     publisher?.sync(ctx);
-    publisher?.startRun(event.messageType === "user" ? event.prompt : undefined);
+    // Bootstrap Pi predates messageType and only emits user prompts here.
+    publisher?.startRun(!("messageType" in event) || event.messageType === "user" ? event.prompt : undefined);
   });
   pi.on("agent_start", () => { publisher?.working(); });
   pi.on("turn_start", () => { publisher?.turn(); });
@@ -92,7 +93,12 @@ export default function instances(pi: ExtensionAPI) {
   pi.on("tool_execution_update", () => { publisher?.stream(); });
   pi.on("tool_execution_end", event => { publisher?.toolEnd(event.toolCallId, event.toolName, event.isError); });
   // agent_end is not final settlement: retries and queued work can follow it.
-  pi.on("agent_settled", event => { publisher?.settled(event.aborted); });
-  pi.on("ui_prompt_start", (_event, ctx) => { publisher?.promptUI(true, ctx.isIdle()); });
-  pi.on("ui_prompt_end", (_event, ctx) => { publisher?.promptUI(false, ctx.isIdle()); });
+  pi.on("agent_settled", event => { publisher?.settled("aborted" in event && event.aborted === true); });
+  // Older Pi accepts event registrations but never emits these newer UI events.
+  // Keep this compatibility overload narrow; all other hooks use the SDK types.
+  const promptEvents = pi as ExtensionAPI & {
+    on(event: "ui_prompt_start" | "ui_prompt_end", handler: (event: unknown, ctx: ExtensionContext) => void): void;
+  };
+  promptEvents.on("ui_prompt_start", (_event, ctx) => { publisher?.promptUI(true, ctx.isIdle()); });
+  promptEvents.on("ui_prompt_end", (_event, ctx) => { publisher?.promptUI(false, ctx.isIdle()); });
 }

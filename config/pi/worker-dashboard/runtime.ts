@@ -43,7 +43,13 @@ export class ChatSession {
   private settlements = 0;
   private unsubscribe: () => void;
   private disposed?: Promise<void>;
-  constructor(readonly attachment: Attachment, private connection: Connection, private changed: () => void) {
+  readonly attachment: Attachment;
+  private connection: Connection;
+  private changed: () => void;
+  constructor(attachment: Attachment, connection: Connection, changed: () => void) {
+    this.attachment = attachment;
+    this.connection = connection;
+    this.changed = changed;
     this.unsubscribe = connection.subscribe(event => this.event(event));
   }
   get key(): string { return this.attachment.key; }
@@ -155,7 +161,10 @@ export class MultiSessionRuntime {
   private listeners = new Set<() => void>();
   private disposed = false;
   private stopping?: Promise<void>;
-  constructor(private connect: (attachment: Attachment) => Connection = attachment => new RpcConnection(attachment.spec)) {}
+  private connect: (attachment: Attachment) => Connection;
+  constructor(connect: (attachment: Attachment) => Connection = attachment => new RpcConnection(attachment.spec)) {
+    this.connect = connect;
+  }
   subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   private changed = () => { if (!this.disposed) for (const listener of this.listeners) listener(); };
   list(): ChatSession[] { return [...this.ready.values()]; }

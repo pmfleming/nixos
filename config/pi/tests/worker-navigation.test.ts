@@ -1,176 +1,146 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { visibleWidth } from "@earendil-works/pi-tui";
+import { visibleWidth, type Component } from "@earendil-works/pi-tui";
 import extension from "../worker-dashboard/index.ts";
-import { WorkerDashboard } from "../worker-dashboard/dashboard.ts";
-import { WorkerMonitor } from "../worker-dashboard/monitor.ts";
+import { CatalogMonitor, CatalogSlots, type Catalog } from "../worker-dashboard/catalog.ts";
+import { createRun } from "../worker-dashboard/ownership.ts";
+import { WorkersSidebar, type SidebarAction } from "../worker-dashboard/sidebar.ts";
 import { decodeState } from "../worker-dashboard/state.ts";
-import { renderWorkerBox, WorkerSlots, workerState } from "../worker-dashboard/widget.ts";
+import { WorkerSlots } from "../worker-dashboard/widget.ts";
 
 const theme = { fg: (_color: unknown, text: string) => `\x1b[36m${text}\x1b[0m` };
-function snapshot() {
-  return decodeState({ run: "run-1", updated: Date.now() / 1000, tasks: {
+function catalog(): Catalog {
+  const snapshot = decodeState({ run: "run-1", updated: Date.now() / 1000, tasks: {
     bt: { title: "Bluetooth 界 🦀", state: "running" },
-    app: { state: "review-required", reported_status: "blocked" },
-    nm: { state: "review-required", reported_status: "partial" },
+    nm: { title: "Networking", state: "queued" },
   } }, "/fixture/run-1", "run-1");
+  return { errors: [], groups: [
+    { id: "owner-a", name: "Session A", cwd: "/same-project", current: true, modified: 1, errors: [], workers: snapshot.tasks.map((task, index) =>
+      ({ key: `${snapshot.run}/${task.id}`, ownerId: "owner-a", snapshot, task, number: index + 1 })) },
+    { id: "owner-b", name: "Session B", cwd: "/same-project", current: false, modified: 1, errors: [], workers: [
+      { key: "run-2/b", ownerId: "owner-b", snapshot: { ...snapshot, run: "run-2" }, task: { ...snapshot.tasks[0]!, id: "b", title: "Other worker" }, number: 1 }] },
+    { id: "owner-c", name: "Empty session", cwd: "/other", current: false, modified: 1, errors: [], workers: [] },
+  ] };
 }
 
-test("worker numbers survive reorder, insertion and removal without reuse", () => {
-  const slots = new WorkerSlots();
-  const run = snapshot();
-  slots.update(run);
-  assert.equal(slots.number("app"), 1);
-  assert.equal(slots.number("bt"), 2);
-  run.tasks.reverse();
-  run.tasks.push({ ...run.tasks[0]!, id: "aaa" });
-  slots.update(run);
-  assert.equal(slots.number("aaa"), 4);
-  assert.equal(slots.worker(run, 2)?.id, "bt");
-  run.tasks = run.tasks.filter(task => task.id !== "bt");
-  assert.equal(slots.worker(run, 2), undefined);
-  assert.equal(slots.number("nm"), 3);
-  slots.update({ ...run, run: "run-2" });
-  assert.equal(slots.number("aaa"), 1);
+test("worker numbers are stable and separate for each owning session", () => {
+  const slots = new CatalogSlots();
+  assert.equal(slots.number("a", "run-1/a"), 1);
+  assert.equal(slots.number("a", "run-2/a"), 2);
+  assert.equal(slots.number("b", "run-3/a"), 1);
+  assert.equal(slots.number("a", "run-1/a"), 1);
+  const run = catalog().groups[0]!.workers[0]!.snapshot;
+  const reports = new WorkerSlots(); reports.update(run);
+  run.tasks.reverse(); reports.update(run);
+  assert.equal(reports.worker(run, 1)?.id, "bt");
 });
 
-test("bottom box shows numbered states, bounded layout, stale/blocked/partial truth", () => {
-  const run = snapshot();
-  const slots = new WorkerSlots();
-  const lines = renderWorkerBox({ snapshot: run }, slots, theme, 100).join("\n");
-  assert.match(lines, /1 - Attention/);
-  assert.match(lines, /2 - Running/);
-  assert.match(lines, /3 - Review \(partial\)/);
-  assert.match(lines, /Alt\+0 orchestrator/);
-  assert.doesNotMatch(lines, /Workers|handoffs|\d+ running|\d+ queued|Alt\+1|Alt\+W/);
-  assert.equal(workerState({ ...run.tasks[0]!, state: "failed-review-required" }), "Failed / Review");
-  for (let i = 0; i < 61; i++) run.tasks.push({ ...run.tasks[0]!, id: `extra-${i}` });
-  run.updated = 1;
-  for (const width of [0, 1, 2, 3, 4, 8, 24, 80, 120]) {
-    const rendered = renderWorkerBox({ snapshot: run }, slots, theme, width);
-    assert.ok(rendered.length <= 7);
-    for (const line of rendered) assert.ok(visibleWidth(line) <= width, `overflow at ${width}`);
-  }
-  assert.match(renderWorkerBox({ snapshot: run }, slots, theme, 100).join("\n"), /STALE.*last reported/);
-  assert.deepEqual(renderWorkerBox({ error: "bad state" }, slots, theme, 100), []);
-  assert.deepEqual(renderWorkerBox({}, slots, theme, 100), []);
-});
-
-test("bottom box is visible only for active workers or live chats", () => {
-  const run = snapshot();
-  const slots = new WorkerSlots();
-  const render = (chats = new Map<string, string>()) => renderWorkerBox({ snapshot: run }, slots, theme, 100, chats);
-  for (const state of ["queued", "review-required", "failed-review-required", "stopped-review-required", "launch-failed", "cancelled-before-launch"]) {
-    run.tasks.forEach(task => { task.state = state; });
-    assert.deepEqual(render(), [], state);
-  }
-  for (const state of ["running", "stopping"]) {
-    run.tasks[0]!.state = state;
-    assert.ok(render().length > 0, state);
-  }
-  run.tasks[0]!.state = "review-required";
-  assert.ok(render(new Map([["bt", "Chat running"]])).length > 0);
-  assert.ok(render(new Map([["bt", "Chat opening"]])).length > 0);
-  for (const status of ["idle", "closed", "error"]) assert.deepEqual(render(new Map([["bt", `Chat ${status}`]])), []);
-  run.tasks = [];
-  assert.deepEqual(render(), []);
-});
-
-test("direct worker view and local hotkeys switch details and return in one key", async () => {
-  const run = snapshot();
-  const monitor = new WorkerMonitor(async () => ({ snapshot: run }));
+test("session sidebar excludes other sessions; all view expands each session independently", async () => {
+  const data = catalog();
+  const monitor = new CatalogMonitor(async () => data);
   await monitor.refresh();
-  let closed = 0;
-  const panel = new WorkerDashboard(monitor, theme, () => {}, () => 32, () => { closed++; }, { worker: 2 });
+  const actions: SidebarAction[] = [];
+  let closed = 0, redraws = 0, height = 24;
+  const local = new WorkersSidebar(monitor, "session", "owner-a", theme, () => height, () => redraws++, () => closed++, action => actions.push(action));
+  const all = new WorkersSidebar(monitor, "all", "owner-a", theme, () => height, () => redraws++, () => closed++, action => actions.push(action));
   try {
-    assert.match(panel.render(120).join("\n"), /Worker 2 · bt/);
-    panel.handleInput("\x1b3");
-    assert.match(panel.render(120).join("\n"), /Worker 3 · nm/);
-    panel.handleInput("\x1b9"); // unavailable number does not change selection
-    assert.match(panel.render(120).join("\n"), /Worker 3 · nm/);
-    panel.handleInput("\x1b0");
-    assert.equal(closed, 1, "one key returns from details, not just to the list");
-    const before = panel.render(120).join("\n");
-    run.tasks.reverse();
-    await monitor.refresh();
-    assert.match(panel.render(120).join("\n"), /Worker 3 · nm/);
-    assert.match(before, /read-only/);
-  } finally { panel.dispose(); monitor.stop(); }
+    assert.match(local.render(150).join("\n"), /Bluetooth/);
+    assert.doesNotMatch(local.render(150).join("\n"), /Other worker|Session B|Empty session/);
+    local.handleInput("\r");
+    assert.equal(actions.at(-1)?.kind, "chat");
+    assert.equal((actions.at(-1) as { worker: { ownerId: string } }).worker.ownerId, "owner-a");
+    let text = all.render(150).join("\n");
+    assert.match(text, /Session B/); assert.match(text, /Empty session/);
+    assert.doesNotMatch(text, /Other worker/);
+    // Collapse A, then expand B. Enter never opens a parent session as a worker.
+    all.handleInput("\x1b[D"); all.handleInput("\x1b[B"); all.handleInput("\r");
+    text = all.render(150).join("\n");
+    assert.match(text, /Other worker/); assert.doesNotMatch(text, /Bluetooth/);
+    const before = actions.length;
+    assert.equal(before, 1);
+    all.handleInput("\x1b[B"); all.handleInput("r");
+    assert.equal(actions.at(-1)?.kind, "report");
+    assert.equal((actions.at(-1) as { worker: { ownerId: string } }).worker.ownerId, "owner-b");
+    data.groups.reverse(); await monitor.refresh();
+    all.handleInput("\r");
+    assert.equal((actions.at(-1) as { worker: { ownerId: string } }).worker.ownerId, "owner-b", "polling must not redirect the selection");
+    for (height of [1, 4, 10, 24]) for (const width of [0, 1, 4, 12, 64, 120]) {
+      const lines = all.render(width);
+      assert.ok(lines.length <= height);
+      for (const line of lines) assert.ok(visibleWidth(line) <= width, `overflow ${width}x${height}`);
+    }
+    local.handleInput("\x1b"); assert.equal(closed, 1);
+    local.dispose(); all.dispose(); const previous = redraws;
+    await monitor.refresh(); assert.equal(redraws, previous);
+  } finally { local.dispose(); all.dispose(); monitor.stop(); }
 });
 
-test("shortcut UI uses below-editor box, preserves editor, fences shutdown and concurrent opens", async () => {
+test("two commands use right sidebars with no bottom box; registration binds the actual session", async () => {
   const root = await mkdtemp(join(tmpdir(), "pi-navigation-"));
   const previousRoot = process.env.PI_WORKERS_ROOT;
   process.env.PI_WORKERS_ROOT = root;
+  type Handler = (ctx: ExtensionContext) => Promise<void> | void;
   const handlers = new Map<string, (event: unknown, ctx: ExtensionContext) => unknown>();
-  const shortcuts = new Map<string, { handler: (ctx: ExtensionContext) => Promise<void> | void }>();
-  const placements: unknown[] = [];
-  let widget: unknown;
-  const panels: WorkerDashboard[] = [];
-  const notices: string[] = [];
-  const ctx = { mode: "tui", sessionManager: { getSessionFile: () => undefined }, ui: {
-    setStatus: (_key: string, text: unknown) => { assert.equal(text, undefined, "no duplicate footer summary"); },
-    setWidget: (_key: string, content: unknown, options?: unknown) => {
-      widget = content;
-      if (options) placements.push(options);
-    },
+  const shortcuts = new Map<string, { handler: Handler }>();
+  const commands = new Map<string, { handler: (args: string, ctx: ExtensionContext) => Promise<void> }>();
+  let registerTool: { execute: (...args: any[]) => Promise<unknown> } | undefined;
+  const panels: Component[] = [], notices: string[] = [], options: any[] = [];
+  let sessionId = "owner-a";
+  const ctx = { mode: "tui", cwd: "/fixture", sessionManager: {
+    getSessionFile: () => undefined, getSessionId: () => sessionId, getSessionName: () => "Fixture",
+  }, ui: {
+    setStatus: (_key: string, value: unknown) => assert.equal(value, undefined),
+    setWidget: (_key: string, value: unknown) => assert.equal(value, undefined, "no bottom widget"),
     notify: (text: string) => { notices.push(text); },
-    // There is deliberately no editor/session control API on this mock.
-    custom: (factory: (tui: unknown, theme: unknown, keys: unknown, done: () => void) => WorkerDashboard) =>
+    custom: (factory: (tui: unknown, theme: unknown, keys: unknown, done: () => void) => Component, opts: unknown) =>
       new Promise<void>(resolve => {
-        let view: WorkerDashboard;
-        view = factory({ requestRender: () => {}, terminal: { rows: 32 } }, theme, {}, () => { view.dispose(); resolve(); });
-        panels.push(view);
+        let view: Component;
+        view = factory({ requestRender: () => {}, terminal: { rows: 32 } }, theme, {}, () => { (view as Component & { dispose?: () => void }).dispose?.(); resolve(); });
+        panels.push(view); options.push(opts);
       }),
   } } as unknown as ExtensionContext;
-  const api = { registerCommand: () => {},
-    registerShortcut: (key: string, options: { handler: (ctx: ExtensionContext) => Promise<void> | void }) => { shortcuts.set(key, options); },
-    on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) => { handlers.set(name, handler); },
+  const api = { registerCommand: (name: string, options: any) => commands.set(name, options),
+    registerTool: (tool: any) => { registerTool = tool; },
+    registerShortcut: (key: string, options: { handler: Handler }) => shortcuts.set(key, options),
+    on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) => handlers.set(name, handler),
   } as unknown as ExtensionAPI;
   const waitFor = async (predicate: () => boolean) => {
-    for (let i = 0; i < 100 && !predicate(); i++) await new Promise(resolve => setTimeout(resolve, 5));
+    for (let i = 0; i < 200 && !predicate(); i++) await new Promise(resolve => setTimeout(resolve, 5));
     assert.ok(predicate(), "timed out waiting for UI");
   };
   try {
-    await mkdir(join(root, "run-1", "control"), { recursive: true });
-    await writeFile(join(root, "run-1", "control", "state.json"), JSON.stringify({ run: "run-1", updated: Date.now() / 1000,
-      tasks: { bt: { state: "running" } } }));
     extension(api);
+    assert.deepEqual([...commands.keys()], ["workers", "workers-all"]);
+    await registerTool!.execute("id", { run: "run-a" }, undefined, undefined, ctx);
+    await writeFile(join(root, "run-a/control/state.json"), JSON.stringify({ run: "run-a", updated: Date.now() / 1000, tasks: { bt: { state: "running", title: "A_WORKER" } } }));
+    await createRun(root, "run-b", { version: 1, sessionId: "owner-b", name: "B", cwd: "/fixture", created: 1 });
+    await writeFile(join(root, "run-b/control/state.json"), JSON.stringify({ run: "run-b", updated: Date.now() / 1000, tasks: { bt: { state: "running", title: "B_WORKER" } } }));
     handlers.get("session_start")!({}, ctx);
-    const opening = shortcuts.get("alt+1")!.handler(ctx);
-    const duplicate = shortcuts.get("alt+1")!.handler(ctx);
-    await duplicate;
+    const opening = commands.get("workers")!.handler("", ctx);
     await waitFor(() => panels.length === 1);
-    assert.deepEqual(placements[0], { placement: "belowEditor" });
-    assert.match(panels[0]!.render(120).join("\n"), /JSON process cannot be attached/);
-    shortcuts.get("alt+0")!.handler(ctx);
-    await opening;
+    assert.equal(options[0].overlayOptions.anchor, "right-center");
+    assert.match(panels[0]!.render(120).join("\n"), /A_WORKER/);
+    assert.doesNotMatch(panels[0]!.render(120).join("\n"), /B_WORKER/);
+    shortcuts.get("alt+0")!.handler(ctx); await opening;
     await shortcuts.get("alt+9")!.handler(ctx);
-    assert.match(notices.join("\n"), /Worker 9 is not available/);
-    assert.equal(typeof widget, "function");
-    const statePath = join(root, "run-1", "control", "state.json");
-    for (const state of ["review-required", "queued", "running", "stopping", "cancelled-before-launch"]) {
-      await writeFile(statePath, JSON.stringify({ run: "run-1", updated: Date.now() / 1000, tasks: { bt: { state } } }));
-      await shortcuts.get("alt+9")!.handler(ctx); // Refresh the monitor without opening a view.
-      assert.equal(typeof widget, ["running", "stopping"].includes(state) ? "function" : "undefined", state);
-    }
-    const pending = shortcuts.get("alt+w")!.handler(ctx);
-    handlers.get("session_shutdown")!({}, ctx);
-    await pending;
-    assert.equal(panels.length, 1, "shutdown fences a pending open");
+    assert.match(notices.join("\n"), /not associated/);
+    const pending = commands.get("workers")!.handler("", ctx);
+    await handlers.get("session_shutdown")!({}, ctx); await pending;
+    assert.equal(panels.length, 1, "shutdown fences pending sidebar creation");
+    sessionId = "owner-b";
     handlers.get("session_start")!({}, ctx);
-    const reopened = shortcuts.get("alt+w")!.handler(ctx);
+    const second = commands.get("workers")!.handler("", ctx);
     await waitFor(() => panels.length === 2);
-    handlers.get("session_shutdown")!({}, ctx);
-    await reopened;
+    assert.match(panels[1]!.render(120).join("\n"), /B_WORKER/);
+    assert.doesNotMatch(panels[1]!.render(120).join("\n"), /A_WORKER/);
+    await handlers.get("session_shutdown")!({}, ctx); await second;
   } finally {
-    handlers.get("session_shutdown")?.({}, ctx);
-    if (previousRoot === undefined) delete process.env.PI_WORKERS_ROOT;
-    else process.env.PI_WORKERS_ROOT = previousRoot;
+    await handlers.get("session_shutdown")?.({}, ctx);
+    if (previousRoot === undefined) delete process.env.PI_WORKERS_ROOT; else process.env.PI_WORKERS_ROOT = previousRoot;
     await rm(root, { recursive: true, force: true });
   }
 });

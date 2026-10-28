@@ -27,14 +27,26 @@ export class RecentSessionsSidebar implements Component {
   private cachedRowsSignature?: string;
   private cachedLines?: string[];
 
+  private groups: SessionGroup[];
+  private currentSessionPath: string | undefined;
+  private theme: SidebarTheme;
+  private getTerminalRows: () => number;
+  private done: (value: SidebarChoice) => void;
+  private redraw: () => void;
   constructor(
-    private groups: SessionGroup[],
-    private currentSessionPath: string | undefined,
-    private theme: SidebarTheme,
-    private getTerminalRows: () => number,
-    private done: (value: SidebarChoice) => void,
-    private redraw: () => void = () => {},
+    groups: SessionGroup[],
+    currentSessionPath: string | undefined,
+    theme: SidebarTheme,
+    getTerminalRows: () => number,
+    done: (value: SidebarChoice) => void,
+    redraw: () => void = () => {},
   ) {
+    this.groups = groups;
+    this.currentSessionPath = currentSessionPath;
+    this.theme = theme;
+    this.getTerminalRows = getTerminalRows;
+    this.done = done;
+    this.redraw = redraw;
     const initialGroup = groups.find((group) => group.hasCurrent) ?? groups[0];
     if (initialGroup) this.expandedGroups.add(initialGroup.key);
 

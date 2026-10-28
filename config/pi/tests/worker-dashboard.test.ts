@@ -8,6 +8,8 @@ import { visibleWidth } from "@earendil-works/pi-tui";
 import extension from "../worker-dashboard/index.ts";
 import { WorkerDashboard } from "../worker-dashboard/dashboard.ts";
 import { WorkerMonitor } from "../worker-dashboard/monitor.ts";
+import { createRun } from "../worker-dashboard/ownership.ts";
+const owner = { version: 1 as const, sessionId: "parent-session", name: "Parent", cwd: "/fixture", created: 1 };
 import { counts, decodeState, detail, listRuns, observe, plain, stale, summary } from "../worker-dashboard/state.ts";
 
 function state() {
@@ -19,8 +21,7 @@ function state() {
 }
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "pi-workers-"));
-  const run = join(root, "run-1");
-  await mkdir(join(run, "control"), { recursive: true });
+  const run = await createRun(root, "run-1", owner);
   await mkdir(join(run, "tasks", "bt"), { recursive: true });
   await writeFile(join(run, "control", "state.json"), JSON.stringify(state()));
   await writeFile(join(run, "tasks", "bt", "PROGRESS.md"), "Inspecting the fixture\nNo live effects.\n");
@@ -74,7 +75,7 @@ test("missing/partial/latest-invalid files are explicit, never silently older st
   const f = await fixture();
   try {
     assert.deepEqual(await observe(join(f.root, "missing")), {});
-    await mkdir(join(f.root, "run-2", "control"), { recursive: true });
+    await createRun(f.root, "run-2", owner);
     await writeFile(join(f.root, "run-2", "control", "state.json"), "{");
     const broken = await observe(f.root);
     assert.ok(broken.error); assert.equal(broken.snapshot, undefined);
@@ -83,7 +84,7 @@ test("missing/partial/latest-invalid files are explicit, never silently older st
   } finally { await f.cleanup(); }
 });
 
-test("discovery ignores unrelated directories before applying the run limit", async () => {
+test("discovery ignores unrelated and legacy directories", async () => {
   const f = await fixture();
   try {
     await mkdir(join(f.root, "agenda-20261027", "control"), { recursive: true });
@@ -97,33 +98,32 @@ test("discovery ignores unrelated directories before applying the run limit", as
   } finally { await f.cleanup(); }
 });
 
-test("timestamped runs remain discoverable before state exists", async () => {
+test("owned runs remain discoverable before state exists; timestamps are not ownership", async () => {
   const f = await fixture();
   try {
     await rm(f.run, { recursive: true });
     const oldRun = "20261027T214423Z";
     const newRun = "20261028T010000Z";
-    await mkdir(join(f.root, oldRun, "control"), { recursive: true });
+    await createRun(f.root, oldRun, owner);
     await writeFile(join(f.root, oldRun, "control", "state.json"), JSON.stringify({ ...state(), run: oldRun }));
     await mkdir(join(f.root, "agenda-20261027", "control"), { recursive: true });
     assert.equal((await observe(f.root)).snapshot?.run, oldRun);
     await mkdir(join(f.root, newRun));
+    assert.deepEqual(await listRuns(f.root), [oldRun]);
+    await rm(join(f.root, newRun), { recursive: true });
+    await createRun(f.root, newRun, owner);
     assert.deepEqual(await listRuns(f.root), [newRun, oldRun]);
     assert.match((await observe(f.root)).error!, /ENOENT/);
     assert.equal((await observe(f.root, oldRun)).snapshot?.run, oldRun);
   } finally { await f.cleanup(); }
 });
 
-test("named runs with manifests or broken state are not silently skipped", async () => {
+test("owned named runs with broken state are not silently skipped", async () => {
   const f = await fixture();
   try {
-    const run = join(f.root, "run-2");
-    await mkdir(join(run, "control"), { recursive: true });
-    const manifest = join(run, "manifest.json");
-    await writeFile(manifest, "{}");
+    const run = await createRun(f.root, "run-2", owner);
     assert.deepEqual(await listRuns(f.root), ["run-2", "run-1"]);
     assert.match((await observe(f.root)).error!, /ENOENT/);
-    await rm(manifest);
     for (const name of ["state.json", "dashboard.json"]) {
       const path = join(run, "control", name);
       await symlink(join(run, "missing.json"), path);
@@ -202,11 +202,11 @@ test("extension remains inert in non-TUI lifecycle modes", async () => {
   const handlers = new Map<string, (event: unknown, ctx: ExtensionContext) => unknown>();
   const commands: string[] = [];
   const shortcuts = new Map<string, { handler: (ctx: ExtensionContext) => unknown }>();
-  const api = { registerCommand: (name: string) => { commands.push(name); },
+  const api = { registerTool: () => {}, registerCommand: (name: string) => { commands.push(name); },
     registerShortcut: (key: string, options: { handler: (ctx: ExtensionContext) => unknown }) => { shortcuts.set(key, options); },
     on: (name: string, handler: (event: unknown, ctx: ExtensionContext) => unknown) => { handlers.set(name, handler); } };
   extension(api as unknown as ExtensionAPI);
-  assert.deepEqual(commands, ["workers"]);
+  assert.deepEqual(commands, ["workers", "workers-all"]);
   assert.equal(shortcuts.size, 11);
   for (const mode of ["json", "print", "rpc"]) {
     const ctx = { mode, ui: new Proxy({}, { get: () => { throw new Error("headless UI accessed"); } }) };

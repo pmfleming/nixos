@@ -13,7 +13,11 @@ export class Publisher {
   private active = new Map<string, string>();
   private streamText = "";
   private waiting = 0;
-  constructor(private directory: string, identity: ProcessIdentity, private warn: (message: string) => void, now = Date.now()) {
+  private directory: string;
+  private warn: (message: string) => void;
+  constructor(directory: string, identity: ProcessIdentity, warn: (message: string) => void, now = Date.now()) {
+    this.directory = directory;
+    this.warn = warn;
     this.record = { ...identity, version: 1, token: randomUUID(), registeredAt: now, updatedAt: now, lastActivityAt: now,
       sessionId: "", sessionFile: "", name: "", cwd: "", mode: "", model: "", state: "idle",
       tools: [], turns: 0, toolCount: 0, prompt: "", progress: "", events: [] };

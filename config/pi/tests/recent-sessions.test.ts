@@ -15,7 +15,7 @@ if (!process.env.PI_RECENT_FIXTURE) {
   test("sidebar metadata, navigation and retention in an isolated HOME", async () => {
     const home = await mkdtemp(join(tmpdir(), "pi-recent-review-"));
     try {
-      const result = spawnSync(process.execPath, [...process.execArgv, __filename], {
+      const result = spawnSync(process.execPath, [...process.execArgv, process.argv[1]!], {
         encoding: "utf8", timeout: 30_000,
         env: { ...process.env, HOME: home, PI_RECENT_FIXTURE: home,
           PI_CODING_AGENT_DIR: join(home, ".pi/agent"), PI_CODING_AGENT_SESSION_DIR: "",

@@ -8,7 +8,8 @@ export class WorkerMonitor {
   private pending?: Promise<void>;
   private generation = 0;
 
-  constructor(private read: () => Promise<Observation>) {}
+  private read: () => Promise<Observation>;
+  constructor(read: () => Promise<Observation>) { this.read = read; }
   subscribe(listener: (value: Observation) => void): () => void {
     this.listeners.add(listener);
     listener(this.value);

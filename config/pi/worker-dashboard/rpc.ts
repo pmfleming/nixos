@@ -24,7 +24,9 @@ export class RpcConnection implements Connection {
   private buffer = "";
   private decoder = new StringDecoder("utf8");
 
-  constructor(spec: ProcessSpec, private timeout = 30_000) {
+  private timeout: number;
+  constructor(spec: ProcessSpec, timeout = 30_000) {
+    this.timeout = timeout;
     this.child = spawn(spec.command, spec.args, { cwd: spec.cwd, env: spec.env, stdio: ["pipe", "pipe", "pipe"], detached: true });
     this.exited = new Promise(resolve => {
       this.child.once("close", (code, signal) => {

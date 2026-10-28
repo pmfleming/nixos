@@ -22,9 +22,23 @@ export class WorkerChatWindow implements Component, Focusable {
   get focused(): boolean { return this.editor.focused; }
   set focused(value: boolean) { this.editor.focused = value; }
 
-  constructor(private runtime: MultiSessionRuntime, private tui: TUI, private theme: Colors,
-    private rows: () => number, private load: (number: number) => Promise<ChatSession>,
-    private done: () => void, private dashboard: () => void, initial: number) {
+  private runtime: MultiSessionRuntime;
+  private tui: TUI;
+  private theme: Colors;
+  private rows: () => number;
+  private load: (number: number) => Promise<ChatSession>;
+  private done: () => void;
+  private dashboard: () => void;
+  constructor(runtime: MultiSessionRuntime, tui: TUI, theme: Colors,
+    rows: () => number, load: (number: number) => Promise<ChatSession>,
+    done: () => void, dashboard: () => void, initial: number) {
+    this.runtime = runtime;
+    this.tui = tui;
+    this.theme = theme;
+    this.rows = rows;
+    this.load = load;
+    this.done = done;
+    this.dashboard = dashboard;
     this.editor = new Editor(tui, {
       borderColor: text => theme.fg("accent", text),
       selectList: selectTheme(theme),

@@ -1,28 +1,30 @@
-"""Explicit native Pi TUI acceptance; private fixtures, offline, no model calls.
-
-Run with the matching Pi executable on PATH:
-    python3 config/pi/tests/worker-dashboard-tui.py
-"""
+"""Real Pi sidebar acceptance: isolated sessions/runs; offline, no model calls."""
 import fcntl, json, os, pathlib, pty, select, signal, struct, subprocess, tempfile, termios, time
 
 extension = pathlib.Path(__file__).resolve().parents[1] / 'worker-dashboard' / 'index.ts'
 
 with tempfile.TemporaryDirectory(prefix='pi-workers-tui-') as tmp:
     root = pathlib.Path(tmp)
-    run = root / 'runs' / 'run-1'
-    (run / 'control').mkdir(parents=True)
-    (run / 'tasks' / 'bt').mkdir(parents=True)
-    (run / 'tasks' / 'nm').mkdir(parents=True)
-    # Non-supervisor folders must not displace the run during discovery.
-    (root / 'runs' / 'z-unrelated-project' / 'control').mkdir(parents=True)
-    state = {'run':'run-1','provider':'openai-codex','model':'gpt-6.1-sol','thinking':'high','updated':time.time(),
-             'tasks':{'bt':{'title':'Bluetooth fixture','state':'running','started':time.time(),'last_event_at':time.time(),
-                            'model_verified':True,'tools':3,'turns':1},
-                      'nm':{'title':'Network fixture','state':'queued'}}}
-    (run / 'control' / 'state.json').write_text(json.dumps(state))
-    progress = run / 'tasks' / 'bt' / 'PROGRESS.md'
-    progress.write_text('PRIVATE_PROGRESS_MARKER\nNo effects.\n')
-    (run / 'tasks' / 'nm' / 'PROGRESS.md').write_text('SECOND_WORKER_MARKER\nQueued.\n')
+    agent = root / 'agent'
+    sessions = agent / 'sessions' / '--fixture--'
+    sessions.mkdir(parents=True)
+    ids = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222', '33333333-3333-4333-8333-333333333333']
+    parents = []
+    for index, name in enumerate(['SESSION_A', 'SESSION_B', 'EMPTY_SESSION']):
+        path = sessions / (name + '.jsonl')
+        path.write_text(json.dumps({'type':'session','version':3,'id':ids[index],'cwd':str(root),'timestamp':'2026-10-28T00:00:00Z'}) + '\n' +
+                        json.dumps({'type':'session_info','id':'00000001','parentId':None,'name':name,'timestamp':'2026-10-28T00:00:00Z'}) + '\n')
+        parents.append(path)
+    for index in (0, 1):
+        run = root / 'runs' / ('run-' + str(index))
+        (run / 'control').mkdir(parents=True)
+        (run / 'tasks' / 'worker').mkdir(parents=True)
+        (run / 'control/owner.json').write_text(json.dumps({'version':1,'sessionId':ids[index], 'name':'SESSION_' + 'AB'[index], 'cwd':str(root),'created':1}))
+        (run / 'control/state.json').write_text(json.dumps({'run':run.name,'provider':'openai-codex','model':'gpt-6.1-sol','thinking':'high','updated':time.time(),
+            'tasks':{'worker':{'title':'WORKER_' + 'AB'[index], 'state':'running'}}}))
+        (run / 'tasks/worker/PROGRESS.md').write_text('PROGRESS_' + 'AB'[index])
+    (root / 'runs/zz-legacy/control').mkdir(parents=True)
+    (root / 'runs/zz-legacy/control/state.json').write_text('{')
     (root / 'home').mkdir()
     master, slave = pty.openpty()
     def resize(rows, cols):
@@ -30,14 +32,14 @@ with tempfile.TemporaryDirectory(prefix='pi-workers-tui-') as tmp:
     resize(32, 100)
     env = {k:os.environ[k] for k in ('PATH', 'LANG') if k in os.environ}
     env.update(HOME=str(root/'home'), TERM='xterm-256color', PI_WORKERS_ROOT=str(root/'runs'),
-               PI_CODING_AGENT_DIR=str(root/'agent'), PI_OFFLINE='1', PI_SKIP_VERSION_CHECK='1', PI_TELEMETRY='0')
-    command=['pi','--no-extensions','--extension',str(extension),
-             '--no-mcp','--no-skills','--no-prompt-templates','--no-context-files','--no-approve','--no-session',
-             '--offline','--provider','openai-codex','--model','gpt-6.1-sol','--thinking','high']
+               PI_CODING_AGENT_DIR=str(agent), PI_OFFLINE='1', PI_SKIP_VERSION_CHECK='1', PI_TELEMETRY='0')
+    command=['pi','--no-extensions','--extension',str(extension),'--no-mcp','--no-skills','--no-prompt-templates',
+             '--no-context-files','--no-approve','--session',str(parents[0]),'--offline','--provider','openai-codex','--model','gpt-6.1-sol','--thinking','high']
     child=subprocess.Popen(command, cwd=root, env=env, stdin=slave, stdout=slave, stderr=slave, start_new_session=True)
     os.close(slave)
     output=bytearray()
     def read_for(seconds):
+        start=len(output)
         until=time.monotonic()+seconds
         while time.monotonic()<until:
             if select.select([master],[],[],0.1)[0]:
@@ -45,71 +47,52 @@ with tempfile.TemporaryDirectory(prefix='pi-workers-tui-') as tmp:
                 except OSError: break
                 if not data: break
                 output.extend(data)
-                if len(output)>2*1024*1024: raise AssertionError('unbounded terminal output')
-        return output.decode('utf8','replace')
+                assert len(output)<2*1024*1024, 'unbounded output'
+        return output[start:].decode('utf8','replace')
     def send(text): os.write(master,text.encode())
     try:
         initial=read_for(3)
-        assert '1 running' not in initial and 'Workers:' not in initial, initial[-5000:]
-        assert 'Alt+1' not in initial and 'Alt+W reports' not in initial, initial[-5000:]
-        assert '1 - Running' in initial and '2 - Queued' in initial and '╭' in initial, initial[-5000:]
-        # Opening a worker must not consume or submit the orchestrator's draft.
+        assert 'WORKER_A' not in initial and 'Alt+0 orchestrator' not in initial, initial[-5000:]
         send('ORCHESTRATOR_DRAFT'); read_for(0.3)
-        start=len(output); send('\x1b1'); read_for(1)
-        direct=output[start:].decode('utf8','replace')
-        assert 'JSON process cannot be attached' in direct, direct[-5000:]
-        assert 'PRIVATE_PROGRESS_MARKER' not in direct, direct[-5000:]
-        start=len(output); send('\x1b2'); read_for(1)
-        switched=output[start:].decode('utf8','replace')
-        assert 'not finished' in switched, switched[-5000:]
-        start=len(output); send('\x1b0'); read_for(0.5)
-        send('_PRESERVED'); read_for(0.3) # force the untouched editor line to repaint
-        returned=output[start:].decode('utf8','replace')
-        assert 'ORCHESTRATOR_DRAFT_PRESERVED' in returned, returned[-5000:]
-        send('\x15') # clear the preserved, unsent draft
-        start=len(output); send('\x1bw'); read_for(0.5)
-        assert 'running · bt' in output[start:].decode('utf8','replace')
-        send('\x1bw'); read_for(0.5) # same shortcut returns to orchestrator
-        send('/workers ers\r')
-        invalid=read_for(1)
-        assert 'Unknown or unavailable worker run "ers"' in invalid, invalid[-5000:]
-        assert 'Workers unavailable' not in invalid, invalid[-5000:]
-        send('/workers\r')
-        opened=read_for(2)
-        assert 'running · bt' in opened, opened[-5000:]
-        send('\r')
-        shown=read_for(2)
-        assert 'PRIVATE_PROGRESS_MARKER' in shown, shown[-5000:]
-        progress.write_text('PRIVATE_PROGRESS_SECOND\nStill read-only.\n')
-        updated=read_for(3)
-        assert 'PRIVATE_PROGRESS_SECOND' in updated, updated[-5000:]
-        state['tasks']['bt']['state']='review-required'
-        state['tasks']['nm']['state']='cancelled-before-launch'
-        state['tasks']['bt']['reported_status']='partial'
-        state['tasks']['bt']['phase']='quality'
-        state['tasks']['bt']['ended']=time.time()
-        state['updated']=time.time()
-        (run/'control'/'dashboard.json').write_text(json.dumps(state))
-        terminal=read_for(3)
-        assert 'quality · review-required (partial)' in terminal, terminal[-5000:]
-        resize(10,24); os.kill(child.pid,signal.SIGWINCH); read_for(1)
-        resize(32,100); os.kill(child.pid,signal.SIGWINCH); read_for(1)
-        send('\x1b'); read_for(0.3); send('\x1b'); main=read_for(0.5)
-        assert 'handoff ready for review' in main, main[-5000:]
-        send('/workers hide\r'); read_for(0.5)
-        send('/workers show\r'); final=read_for(0.5)
-        send('/reload\r'); read_for(2)
-        send('/workers\r'); final=read_for(2)
-        assert child.poll() is None, final[-5000:]
-        assert 'Failed to load extension' not in final and 'TypeError:' not in final and 'ReferenceError:' not in final, final[-5000:]
-        assert 'review-required · bt' in final, final[-5000:]
-        send('\x1b0'); read_for(0.5)
-        start=len(output); send('/workers\r'); read_for(0.5); send('\r'); read_for(1)
-        reloaded=output[start:].decode('utf8','replace')
-        assert 'Worker 1 · bt' in reloaded and 'PRIVATE_PROGRESS_SECOND' in reloaded, reloaded[-5000:]
+        send('\x1bw'); local=read_for(1)
+        assert 'Workers · this session' in local and 'WORKER_A' in local, local[-5000:]
+        assert 'WORKER_B' not in local and 'zz-legacy' not in local, local[-5000:]
+        send('r'); report=read_for(1)
+        assert 'PROGRESS_A' in report, report[-5000:]
+        (root/'runs/run-0/tasks/worker/PROGRESS.md').write_text('PROGRESS_UPDATED')
+        assert 'PROGRESS_UPDATED' in read_for(3)
         send('\x1b0'); read_for(0.3)
+        send('_PRESERVED'); returned=read_for(0.3)
+        assert 'ORCHESTRATOR_DRAFT_PRESERVED' in returned, returned[-5000:]
+        send('\x15/workers-all\r'); all_sessions=read_for(2)
+        assert all(name in all_sessions for name in ['All sessions & workers','SESSION_A','SESSION_B','EMPTY_SESSION']), all_sessions[-8000:]
+        assert 'WORKER_B' not in all_sessions, 'other session starts collapsed'
+        send('\x1b[D'); read_for(0.2)  # collapse A
+        send('\x1b[B\r'); expanded=read_for(0.5)  # expand B
+        assert 'WORKER_B' in expanded, expanded[-5000:]
+        send('\x1b[Br'); foreign_report=read_for(1)
+        assert 'PROGRESS_B' in foreign_report, foreign_report[-5000:]
+        send('\x1b0'); read_for(0.3)
+        # Global numbered shortcuts always refer to the calling session.
+        send('\x1b1'); live=read_for(1)
+        assert 'JSON process cannot be attached' in live, live[-5000:]
+        send('\x1b0'); read_for(0.3)
+        send('/workers\r'); read_for(0.5)
+        resize(6, 12); os.kill(child.pid,signal.SIGWINCH); read_for(0.5)
+        resize(32,100); os.kill(child.pid,signal.SIGWINCH); read_for(0.5)
+        send('\x1b0'); read_for(0.3)
+        send('/new\r'); read_for(1)
+        send('/workers\r'); empty=read_for(1)
+        assert 'No workers associated with this session' in empty, empty[-5000:]
+        assert 'WORKER_A' not in empty and 'WORKER_B' not in empty, empty[-5000:]
+        send('\x1b0'); read_for(0.3)
+        send('/reload\r'); read_for(2)
+        send('/workers\r'); empty=read_for(1)
+        assert 'No workers associated with this session' in empty, empty[-5000:]
         assert child.poll() is None
-        print('PASS: real Pi TUI numbered bottom box, live legacy worker attachment refusal, draft-preserving return, list toggle, invalid-run rejection, live report refresh, review notification, resize, hide/show and reload')
+        text=output.decode('utf8','replace')
+        assert all(error not in text for error in ['Failed to load extension','TypeError:','ReferenceError:']), text[-8000:]
+        print('PASS: two native Pi sidebars, session ownership, expandable worker submenus, reports, no bottom widget, draft preservation, resize, new-session isolation and reload')
     finally:
         if child.poll() is None: os.killpg(child.pid,signal.SIGTERM)
         try: child.wait(timeout=5)

@@ -34,6 +34,14 @@ for key, target in pairs({
     assert(updates.dispatcher == "hl.dsp.global", "Updates must use a global shortcut")
     assert(updates.arguments[1] == target, "Wrong Updates shortcut target")
 end
+for key, target in pairs({
+    ["SUPER + A"] = "shelllist:agenda",
+    ["SUPER + SHIFT + A"] = "shelllist:calendar",
+}) do
+    local action = assert(bindings[key], key .. " must open its Agenda surface")
+    assert(action.dispatcher == "hl.dsp.global", "Agenda surfaces must use global shortcuts")
+    assert(action.arguments[1] == target, "Wrong Agenda surface shortcut target")
+end
 local displays = assert(bindings["SUPER + D"], "Super+D must open Displays")
 assert(displays.dispatcher == "hl.dsp.global", "Displays must use a global shortcut")
 assert(displays.arguments[1] == "shelllist:displays", "Wrong Displays shortcut target")

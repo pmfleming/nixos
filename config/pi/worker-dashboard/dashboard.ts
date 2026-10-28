@@ -25,9 +25,19 @@ export class WorkerDashboard implements Component {
   private slots: WorkerSlots;
   private openChat?: (number: number) => void;
 
-  constructor(private monitor: WorkerMonitor, private theme: Colors, private redraw: () => void,
-    private rows: () => number, private done: () => void,
+  private monitor: WorkerMonitor;
+  private theme: Colors;
+  private redraw: () => void;
+  private rows: () => number;
+  private done: () => void;
+  constructor(monitor: WorkerMonitor, theme: Colors, redraw: () => void,
+    rows: () => number, done: () => void,
     options: { slots?: WorkerSlots; worker?: number; chat?: (number: number) => void } = {}) {
+    this.monitor = monitor;
+    this.theme = theme;
+    this.redraw = redraw;
+    this.rows = rows;
+    this.done = done;
     this.slots = options.slots ?? new WorkerSlots();
     this.openChat = options.chat;
     this.unsubscribe = monitor.subscribe(() => {

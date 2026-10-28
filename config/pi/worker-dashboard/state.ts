@@ -78,22 +78,14 @@ export async function listRuns(root: string): Promise<string[]> {
       .map(entry => entry.name).sort().reverse();
     const runs: string[] = [];
     for (const name of candidates) {
-      // Timestamped supervisor runs count even before their first state write.
-      // Named runs must advertise the supervisor format, not merely control/.
-      let isRun = /^\d{8}T\d{6}Z$/.test(name);
-      for (const marker of ["control/dashboard.json", "control/state.json", "manifest.json"]) {
-        if (isRun) break;
-        try {
-          // Existence, not validity: malformed files and dangling links must
-          // remain selectable so observe() reports errors instead of old success.
-          await lstat(join(root, name, marker));
-          isRun = true;
-        } catch (error) {
-          if (errorCode(error) !== "ENOENT") throw error;
-        }
+      try {
+        // Ownership is mandatory. No timestamp/path heuristics, legacy import,
+        // or silent truncation that could hide another session's workers.
+        await lstat(join(root, name, "control", "owner.json"));
+        runs.push(name);
+      } catch (error) {
+        if (errorCode(error) !== "ENOENT") throw error;
       }
-      if (isRun) runs.push(name);
-      if (runs.length === 32) break;
     }
     return runs;
   } catch (error) {

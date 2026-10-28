@@ -1,152 +1,176 @@
-# Worker dashboard and multi-session chat runtime
+# Session-owned workers sidebar
 
-Personal Pi extension for the local orchestration supervisor. It adds a compact
-bottom status box, read-only handoff reports, and independently running worker
-chats. It coexists with the recent-sessions sidebar.
+Two commands, no automatic bottom box:
 
-Run `/reload` to load the extension/update in the calling Pi chat.
+- **`/workers`** — show only workers associated with the current Pi session.
+- **`/workers-all`** — show all saved sessions, the current session, and registered
+  worker owners. Expand a session to see its workers; sessions with no workers
+  remain visible. Worker conversations are not duplicated as top-level sessions.
 
-## Foreground/background chats
+Both commands open a right-hand sidebar. The current session starts expanded in
+all-sessions mode; other sessions start collapsed. Ownership is by exact session
+ID, **not** working directory, process ancestry, most recent run, or inherited
+`PI_SESSION_ID`. `/new` and `/fork` do not inherit the previous session's workers.
+Resuming the same session retains its associations.
 
-- **Alt+1 … Alt+9**: foreground that worker's actual conversation and input editor.
-  The first visit loads its completed session into a separate, long-lived Pi RPC
-  process. Later visits reuse that process, including when it is busy.
-- **Alt+0**: return to the calling/orchestrator chat. This detaches the worker
-  chat surface; it does **not** abort, pause or dispose any loaded worker.
-- **Alt+W**: open the read-only worker reports/list. From a worker chat it returns
-  to that list without stopping worker activity.
-- Each worker retains its own draft, transcript, pending work and history scroll.
-  The orchestrator retains its original native editor draft and continues its
-  own agent loop behind the foreground worker surface.
-- Enter sends to the foreground worker only. During work it steers; Alt+Enter
-  queues a follow-up. Sending is never triggered just by opening/switching chats.
-- Escape explicitly clears the selected worker's queue and aborts that worker;
-  queued text is restored in its draft. It never aborts the orchestrator.
-- PageUp/PageDown scroll worker history. Ctrl+C clears its draft; Ctrl+D returns
-  to the orchestrator without stopping workers.
+## Sidebar controls
 
-This is an extension-hosted multi-session runtime, not native `switchSession()`:
-that Pi API disposes the previous agent. A full-window foreground surface presents
-worker text, streaming responses, tool activity/results, errors and a multiline
-editor while the native calling session stays alive. Native Pi menus, image paste,
-rich tool renderers and provider/model selection remain in the orchestrator; they
-are not silently forwarded as model prompts in worker chats. The worker surface
-supports `/back`, `/abort`, `/unload`.
+- **↑/↓**, **PgUp/PgDn**, **Home/End**: select/scroll.
+- **←/→**, or **Enter** on a session: collapse/expand its worker submenu.
+- **Enter** on a worker: open its chat, without sending a prompt.
+- **R**: open the selected worker's progress/report view.
+- **U**: unload an idle worker chat owned by this Pi window.
+- **X**: close this window's loaded worker chats; confirmation is required if busy.
+- **Esc**, **Alt+0**: close the sidebar and return to the original editor draft.
+- **Alt+W** from the main editor: open/close this session's sidebar.
+- **Alt+1 … Alt+9** from the main editor: open that worker of the current session.
+  Inside the all-sessions sidebar these keys refer to the selected session;
+  inside a worker chat they refer to that chat's owning session.
 
-Nine worker processes can be loaded at once. A loaded idle worker is not executing
-another model request. Worker history remains in its saved session; the display
-keeps a bounded tail (100 messages / 256K characters, 16K per displayed message).
+Worker numbers are stable **per owning session**, across all its runs, polling,
+reordering and removal. Removed numbers are not reused until reload/session
+replacement. Reports display run-local numbers; their chat shortcuts resolve the
+corresponding worker back to its owning session.
 
-## Existing workers and ownership
+The sidebar polls worker state every two seconds. All-sessions mode refreshes
+saved session metadata at most every 15 seconds. Missing/broken state is displayed
+under its owner, not replaced by older successful state. Invalid ownership is a
+visible error in all-sessions mode, never assigned to the current session.
 
-A live legacy `--mode json` worker has no bidirectional control channel. Such a
-worker is **refused**, not reopened, stopped or duplicated. Once it has completed,
-Alt+number can load its saved conversation. RPC workers already owned by this
-runtime can be foregrounded/backgrounded while running.
+## Creating new workers
 
-Loading validates the task/phase identity, session header, provider/model/reasoning,
-isolated worktree cwd and original invocation. The terminal state must include an
-end timestamp and the original worker PIDs/process groups must no longer exist. The session must
-be a regular file inside Pi's configured session directory, at most 64 MiB. A
-cooperating-runtime exclusive `.worker-chat.lock` lease prevents two dashboard
-instances from owning the same session. Crash-left leases fail closed and require
-manual investigation; no age-based lock stealing is used. Native Pi launched
-independently does not honor this extension's lease: do not manually resume a
-session already loaded here.
+Run discovery has no legacy compatibility or automatic import. The default root
+is **`~/.pi/agent/workers`** (under Pi's configured agent directory), overridable
+with `PI_WORKERS_ROOT`.
 
-RPC launch preserves the worker's provider/model/reasoning, allowed built-in tools,
-original appended system prompts and isolated worktree. It reconstructs the
-orchestration task/root environment and build-job limit. Parent `PI_SESSION_*`
-identity is removed. Extensions, MCP, skills and prompt templates stay disabled,
-as in the original workers. The original assignment `@PROMPT.md` is **never
-replayed**. No model call happens until you explicitly send a message.
+Before launching workers, the agent calls the **`register_worker_run`** tool:
 
-No automatic retries/relaunches, merges, deployment, scope expansion or approvals
-are introduced. A prompt with an uncertain acknowledgement is not automatically
-resent. Reports and historical supervisor handoff states are not rewritten by the
-runtime. Live `Chat running` / `Chat idle` labels are separate from those handoffs.
+```json
+{ "run": "20261028T120000Z" }
+```
 
-## Reports, run selection and lifecycle
+The tool creates a new private run directory and `control/owner.json`, binding it
+to `ctx.sessionManager.getSessionId()`. It returns the directory for the supervisor
+to use. Existing directories cannot be adopted, overwritten, or reassigned. The
+caller must choose a new run ID if it already exists. Merely registering a run
+**does not launch workers** or make a model call.
 
-- `/workers`: read-only live task list; Enter opens progress. `p` progress, `r`
-  report, `l` diagnostics; arrows/PageUp/PageDown scroll; Escape goes back/closes.
-  Alt+number from the reports opens the corresponding chat.
-- `/workers chat N`: foreground a worker, including numbers beyond 9.
-- `/workers unload N`: close an idle worker chat and release its lease. A busy
-  worker must be explicitly aborted first.
-- `/workers close-chats`: dispose all owned RPC workers; asks for confirmation if
-  activity/startup is in progress. This is different from Alt+0.
-- `/workers hide` / `/workers show`: disable/enable the automatic bottom box.
-  It appears only while workers are running/stopping or loaded chats are opening/running;
-  queued-only, completed, idle, missing and unavailable runs do not keep it visible.
-  Reports and chat shortcuts remain available when the box is hidden.
-- `/workers runs`, `/workers latest`, `/workers RUN-ID`: select a run. Unknown or
-  unavailable IDs leave selection unchanged. Unload/close loaded chats first.
+Ownership record:
 
-Numbers remain stable across polling/reordering/insertion while following a run;
-a new run/reload assigns from sorted task IDs. Reports and chat headers include
-the original task ID. The box limits rows and shows a `+N more` hint as needed.
-Its labels refresh every two seconds; loaded chat activity also updates immediately.
-The box omits the summary heading, duplicate footer counts and worker/list shortcut
-hints, retaining only numbered states and the Alt+0 orchestrator hint. Review never means accepted/integrated/rollout-approved.
+```json
+{
+  "version": 1,
+  "sessionId": "the-actual-parent-session-id",
+  "name": "Parent session name",
+  "cwd": "/path/to/project",
+  "created": 1793188800000
+}
+```
 
-Native `/new`, `/resume` and `/fork` are blocked while workers are busy/loading.
-**Quit, `/reload`, or replacement of an idle calling session ends this runtime**:
-all owned children are disposed and leases released. Background persistence means
-across Alt+number/Alt+0 switches, not across application exit/reload. Pending
-startup/read completions are fenced. EOF requests orderly RPC shutdown; bounded
-TERM/KILL escalation targets only owned process groups. Unexpected child exits do
-not exit the orchestrator. Nothing sends signals to legacy supervisor workers.
+The supervisor writes `control/state.json`; a combined quality-phase
+`control/dashboard.json` takes precedence when present. The existing supervisor
+state contract is:
 
-## Source contract
+```json
+{
+  "run": "20261028T120000Z",
+  "provider": "openai-codex",
+  "model": "the-selected-model",
+  "thinking": "high",
+  "updated": 1793188800,
+  "tasks": {
+    "worker-1": {
+      "title": "Investigate the issue",
+      "state": "running",
+      "session_id": "worker-conversation-id"
+    }
+  }
+}
+```
 
-`PI_WORKERS_ROOT` selects the orchestration parent directory; default:
-`~/Projects/shelllist-orchestration`. Newest run directory is selected by name
-unless pinned. Discovery includes timestamped supervisor directories
-(`YYYYMMDDTHHMMSSZ`) and named directories containing `manifest.json`,
-`control/state.json`, or `control/dashboard.json`. Other directories (including
-unrelated projects with a `control/` folder) are ignored before applying the
-32-run display limit. Markers need only exist, not parse successfully; dangling
-state links also remain discoverable. Timestamped runs and manifest-bearing runs
-remain visible before their first state write.
+Set each task's `session_id` so its conversation can be nested beneath the parent
+rather than duplicated in the saved-session list. Reports live in
+`tasks/<id>/PROGRESS.md`, `REPORT.md`, and `stderr.log`.
 
-Each run supplies supervisor `control/state.json`; combined quality
-`control/dashboard.json` takes precedence when present. Malformed/latest missing
-state is unavailable, never silently replaced by older/pre-quality success.
-Explicit run selection still reports missing state rather than ignoring it.
+A run with `owner.json` remains visible before its first state write. Unregistered
+folders are ignored, even if they contain old state, manifests or timestamped run
+names. There is no “latest run” mode, backward-compatible command parser, legacy
+worker migration, or unassigned-worker group. Discovery is bounded to 512 root
+entries and reports an error rather than silently omitting runs.
 
-An unfinished run with heartbeat older than 15 seconds, or over five seconds in
-the future, is marked **STALE / last reported**. Terminal handoffs need no continuing
-heartbeat. Report views read bounded task `PROGRESS.md`, `REPORT.md`, `stderr.log`;
-chat loading additionally reads validated identity/invocation/session-header
-metadata and obtains conversation history through its RPC child. Arbitrary
-state-provided paths, escaping symlinks, non-regular files and oversized input are
-rejected. Worker-controlled terminal/bidi controls are sanitized for display.
-Credentials are not read or displayed by the extension; the normal Pi child
-resolves its own configured authentication. Resource acquisition is TUI-only.
+## Worker chats and ownership
+
+Worker chat continuations use a separate long-lived Pi RPC process. Alt+0 detaches
+only the foreground surface: the calling agent and loaded workers continue in the
+background. Each worker keeps its own editor draft, transcript and streaming state.
+Opening a sidebar, expanding a session, reading reports, or loading saved history
+never sends a model prompt.
+
+A supervisor-launched JSON worker **cannot be attached while running**. After it
+finishes, continuation validates `IDENTITY.json` and `invocation.json` (under the
+task's `quality/` directory for the quality phase), terminal state/end timestamp,
+original PID/process-group absence, session header, provider/model/reasoning,
+isolated `tasks/<id>/worktrees` cwd, tools and appended prompts. The session must be
+a regular file inside Pi's session directory, at most 64 MiB. The original task
+assignment is never replayed.
+
+An exclusive `.worker-chat.lock` lease prevents two cooperating dashboards from
+writing the same worker conversation. A stale lease fails closed and is not
+stolen automatically. Independent native Pi sessions do not honor this lease;
+do not manually resume a worker already loaded here.
+
+Worker chat controls:
+
+- **Enter**: send; while busy, steer. **Alt+Enter** queues a follow-up.
+- **Alt+1 … Alt+9**: switch between workers of this chat's owning session.
+- **Alt+W**: return to the sidebar. **Alt+0**, **Ctrl+D**, `/back`: return to caller.
+- **PgUp/PgDn**: scroll history. **Ctrl+C**: clear the draft.
+- **Esc**, `/abort`: explicitly abort this worker, not the calling agent.
+- `/unload`: unload an idle worker and release its lease.
+
+Up to nine worker RPC processes can be loaded per Pi window. Opening another
+session's worker in the all-sessions view does not reassign its ownership.
+
+`/new`, `/resume` and `/fork` are blocked while owned worker chats are busy/loading.
+Quit, `/reload`, or replacement of an idle session disposes the owned RPC children
+and releases leases. Background execution persists across foreground switches,
+not across application exit. Shutdown fences pending reads and attachment work;
+signals only target processes started by this runtime. There are no automatic
+retries, relaunches, merges, deployments or approvals.
+
+## Safety and display
+
+Run state, ownership and report reads are size-bounded and reject escaping paths,
+symlinks as final files, non-regular files and oversized inputs. Terminal control
+and bidi characters are sanitized. Malformed combined quality state never falls
+back to pre-quality state. Unfinished runs with a heartbeat older than 15 seconds
+(or over five seconds in the future) are marked **STALE**. Review means a handoff
+awaiting review, not accepted/integrated/rollout-approved.
+
+The sidebar and reports use Pi's themed overlay components, fit narrow terminals,
+and preserve the native editor. Native model menus, rich tool renderers and image
+paste remain in the calling Pi session. No factory-time resources are created;
+headless sessions can register runs but never create UI or polling timers.
 
 ## Installation and tests
 
-Canonical source: `/etc/nixos/config/pi/worker-dashboard`. The personal development
-symlink loads it immediately after `/reload`; `home.nix` declares the whole
-extension directory for Home Manager. No NixOS rebuild is needed for that symlink.
+Canonical source: `/etc/nixos/config/pi/worker-dashboard`. `home.nix` installs the
+whole extension and its sibling `lib/`. A development symlink to the canonical
+source loads changes with **`/reload`**, without a NixOS rebuild.
 
 Typecheck `config/pi/tsconfig.json` and run `config/pi/tests/*.test.ts` against the
-installed Pi package's dependencies, not another npm version. Tests cover bounded
-filesystem reads, attachment metadata, ownership leases, legacy-live refusal,
-headless inertness, stable numbering, RPC framing/response correlation, uncertain
-delivery, per-chat routing/drafts, background streaming, fast settlement,
-startup/shutdown fences and narrow Unicode layouts.
+installed Pi dependencies. Tests cover ownership creation/refusal, same-directory
+session isolation, all-session grouping, no legacy discovery, malformed state,
+stable numbering/selection, narrow layouts, polling/shutdown fences, headless
+inertness, attachment validation, process leases, RPC routing and uncertain delivery.
 
-Explicit native acceptance (private fixtures, no real model calls):
+Native acceptance uses private sessions, offline fixtures and no real model calls:
 
 ```sh
 python3 config/pi/tests/worker-dashboard-tui.py
 python3 config/pi/tests/multi-session-tui.py
 ```
 
-The latter boots real Pi RPC children to check saved-history loading, process reuse,
-foreground switching and drafts, then deterministic RPC workers and a local fake
-provider to exercise the calling agent's real loop continuing behind worker chats,
-concurrent background completion and selected-chat-only prompt routing. These
-checks do not certify every terminal emulator, provider or real worker task.
+The first checks both right-hand sidebars, expansion, reports, draft preservation,
+resize, new-session isolation and reload. The second checks real Pi RPC saved
+histories plus deterministic concurrent worker/parent streaming and shutdown.

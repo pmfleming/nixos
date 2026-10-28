@@ -112,6 +112,10 @@ def exercise(fake):
         agent = root / 'agent'
         sessions = agent / 'sessions'
         sessions.mkdir(parents=True)
+        parent_id = '11111111-1111-4111-8111-111111111111'
+        parent = sessions / 'parent.jsonl'
+        parent.write_text(json.dumps({'type':'session','version':3,'id':parent_id,'cwd':str(root),'timestamp':'2026-10-28T00:00:00Z'})+'\n')
+        (run / 'control/owner.json').write_text(json.dumps({'version':1,'sessionId':parent_id,'name':'Parent','cwd':str(root),'created':1}))
         (root / 'home').mkdir()
         contract = run / 'worker-instructions.md'
         contract.write_text('Private offline acceptance fixture. No tools or model requests are authorized.\n')
@@ -155,7 +159,7 @@ def exercise(fake):
         master, slave = pty.openpty()
         fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack('HHHH', 32, 120, 0, 0))
         child = subprocess.Popen([PI,'--no-extensions','--extension',str(EXTENSION),'--no-mcp','--no-skills',
-                                  '--no-prompt-templates','--no-context-files','--no-approve','--no-session','--offline',
+                                  '--no-prompt-templates','--no-context-files','--no-approve','--session',str(parent),'--offline',
                                   *root_options],
                                  cwd=root,env=env,stdin=slave,stdout=slave,stderr=slave,start_new_session=True)
         os.close(slave)
@@ -187,9 +191,8 @@ def exercise(fake):
             raise AssertionError('Missing '+text+'\n'+output[start:].decode('utf8','replace')[-12000:])
         try:
             read(3)
-            # Idle handoffs intentionally have no automatic bottom box. The
-            # read-only list still exposes their state before any chat loads.
-            send('/workers\r'); wait_for('2 review')
+            # Workers only appear in the explicitly opened session sidebar.
+            send('/workers\r'); wait_for('Workers · this session')
             send('\x1b0'); read(0.3)
             if fake:
                 send('RUN_OFFLINE_PARENT\r'); wait_for('ROOT_STREAM_STARTED')
@@ -239,7 +242,8 @@ def exercise(fake):
                 assert not list(sessions.glob('*.worker-chat.lock')), 'reload must dispose all owned processes'
                 send('\x1b1'); wait_for('HISTORY_worker1')
                 send('\x1b0'); read(0.2)
-            send('\x15/workers close-chats\r'); read(1.5)
+            send('\x15/workers\r'); read(0.5)
+            send('x'); read(1.5)
             assert not list(sessions.glob('*.worker-chat.lock')), 'close-chats releases session leases'
             assert child.poll() is None
             text = output.decode('utf8','replace')

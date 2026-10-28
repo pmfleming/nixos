@@ -211,6 +211,42 @@ test("failed inventory stays visibly unavailable and never relabels previous row
   view.dispose();
 });
 
+test("extension handles bootstrap and current Pi lifecycle payloads", async t => {
+  let publisher: Publisher | undefined;
+  // Exercise the real handlers/publisher without starting timers or writing telemetry.
+  t.mock.method(Publisher.prototype, "start", async function (this: Publisher) { publisher = this; });
+  t.mock.method(Publisher.prototype, "stop", async () => {});
+  const handlers = new Map<string, (event: object, ctx: ExtensionContext) => unknown>();
+  extension({ on: (name: string, fn: (event: object, ctx: ExtensionContext) => unknown) => { handlers.set(name, fn); },
+    registerCommand: () => {}, registerFlag: () => {}, getFlag: () => false } as unknown as ExtensionAPI);
+  const ctx = { mode: "json", cwd: "/fixture", isIdle: () => false,
+    sessionManager: { getSessionId: () => "fixture", getSessionFile: () => undefined,
+      getSessionName: () => undefined, getBranch: () => [] } } as unknown as ExtensionContext;
+  const emit = (name: string, payload: object = {}) => handlers.get(name)!({ type: name, ...payload }, ctx);
+  await emit("session_start");
+  assert.ok(publisher);
+  emit("before_agent_start", { prompt: "Bootstrap prompt" });
+  assert.equal(publisher.record.prompt, "Bootstrap prompt");
+  assert.equal(publisher.record.state, "working");
+  emit("agent_settled");
+  assert.equal(publisher.record.state, "idle");
+  assert.equal(publisher.record.events.at(-1)!.text, "Agent settled; idle");
+  emit("before_agent_start", { messageType: "user", prompt: "Current prompt" });
+  assert.equal(publisher.record.prompt, "Current prompt");
+  emit("before_agent_start", { messageType: "custom", message: { content: "Not a user prompt" } });
+  assert.equal(publisher.record.prompt, "Current prompt");
+  emit("ui_prompt_start");
+  assert.equal(publisher.record.state, "waiting");
+  emit("ui_prompt_end");
+  assert.equal(publisher.record.state, "working");
+  emit("agent_settled", { aborted: true });
+  assert.equal(publisher.record.state, "idle");
+  assert.equal(publisher.record.events.at(-1)!.text, "Agent aborted; idle");
+  emit("agent_settled", { aborted: false });
+  assert.equal(publisher.record.events.at(-1)!.text, "Agent settled; idle");
+  await emit("session_shutdown");
+});
+
 test("factory has no resources; agent_end is not treated as final idle", () => {
   const handlers = new Map<string, Function>();
   const commands: string[] = [];
