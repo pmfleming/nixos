@@ -49,6 +49,23 @@ lib.mapAttrs' (
           ${host.environment.etc."dbus-1".source} ${host.system.path} \
           ${home.home.path}
       '';
+  yazi-clipboard =
+    let
+      plugin = home.programs.yazi.plugins.yank-to-clip-daemon;
+    in
+    assert plugin.setup;
+    mkCheck "yazi-clipboard-plugin" [ pkgs.lua ] ''
+      lua - ${plugin.package}/main.lua <<'LUA'
+      local subscribed = false
+      ps = { sub = function(event, callback)
+        assert(event == "@yank" and type(callback) == "function")
+        subscribed = true
+      end }
+      local plugin = assert(loadfile(arg[1]))()
+      plugin:setup()
+      assert(subscribed, "Yazi clipboard plugin did not register its yank handler")
+      LUA
+    '';
   file-associations =
     let
       mime = home.xdg.mimeApps;
