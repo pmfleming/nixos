@@ -127,20 +127,6 @@ human_duration() {
   fi
 }
 
-human_bytes() {
-  numfmt --to=iec-i --suffix=B --format='%.1f' "${1:-0}"
-}
-
-human_byte_delta() {
-  local bytes=${1:-0}
-
-  if ((bytes < 0)); then
-    printf -- '-%s' "$(human_bytes "$((-bytes))")"
-  else
-    printf '+%s' "$(human_bytes "$bytes")"
-  fi
-}
-
 closure_bytes() {
   local output size
 
@@ -184,9 +170,7 @@ stage() {
 
 finish() {
   local status=$?
-  local copied_info disk_after elapsed final_log line outcome suffix system_after temporary_file
-  local closure_after='' copied_bytes='' store_available_after='' store_used_after=''
-  local -A built_paths=() copied_paths=()
+  local final_log system_after suffix=success
 
   trap - EXIT HUP INT TERM
   set +e
@@ -208,41 +192,7 @@ finish() {
   exec 1>&3 2>&4
   wait "$log_writer_pid"
 
-  while IFS= read -r line; do
-    if [[ $line =~ ^building\ \'([^\']+\.drv)\' ]]; then
-      built_paths["${BASH_REMATCH[1]}"]=1
-    elif [[ $line =~ ^copying\ path\ \'([^\']+)\' ]]; then
-      copied_paths["${BASH_REMATCH[1]}"]=1
-    fi
-  done < "$log_file"
-
-  if ((${#copied_paths[@]})); then
-    temporary_file=$(mktemp "$log_dir/copied-paths.XXXXXXXX")
-    printf '%s\n' "${!copied_paths[@]}" > "$temporary_file"
-    if copied_info=$(nix path-info --json --stdin < "$temporary_file" 2>/dev/null); then
-      copied_bytes=$(jq -r '[.[] | (.narSize // 0)] | add // 0' <<< "$copied_info")
-    fi
-    rm -f -- "$temporary_file"
-  fi
-
-  elapsed=$(($(date +%s) - started_at))
-  [[ -z $system_after ]] || closure_after=$(closure_bytes "$system_after")
-  disk_after=$(df -B1 --output=used,avail /nix/store 2>/dev/null | tail -n 1) || disk_after=
-  if [[ $disk_after =~ ^[[:space:]]*([0-9]+)[[:space:]]+([0-9]+)[[:space:]]*$ ]]; then
-    store_used_after=${BASH_REMATCH[1]}
-    store_available_after=${BASH_REMATCH[2]}
-  fi
-
-  if ((status == 0)); then
-    outcome=SUCCESS
-    suffix=success
-    if [[ $baseline_result == 'not approved '* ]]; then
-      outcome='SUCCESS WITH WARNINGS'
-    fi
-  else
-    outcome=FAILED
-    suffix=failed
-  fi
+  ((status == 0)) || suffix=failed
   final_log=${log_file%.running.log}.$suffix.log
   if mv -- "$log_file" "$final_log"; then
     log_file=$final_log
@@ -253,54 +203,19 @@ finish() {
   fi
 
   {
-    printf '\n=== REBUILD %s (%s) ===\n' "$outcome" "$(human_duration "$elapsed")"
-    if ((status != 0)); then
-      printf 'Failed at:  %s (exit %d)\n' "$rebuild_stage" "$status"
-    fi
-    printf 'Nix work:   %d derivations attempted; %d store paths copied' \
-      "${#built_paths[@]}" "${#copied_paths[@]}"
-    [[ -z $copied_bytes ]] || printf ' (%s)' "$(human_bytes "$copied_bytes")"
-    printf '\n'
-    if [[ -n $closure_after ]]; then
-      printf 'Closure:    %s' "$(human_bytes "$closure_after")"
-      [[ -z $closure_before ]] || \
-        printf ' (%s)' "$(human_byte_delta "$((closure_after - closure_before))")"
-      printf '\n'
-    fi
-    if [[ -n $store_used_after && -n $store_available_after ]]; then
-      printf 'Nix store:  '
-      [[ -z $store_used_before ]] || \
-        printf '%s used; ' "$(human_byte_delta "$((store_used_after - store_used_before))")"
-      printf '%s free\n' "$(human_bytes "$store_available_after")"
-    fi
-    if [[ -n $system_before && -n $system_after ]]; then
-      if [[ $system_before == "$system_after" ]]; then
-        printf 'System:     unchanged (%s)\n' "$(basename "$system_after")"
-      else
-        printf 'System:     %s -> %s\n' "$(basename "$system_before")" "$(basename "$system_after")"
-      fi
-    fi
-    [[ $session_result == 'not reached' ]] || printf 'Session:    %s\n' "$session_result"
-    [[ $baseline_result == 'not reached' ]] || printf 'Baseline:   %s\n' "$baseline_result"
-    printf 'Log:        %s\n' "$log_file"
     jq -n --argjson started "$started_at" --argjson finished "$(date +%s)" \
-      --argjson status "$status" --arg outcome "$outcome" --arg stage "$rebuild_stage" \
+      --argjson status "$status" --arg stage "$rebuild_stage" \
       --arg before "$system_before" --arg after "$system_after" --arg log "$log_file" \
       --arg baseline "$baseline_result" --arg session "$session_result" \
-      --arg cb "$closure_before" --arg ca "$closure_after" --argjson deployed "$deployed" \
-      '{started_at:$started,finished_at:$finished,exit_code:$status,outcome:$outcome,
+      --arg cb "$closure_before" --arg used "$store_used_before" --argjson deployed "$deployed" \
+      '{started_at:$started,finished_at:$finished,exit_code:$status,
         failed_stage:(if $status == 0 then null else $stage end),system_before:$before,
         system_after:$after,log:$log,baseline:$baseline,session:$session,deployed:$deployed,
-        closure_before:($cb|tonumber? // null),closure_after:($ca|tonumber? // null),
-        closure_delta:(if $cb != "" and $ca != "" then ($ca|tonumber)-($cb|tonumber) else null end)}' | \
-      python3 "$report_helper" "$stage_file" || printf 'Warning: rebuild history could not be saved.\n'
+        closure_before:($cb|tonumber? // null),store_used_before:($used|tonumber? // null)}' | \
+      python3 "$report_helper" "$stage_file" || \
+        printf 'Warning: rebuild report unavailable; inspect %s (exit %d).\n' "$log_file" "$status"
     rm -f -- "$stage_file" "$run_record"
 
-    if [[ -n $system_before && -n $system_after && $system_before != "$system_after" ]]; then
-      printf '\nPackage changes:\n'
-      nix store diff-closures "$system_before" "$system_after" || \
-        printf '  (closure diff unavailable)\n'
-    fi
   } 2>&1 | tee -a "$log_file"
 
   exec 3>&- 4>&-

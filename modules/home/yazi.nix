@@ -1,7 +1,6 @@
 {
   palette,
   scratchpad,
-  textMimeTypes,
   clipDaemon,
   uwsmApp,
 }:
@@ -15,12 +14,6 @@ let
   underlinedColors = fg: bg: boldColors fg bg // { underline = true; };
   foregroundRule = rule: rule // foreground palette.foreground;
   boldForegroundRule = rule: rule // boldForeground palette.foreground;
-  openerRules =
-    field: values: use:
-    map (value: {
-      ${field} = value;
-      inherit use;
-    }) values;
 in
 {
   programs.yazi = {
@@ -84,23 +77,6 @@ in
           }
         ];
       };
-      open.prepend_rules =
-        # Browser rules must precede the text/* Scratchpad fallback.
-        openerRules "url" [
-          "*.html"
-          "*.htm"
-          "*.xhtml"
-        ] "open"
-        ++ openerRules "mime" [
-          "text/html"
-          "application/xhtml+xml"
-        ] "open"
-        ++ openerRules "url" [
-          "*.md"
-          "*.markdown"
-        ] "scratchpad"
-        ++ openerRules "mime" ([ "text/*" ] ++ textMimeTypes) "scratchpad"
-        ++ openerRules "mime" [ "image/*" ] "satty";
     };
 
     theme = {

@@ -5,6 +5,8 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
+import subprocess
 import sys
 import tempfile
 import time
@@ -122,6 +124,127 @@ def sources(action, snapshot_path, saved_path, system, detailed=False):
     print("Changed since last deploy: " + (", ".join(changes) or "none"))
 
 
+def nix_output(*arguments, input=None):
+    """Telemetry is best-effort; it must never change the deployment result."""
+    try:
+        return subprocess.check_output(
+            ["nix", *arguments], input=input, text=True, stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.CalledProcessError):
+        return None
+
+
+def closure_bytes(system):
+    if not system:
+        return None
+    try:
+        return int((nix_output("path-info", "--closure-size", system) or "").split()[-1])
+    except (ValueError, IndexError):
+        return None
+
+
+def copied_bytes(paths):
+    if not paths:
+        return None
+    try:
+        values = json.loads(nix_output("path-info", "--json", "--stdin", input="\n".join(paths) + "\n"))
+        entries = values.values() if isinstance(values, dict) else values
+        return sum(entry.get("narSize", 0) or 0 for entry in entries)
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def human_bytes(value, signed=False):
+    # Preserve coreutils' upward rounding and unit promotion at boundaries.
+    formatted = subprocess.check_output(
+        ["numfmt", "--to=iec-i", "--suffix=B", "--format=%.1f", "--", str(value)], text=True).strip()
+    return ("+" if signed and value >= 0 else "") + formatted
+
+
+def human_duration(seconds):
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    parts = [f"{seconds}s"]
+    if hours or minutes:
+        parts.insert(0, f"{minutes}m")
+    if hours:
+        parts.insert(0, f"{hours}h")
+    return " ".join(parts)
+
+
+def system_summary(before, after):
+    if not before or not after:
+        return None
+    if before == after:
+        return f"unchanged ({Path(after).name})"
+    return f"{Path(before).name} -> {Path(after).name}"
+
+
+def store_summary(before):
+    try:
+        usage = shutil.disk_usage("/nix/store")
+    except OSError:
+        return None
+    change = "" if before is None else human_bytes(usage.used - before, signed=True) + " used; "
+    return change + human_bytes(usage.free) + " free"
+
+
+def print_summary(record, store_before):
+    print(f"\n=== REBUILD {record['outcome']} ({human_duration(record['finished_at'] - record['started_at'])}) ===")
+    if record["exit_code"]:
+        print(f"Failed at:  {record['failed_stage']} (exit {record['exit_code']})")
+    copied = record["store_paths_copied"]
+    work = f"{len(record['derivations_attempted'])} derivations attempted; {len(copied)} store paths copied"
+    size = copied_bytes(copied)
+    if size is not None:
+        work += f" ({human_bytes(size)})"
+    closure = record["closure_after"]
+    if closure is not None:
+        closure = human_bytes(closure)
+        if record["closure_delta"] is not None:
+            closure += f" ({human_bytes(record['closure_delta'], signed=True)})"
+    fields = [
+        ("Nix work", work), ("Closure", closure), ("Nix store", store_summary(store_before)),
+        ("System", system_summary(record["system_before"], record["system_after"])),
+        ("Session", record["session"]), ("Baseline", record["baseline"]), ("Log", record["log"]),
+    ]
+    for label, value in fields:
+        if value is not None and value != "not reached":
+            print(f"{label + ':':12}{value}")
+    print("Stages:")
+    for stage in record["stages"]:
+        print(f"  {stage['seconds']:7.2f}s  {stage['name']}")
+    if record["error"]:
+        print("Error: " + record["error"])
+
+
+def deployment_outcome(status, baseline):
+    if status:
+        return "FAILED"
+    return "SUCCESS WITH WARNINGS" if baseline.startswith("not approved ") else "SUCCESS"
+
+
+def finish(record, stage_file):
+    text = Path(record["log"]).read_text(errors="replace")
+    record.update(
+        schema_version=1, status="failed" if record["exit_code"] else "completed",
+        outcome=deployment_outcome(record["exit_code"], record["baseline"]),
+        stages=[json.loads(line) for line in Path(stage_file).read_text().splitlines()],
+        error=error_excerpt(text) if record["exit_code"] else None,
+        derivations_attempted=sorted(set(re.findall(r"^building '([^']+\.drv)'", text, re.M))),
+        derivations_built=None,  # Text events don't prove successful completion.
+        store_paths_copied=sorted(set(re.findall(r"^copying path '([^']+)'", text, re.M))),
+        closure_after=closure_bytes(record["system_after"]),
+    )
+    before, after = record["closure_before"], record["closure_after"]
+    record["closure_delta"] = None if before is None or after is None else after - before
+    print_summary(record, record.pop("store_used_before"))
+    save(record, Path(record["log"]).parent)
+    if record["system_before"] and record["system_after"] and record["system_before"] != record["system_after"]:
+        print("\nPackage changes:")
+        difference = nix_output("store", "diff-closures", record["system_before"], record["system_after"])
+        print(difference if difference is not None else "  (closure diff unavailable)")
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "start":
         _, _, destination, log, pid, started = sys.argv
@@ -134,21 +257,7 @@ def main():
     if len(sys.argv) > 1 and sys.argv[1] == "sources":
         sources(*sys.argv[2:6], detailed="--files" in sys.argv[6:])
         return
-    record = json.load(sys.stdin)
-    record["schema_version"] = 1
-    record["status"] = "completed" if record["exit_code"] == 0 else "failed"
-    record["stages"] = [json.loads(line) for line in Path(sys.argv[1]).read_text().splitlines()]
-    text = Path(record["log"]).read_text(errors="replace")
-    record["error"] = error_excerpt(text) if record["exit_code"] else None
-    record["derivations_attempted"] = sorted(set(re.findall(r"^building '([^']+\.drv)'", text, re.M)))
-    record["derivations_built"] = None  # Text events don't prove successful completion.
-    record["store_paths_copied"] = sorted(set(re.findall(r"^copying path '([^']+)'", text, re.M)))
-    print("Stages:")
-    for stage in record["stages"]:
-        print(f"  {stage['seconds']:7.2f}s  {stage['name']}")
-    if record["error"]:
-        print("Error: " + record["error"])
-    save(record, Path(record["log"]).parent)
+    finish(json.load(sys.stdin), sys.argv[1])
 
 
 if __name__ == "__main__":

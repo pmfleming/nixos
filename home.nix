@@ -13,88 +13,9 @@ let
   system = pkgs.stdenv.hostPlatform.system;
   inputPackage = input: name: input.packages.${system}.${name};
   hyprlandGuiutils = inputPackage inputs.hyprland-guiutils "default";
-  daemonPackages = lib.genAttrs [ "app-daemon" "bt-daemon" "clip-daemon" "nm-daemon" ] (
-    name: inputPackage inputs.${name} "default"
-  );
-  shelllist = inputPackage inputs.shelllist "default";
   scratchpad = inputPackage inputs.scratchpad "scratchpad-hyprland";
   tsReactQualityLens = inputPackage inputs.ts-react-quality-lens "default";
   zenBrowser = inputPackage inputs.zen-browser "default";
-  # MIME defaults have no text/* wildcard, and xdg-open does not consistently
-  # inherit text/plain defaults. Register common markup, source and config types.
-  textMimeTypes = [
-    "text/plain"
-    "text/markdown"
-    "text/x-markdown"
-    "text/x-rst"
-    "text/asciidoc"
-    "text/css"
-    "text/csv"
-    "text/tab-separated-values"
-    "text/xml"
-    "text/yaml"
-    "text/x-yaml"
-    "text/javascript"
-    "text/rust"
-    "text/org"
-    "text/sgml"
-    "application/json"
-    "application/json5"
-    "application/ld+json"
-    "application/xml"
-    "application/yaml"
-    "application/x-yaml"
-    "application/toml"
-    "application/javascript"
-    "application/sql"
-    "application/x-shellscript"
-    "application/x-fishscript"
-    "application/x-nuscript"
-    "application/x-perl"
-    "application/x-ruby"
-    "application/x-php"
-  ]
-  ++ map (name: "text/x-${name}") [
-    "c"
-    "csrc"
-    "chdr"
-    "c++src"
-    "c++hdr"
-    "csharp"
-    "cmake"
-    "makefile"
-    "meson"
-    "nix"
-    "python"
-    "python3"
-    "java"
-    "kotlin"
-    "go"
-    "rust"
-    "lua"
-    "qml"
-    "shellscript"
-    "sh"
-    "javascript"
-    "typescript"
-    "sass"
-    "scss"
-    "tex"
-    "bibtex"
-    "texinfo"
-    "opml+xml"
-    "log"
-    "readme"
-    "patch"
-    "diff"
-    "ini"
-    "config"
-    "dbus-service"
-    "systemd-unit"
-    "desktop"
-  ];
-  textApplications = lib.genAttrs textMimeTypes (_: [ "scratchpad.desktop" ]);
-
   theme = import ./theme.nix;
   inherit (theme)
     palette
@@ -135,21 +56,8 @@ let
     ) uwsmEnvironment
   );
   uwsmApp = "${pkgs.uwsm}/bin/uwsm-app";
-
-  graphicalService = description: execStart: {
-    Unit = {
-      Description = description;
-      After = [ "graphical-session.target" ];
-      PartOf = [ "graphical-session.target" ];
-    };
-    Service = {
-      ExecStart = execStart;
-      Restart = "on-failure";
-      RestartSec = "2s";
-      Slice = "background-graphical.slice";
-    };
-    Install.WantedBy = [ "graphical-session.target" ];
-  };
+  # Copy standalone assets independently, not as references into the whole flake.
+  storeFile = path: builtins.path { inherit path; };
 
   scriptLib = import ./lib/scripts.nix;
   scriptWith = scriptLib.withPlaceholders;
@@ -165,29 +73,6 @@ let
     Type=Application
     Hidden=true
   '';
-  # This slice starts after graphical-session.target. Order its services after
-  # the target too, preventing WantedBy's implicit reverse ordering from
-  # creating a cycle that blocks UWSM shutdown until the session times out.
-  daemonUnitOverride.text = ''
-    [Unit]
-    After=graphical-session.target
-    PartOf=graphical-session.target
-
-    [Service]
-    Slice=background-graphical.slice
-  '';
-  packagedUserService = name: package: {
-    "systemd/user/${name}.service".source = "${package}/share/systemd/user/${name}.service";
-    "systemd/user/graphical-session.target.wants/${name}.service".source =
-      "${package}/share/systemd/user/${name}.service";
-    "systemd/user/${name}.service.d/uwsm-session.conf" = daemonUnitOverride;
-  };
-  # Keep the clipboard engine and facade together: stock Ringboard cannot
-  # perform safe edits. The packaged units also own readiness and privacy gates.
-  packagedUserServices = lib.concatMapAttrs packagedUserService (
-    daemonPackages // { ringboard-server = daemonPackages.clip-daemon; }
-  );
-
   hyprlandConfig = themeText (
     scriptWith {
       "@SCRATCHPAD@" = "${scratchpad}/bin/scratchpad";
@@ -198,65 +83,42 @@ let
 in
 {
   imports = [
-    inputs.shelllist.homeManagerModules.default
-    inputs.bar-daemon.homeManagerModules.default
+    ./modules/home/session.nix
+    ./modules/home/file-associations.nix
     (import ./modules/home/yazi.nix {
       inherit
         palette
         scratchpad
-        textMimeTypes
         uwsmApp
         ;
-      clipDaemon = daemonPackages.clip-daemon;
+      clipDaemon = inputPackage inputs.clip-daemon "default";
     })
   ];
-
-  programs.shelllist = {
-    enable = true;
-    package = shelllist;
-    systemd.target = "graphical-session.target";
-    systemd.environment = {
-      SHELLLIST_BT_SOCKET = "1";
-      SHELLLIST_NM_SOCKET = "1";
-      SHELLLIST_APP_SOCKET = "1";
-      SHELLLIST_BAR_SOCKET = "1";
-      SHELLLIST_CLIP_SOCKET = "1";
-    };
-  };
-
-  services.bar-daemon = {
-    enable = true;
-    displays.enable = true;
-    media.youtubeMetadata.enable = true;
-    suspend.enable = true;
-  };
 
   home = {
     inherit (machine) username homeDirectory;
     stateVersion = "26.05";
 
-    packages =
-      builtins.attrValues daemonPackages
-      ++ [
-        scratchpad
-        tsReactQualityLens
-        zenBrowser
-        pkgs.inkscape
-        # Bootstrap fallback. Stable launchers prefer each checked vendor profile,
-        # then the legacy shared profile, then these immutable system packages.
-        unstablePkgs.codex
-        unstablePkgs.antigravity-cli
-      ]
-      ++ (with pkgs; [
-        ghostty
-        hyprlandGuiutils
-        hyprlock
-        hyprpaper
-        qt5.qtwayland
-        qt6.qtwayland
-        wlogout
-        btop
-      ]);
+    packages = [
+      scratchpad
+      tsReactQualityLens
+      zenBrowser
+      pkgs.inkscape
+      # Bootstrap fallback. Stable launchers prefer each checked vendor profile,
+      # then the legacy shared profile, then these immutable system packages.
+      unstablePkgs.codex
+      unstablePkgs.antigravity-cli
+    ]
+    ++ (with pkgs; [
+      ghostty
+      hyprlandGuiutils
+      hyprlock
+      hyprpaper
+      qt5.qtwayland
+      qt6.qtwayland
+      wlogout
+      btop
+    ]);
 
     sessionVariables = {
       BROWSER = "zen";
@@ -275,30 +137,28 @@ in
       x11.enable = true;
     };
 
-    file = {
-      ".pi/agent/extensions/recent-sessions-sidebar" = {
-        source = "${./config/pi}/recent-sessions-sidebar";
-        force = true;
+    # Keep sibling lib/ imports in one store source. Managed files use Home
+    # Manager's normal collision checks, not unconditional force-overwrite.
+    file =
+      lib.listToAttrs (
+        map
+          (name: {
+            name = ".pi/agent/extensions/${name}";
+            value.source = "${./config/pi}/${name}";
+          })
+          [
+            "recent-sessions-sidebar"
+            "worker-dashboard"
+            "lib"
+            "instances"
+          ]
+      )
+      // {
+        ".local/bin/pi-instances" = {
+          source = storeFile ./config/scripts/pi-instances.sh;
+          executable = true;
+        };
       };
-      ".pi/agent/extensions/worker-dashboard" = {
-        source = "${./config/pi}/worker-dashboard";
-        force = true;
-      };
-      # Keep sibling lib/ imports available after Nix copies extensions to the store.
-      ".pi/agent/extensions/lib" = {
-        source = "${./config/pi}/lib";
-        force = true;
-      };
-      ".pi/agent/extensions/instances" = {
-        source = "${./config/pi}/instances";
-        force = true;
-      };
-      ".local/bin/pi-instances" = {
-        source = ./config/scripts/pi-instances.sh;
-        executable = true;
-        force = true;
-      };
-    };
   };
 
   gtk = {
@@ -333,28 +193,14 @@ in
 
   xdg = {
     enable = true;
-    mimeApps = {
-      enable = true;
-      associations.added = textApplications;
-      defaultApplications = textApplications // {
-        "application/pdf" = "okularApplication_pdf.desktop";
-        "inode/directory" = "yazi.desktop";
-        "text/html" = "zen.desktop";
-        "application/xhtml+xml" = "zen.desktop";
-        "x-scheme-handler/file" = "yazi.desktop";
-        "x-scheme-handler/http" = "zen.desktop";
-        "x-scheme-handler/https" = "zen.desktop";
-      };
-    };
-
-    configFile = packagedUserServices // {
+    configFile = {
       # Shelllist owns these interfaces instead of package-provided tray applets.
       "autostart/blueman.desktop" = hiddenAutostart;
       "autostart/nm-applet.desktop" = hiddenAutostart;
       # UWSM sources this before starting the compositor and exports the values
       # to the systemd and D-Bus activation environments for the whole session.
       "uwsm/env".text = uwsmEnvConfig;
-      # Link and enable package-owned units instead of cloning their definitions.
+      # Compositor policy uses the shared theme and explicit executable paths.
       "hypr/hyprland.lua".text = hyprlandConfig;
       "bar-daemon/activity.json".text = builtins.toJSON {
         weather_locations = [
@@ -430,64 +276,12 @@ in
     # Match the desktop IDs exposed by the isolated players over MPRIS so the
     # launcher and media chooser resolve the same locally installed app icons.
     dataFile = {
-      "icons/hicolor/192x192/apps/com.laufan.audible.png".source = ./assets/audible.png;
-      "icons/hicolor/192x192/apps/com.laufan.pocketcasts.png".source = ./assets/pocketcasts.png;
+      "icons/hicolor/192x192/apps/com.laufan.audible.png".source = storeFile ./assets/audible.png;
+      "icons/hicolor/192x192/apps/com.laufan.pocketcasts.png".source = storeFile ./assets/pocketcasts.png;
     };
 
     desktopEntries = import ./modules/home/desktop-entries.nix { inherit pkgs; };
   };
-
-  services.hypridle = {
-    enable = true;
-    settings = {
-      general = {
-        lock_cmd = "pidof hyprlock || ${uwsmApp} -s s -- hyprlock";
-        before_sleep_cmd = "loginctl lock-session";
-        # Hyprland's Lua dispatcher requires an action table. A string argument
-        # silently means toggle, which can turn an already-awake display off.
-        after_sleep_cmd = "hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })'";
-      };
-      listener = [
-        {
-          timeout = 300;
-          on-timeout = "loginctl lock-session";
-        }
-        {
-          timeout = 420;
-          on-timeout = "hyprctl dispatch 'hl.dsp.dpms({ action = \"off\" })'";
-          on-resume = "hyprctl dispatch 'hl.dsp.dpms({ action = \"on\" })'";
-        }
-        {
-          timeout = 1800;
-          on-timeout = "systemctl suspend";
-        }
-      ];
-    };
-  };
-
-  # Keep activation bounded so a newly restarted graphical service that crashes
-  # makes the rebuild fail instead of silently disappearing. Leave enough
-  # headroom for unit-stop and sd-switch D-Bus bookkeeping.
-  systemd.user.servicesStartTimeoutMs = 60000;
-
-  # Bound both frontend and backend shutdown: a blocked PipeWire worker must
-  # not strand Home Manager's transaction with Shelllist stopped after a switch.
-  systemd.user.services =
-    lib.genAttrs
-      (
-        lib.optional config.programs.shelllist.enable "shelllist"
-        ++ lib.optional config.services.bar-daemon.enable "bar-daemon"
-      )
-      (_: {
-        Service = {
-          Slice = "session-graphical.slice";
-          TimeoutStopSec = "5s";
-        };
-      })
-    // {
-      hyprpaper = graphicalService "Hyprland wallpaper service" "${pkgs.hyprpaper}/bin/hyprpaper";
-      hyprpolkitagent = graphicalService "Hyprland PolicyKit authentication agent" "${pkgs.hyprpolkitagent}/libexec/hyprpolkitagent";
-    };
 
   programs = {
     bash.enable = true;
