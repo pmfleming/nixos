@@ -11,8 +11,21 @@ let
       (import ../../../modules/application-inventory.nix {
         inherit config lib;
       }).environment.etc."shelllist/application-inventory.json".text;
-  package = pname: version: { inherit pname version; };
-  entry = scope: name: version: { inherit scope name version; };
+  fixturePath =
+    name: version:
+    "/nix/store/00000000000000000000000000000000-${name}"
+    + lib.optionalString (version != null) "-${version}";
+  package = pname: version: {
+    inherit pname version;
+    outPath = fixturePath pname version;
+  };
+  entry = scope: name: version: {
+    inherit scope name version;
+    store_path = fixturePath name version;
+    desktop_ids = [ ];
+    vendor_tool = null;
+    kind = "system";
+  };
   customSource = {
     provider = "github";
     repo = "example/editor";
@@ -25,7 +38,10 @@ let
     environment.systemPackages = [
       (package "editor" "1.2")
       (package "editor" "1.2")
-      { name = "wrapper"; }
+      {
+        name = "wrapper";
+        outPath = fixturePath "wrapper" null;
+      }
       (package "google-chrome" "130.0")
       ((package "custom-editor" "2.0") // { passthru.shelllistReleaseSource = customSource; })
     ];
@@ -61,7 +77,11 @@ let
         ((package "acl" "2.0") // { passthru.shelllistReleaseSource = stableCode; })
       ];
   };
-  actual = builtins.fromJSON host.environment.etc."shelllist/application-inventory.json".text;
+  # Decode metadata for assertions only; the generated file retains its package
+  # references so Nix still tracks the store paths in the deployed inventory.
+  actual = builtins.fromJSON (
+    builtins.unsafeDiscardStringContext host.environment.etc."shelllist/application-inventory.json".text
+  );
 in
 assert
   fixture == {
@@ -69,7 +89,13 @@ assert
     packages = [
       (entry "system" "editor" "1.2")
       (entry "system" "wrapper" null)
-      ((entry "system" "google-chrome" "130.0") // { release_source.provider = "chrome-stable"; })
+      (
+        (entry "system" "google-chrome" "130.0")
+        // {
+          release_source.provider = "chrome-stable";
+          desktop_ids = [ "google-chrome.desktop" ];
+        }
+      )
       ((entry "system" "custom-editor" "2.0") // { release_source = customSource; })
       (entry "user:test" "editor" "1.3")
     ];

@@ -104,6 +104,84 @@ let
       {
         inherit scope name;
         version = package.version or null;
+        store_path = toString package;
+        # Exact desktop IDs handle wrappers whose .desktop files originate in a
+        # different store output. Other applications join by store provenance.
+        desktop_ids =
+          package.passthru.shelllistDesktopIds or (
+            {
+              google-chrome = [ "google-chrome.desktop" ];
+              vscode = [ "code.desktop" ];
+              android-studio = [ "android-studio.desktop" ];
+              t3code = [
+                "t3code.desktop"
+                "com.t3tools.T3Code.desktop"
+              ];
+              zen-browser = [ "zen.desktop" ];
+            }
+            .${name} or [ ]
+          );
+        vendor_tool =
+          {
+            claude-code = "claude";
+            codex = "codex";
+            antigravity-cli = "antigravity";
+            pi-coding-agent = "pi";
+            t3code = "t3";
+          }
+          .${name} or null;
+        kind =
+          package.passthru.shelllistKind or (
+            if
+              lib.elem name [
+                "app-daemon"
+                "bar-daemon"
+                "bt-daemon"
+                "clip-daemon"
+                "nm-daemon"
+                "shelllist"
+                "update-worker"
+                "local-build"
+                "rebuild"
+                "rollback"
+                "bar-location-integration"
+                "bar-battery-integration"
+                "bt-rssi-helper-system"
+                "build-cache-trim"
+                "scratchpad-hyprland"
+                "ts-react-quality-lens"
+              ]
+            then
+              "local-helper"
+            else if
+              lib.elem name [
+                "claude-code"
+                "codex"
+                "antigravity-cli"
+                "pi-coding-agent"
+                "git"
+                "gh"
+                "fd"
+                "ripgrep"
+                "jq"
+                "curl"
+                "wget"
+                "neovim"
+                "nano"
+                "btop"
+                "yazi"
+                "direnv"
+                "nodejs"
+                "tree"
+                "strace"
+                "android-tools"
+                "nix-index"
+              ]
+            then
+              "command-line"
+            else
+              "system"
+          );
       }
       // lib.optionalAttrs (source != null) { release_source = source; }
     ) values;
