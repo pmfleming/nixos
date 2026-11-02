@@ -181,6 +181,10 @@ hl.bind("SUPER + SHIFT + Escape", hl.dsp.exec_cmd(app("wlogout")))
 hl.bind("SUPER + K", hl.dsp.exec_cmd("hyprctl switchxkblayout all next"))
 
 -- Workspaces
+hl.bind("SUPER + CTRL + N", hl.dsp.exec_cmd("bar-daemon workspace create"))
+hl.bind("SUPER + SHIFT + Q", hl.dsp.exec_cmd("bar-daemon workspace close"))
+hl.bind("SUPER + CTRL + Page_Down", hl.dsp.exec_cmd("bar-daemon workspace next"))
+hl.bind("SUPER + CTRL + Page_Up", hl.dsp.exec_cmd("bar-daemon workspace previous"))
 for workspace = 1, 5 do
     hl.bind("SUPER + " .. workspace, hl.dsp.focus({ workspace = workspace }))
     hl.bind(
