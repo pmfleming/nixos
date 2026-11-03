@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import { getAgentDir, SessionManager, type ExtensionAPI, type ExtensionContext, type SessionInfo } from "@earendil-works/pi-coding-agent";
 import { prepareAttachment } from "./attachment.ts";
 import { CatalogMonitor, CatalogSlots, loadCatalog, type Scope, type SessionIdentity, type WorkerEntry } from "./catalog.ts";
