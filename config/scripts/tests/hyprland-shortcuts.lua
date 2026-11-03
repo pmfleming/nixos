@@ -63,6 +63,30 @@ assert(power.arguments[1] == "shelllist:battery", "Wrong Power shortcut target")
 local notifications = assert(bindings["SUPER + period"], "Super+. must open Notifications")
 assert(notifications.dispatcher == "hl.dsp.global", "Notifications must use a global shortcut")
 assert(notifications.arguments[1] == "shelllist:notifications", "Wrong Notifications shortcut target")
+for workspace = 1, 10 do
+    local key = tostring(workspace % 10)
+    local focus = assert(bindings["SUPER + " .. key], "Missing workspace focus shortcut: " .. key)
+    assert(focus.dispatcher == "hl.dsp.focus", "Workspace shortcut must focus")
+    assert(focus.arguments[1].workspace == workspace, "Wrong workspace focus destination")
+    local move = assert(bindings["SUPER + SHIFT + " .. key], "Missing workspace move shortcut: " .. key)
+    assert(move.dispatcher == "hl.dsp.window.move", "Workspace move shortcut must move a window")
+    assert(move.arguments[1].workspace == workspace, "Wrong workspace move destination")
+    assert(move.arguments[1].follow == true, "Workspace move shortcut must follow the window")
+end
+for key, command in pairs({
+    ["SUPER + CTRL + N"] = "create",
+    ["SUPER + SHIFT + Q"] = "close",
+    ["SUPER + CTRL + Page_Down"] = "next",
+    ["SUPER + CTRL + Page_Up"] = "previous",
+}) do
+    local action = assert(bindings[key], "Missing workspace command: " .. key)
+    assert(action.dispatcher == "hl.dsp.exec_cmd", "Workspace command must use the owner")
+    assert(action.arguments[1] == "bar-daemon workspace " .. command, "Wrong workspace command")
+    assert(not binding_options[key] or not binding_options[key].repeating,
+        "Workspace commands must not repeat while held")
+end
+assert(bindings["SUPER + Q"].dispatcher == "hl.dsp.window.close", "Super+Q must close the focused window")
+
 local middle_click = assert(bindings["mouse:274"], "Middle-click must be disabled")
 assert(type(middle_click) == "function", "Middle-click must use a no-op callback")
 assert(middle_click() == nil, "Middle-click must do nothing")

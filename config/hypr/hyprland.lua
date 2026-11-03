@@ -185,10 +185,13 @@ hl.bind("SUPER + CTRL + N", hl.dsp.exec_cmd("bar-daemon workspace create"))
 hl.bind("SUPER + SHIFT + Q", hl.dsp.exec_cmd("bar-daemon workspace close"))
 hl.bind("SUPER + CTRL + Page_Down", hl.dsp.exec_cmd("bar-daemon workspace next"))
 hl.bind("SUPER + CTRL + Page_Up", hl.dsp.exec_cmd("bar-daemon workspace previous"))
-for workspace = 1, 5 do
-    hl.bind("SUPER + " .. workspace, hl.dsp.focus({ workspace = workspace }))
+-- The number row addresses workspace IDs 1-10 (0 selects 10).
+-- Higher IDs remain reachable through the workspace strip and previous/next.
+for workspace = 1, 10 do
+    local key = tostring(workspace % 10)
+    hl.bind("SUPER + " .. key, hl.dsp.focus({ workspace = workspace }))
     hl.bind(
-        "SUPER + SHIFT + " .. workspace,
+        "SUPER + SHIFT + " .. key,
         hl.dsp.window.move({ workspace = workspace, follow = true })
     )
 end
