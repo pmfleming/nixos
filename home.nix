@@ -280,7 +280,10 @@ in
       "icons/hicolor/192x192/apps/com.laufan.pocketcasts.png".source = storeFile ./assets/pocketcasts.png;
     };
 
-    desktopEntries = import ./modules/home/desktop-entries.nix { inherit pkgs; };
+    desktopEntries = import ./modules/home/desktop-entries.nix {
+      inherit pkgs;
+      inherit (machine) homeDirectory;
+    };
   };
 
   programs = {

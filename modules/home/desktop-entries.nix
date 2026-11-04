@@ -1,5 +1,6 @@
 {
   pkgs,
+  homeDirectory,
 }:
 
 let
@@ -160,6 +161,30 @@ in
       "Utility"
     ];
     settings.StartupWMClass = "com.laufan.pi";
+  };
+
+  tursobench = {
+    name = "TursoBench";
+    genericName = "Database Workbench";
+    comment = "Browse and query local Turso databases";
+    exec =
+      let
+        launcher = pkgs.writeShellApplication {
+          name = "tursobench";
+          runtimeInputs = [ pkgs.nix ];
+          text = ''
+            cd ${pkgs.lib.escapeShellArg "${homeDirectory}/Projects/tursobench"}
+            exec nix develop --command cargo run --locked -p tursobench-ui -- "$@"
+          '';
+        };
+      in
+      "${launcher}/bin/tursobench %f";
+    icon = "${homeDirectory}/Projects/tursobench/packaging/tursobench.svg";
+    categories = [
+      "Development"
+      "Database"
+    ];
+    settings.StartupWMClass = "tursobench";
   };
 
   captive-portal-browser = {
