@@ -66,12 +66,11 @@ assert(notifications.arguments[1] == "shelllist:notifications", "Wrong Notificat
 for workspace = 1, 10 do
     local key = tostring(workspace % 10)
     local focus = assert(bindings["SUPER + " .. key], "Missing workspace focus shortcut: " .. key)
-    assert(focus.dispatcher == "hl.dsp.focus", "Workspace shortcut must focus")
-    assert(focus.arguments[1].workspace == workspace, "Wrong workspace focus destination")
+    assert(focus.dispatcher == "hl.dsp.exec_cmd", "Workspace shortcut must use the owner")
+    assert(focus.arguments[1] == "bar-daemon workspace focus " .. workspace, "Wrong workspace focus destination")
     local move = assert(bindings["SUPER + SHIFT + " .. key], "Missing workspace move shortcut: " .. key)
-    assert(move.dispatcher == "hl.dsp.window.move", "Workspace move shortcut must move a window")
-    assert(move.arguments[1].workspace == workspace, "Wrong workspace move destination")
-    assert(move.arguments[1].follow == true, "Workspace move shortcut must follow the window")
+    assert(move.dispatcher == "hl.dsp.exec_cmd", "Workspace move shortcut must use the owner")
+    assert(move.arguments[1] == "bar-daemon workspace move " .. workspace, "Wrong workspace move destination")
 end
 for key, command in pairs({
     ["SUPER + CTRL + N"] = "create",
