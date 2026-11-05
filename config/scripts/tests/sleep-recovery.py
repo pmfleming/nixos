@@ -32,7 +32,7 @@ def main():
     assert config["specialisations"] == [], "experimental boot variants must stay retired"
     assert stack["kernel"].startswith("6.18.")
     assert version(stack["kernel"]) >= (6, 18, 53)
-    assert version(stack["hyprland"]) >= (0, 56, 2)
+    assert version(stack["hyprland"]) >= (0, 57, 1)
     assert version(stack["aquamarine"]) >= (0, 15, 1)
     assert version(stack["mesa"]) >= (26, 2, 3)
     assert stack["mesa"] == stack["mesa32"]
