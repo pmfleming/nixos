@@ -185,15 +185,15 @@ hl.bind("SUPER + CTRL + N", hl.dsp.exec_cmd("bar-daemon workspace create"))
 hl.bind("SUPER + SHIFT + Q", hl.dsp.exec_cmd("bar-daemon workspace close"))
 hl.bind("SUPER + CTRL + Page_Down", hl.dsp.exec_cmd("bar-daemon workspace next"))
 hl.bind("SUPER + CTRL + Page_Up", hl.dsp.exec_cmd("bar-daemon workspace previous"))
--- The number row addresses workspace IDs 1-10 (0 selects 10).
--- The owner rejects absent extras; only explicit create actions allocate them.
--- Higher IDs remain reachable through the workspace strip and previous/next.
-for workspace = 1, 10 do
-    local key = tostring(workspace % 10)
-    hl.bind("SUPER + " .. key, hl.dsp.exec_cmd("bar-daemon workspace focus " .. workspace))
+-- The number row addresses this monitor's bar positions (0 selects the tenth).
+-- The owner shares the bar's order and rejects missing positions without allocation.
+-- Later positions remain reachable through the workspace strip and previous/next.
+for position = 1, 10 do
+    local key = tostring(position % 10)
+    hl.bind("SUPER + " .. key, hl.dsp.exec_cmd("bar-daemon workspace focus " .. position .. " --position"))
     hl.bind(
         "SUPER + SHIFT + " .. key,
-        hl.dsp.exec_cmd("bar-daemon workspace move " .. workspace)
+        hl.dsp.exec_cmd("bar-daemon workspace move " .. position .. " --position")
     )
 end
 

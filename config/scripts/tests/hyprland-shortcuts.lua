@@ -67,10 +67,14 @@ for workspace = 1, 10 do
     local key = tostring(workspace % 10)
     local focus = assert(bindings["SUPER + " .. key], "Missing workspace focus shortcut: " .. key)
     assert(focus.dispatcher == "hl.dsp.exec_cmd", "Workspace shortcut must use the owner")
-    assert(focus.arguments[1] == "bar-daemon workspace focus " .. workspace, "Wrong workspace focus destination")
+    assert(focus.arguments[1] == "bar-daemon workspace focus " .. workspace .. " --position", "Wrong workspace focus position")
     local move = assert(bindings["SUPER + SHIFT + " .. key], "Missing workspace move shortcut: " .. key)
     assert(move.dispatcher == "hl.dsp.exec_cmd", "Workspace move shortcut must use the owner")
-    assert(move.arguments[1] == "bar-daemon workspace move " .. workspace, "Wrong workspace move destination")
+    assert(move.arguments[1] == "bar-daemon workspace move " .. workspace .. " --position", "Wrong workspace move position")
+    for _, binding in ipairs({ "SUPER + " .. key, "SUPER + SHIFT + " .. key }) do
+        assert(not binding_options[binding] or not binding_options[binding].repeating,
+            "Numeric workspace commands must not repeat while held")
+    end
 end
 for key, command in pairs({
     ["SUPER + CTRL + N"] = "create",
