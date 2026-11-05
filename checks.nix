@@ -41,6 +41,22 @@ lib.mapAttrs' (
   name: value: lib.nameValuePair "shelllist-${name}" value
 ) inputs.shelllist.checks.${system}
 // {
+  graphics-driver-load = pkgs.linkFarm "graphics-driver-load" [
+    {
+      name = "64-bit";
+      path = import ./lib/graphics-driver-check.nix {
+        inherit pkgs;
+        drivers = host.hardware.graphics.package;
+      };
+    }
+    {
+      name = "32-bit";
+      path = import ./lib/graphics-driver-check.nix {
+        pkgs = pkgs.pkgsi686Linux;
+        drivers = host.hardware.graphics.package32;
+      };
+    }
+  ];
   dbus-discovery =
     mkCheck "dbus-discovery-contract" [ pkgs.python3 pkgs.dbus pkgs.dbus-broker pkgs.systemd ]
       ''
