@@ -77,6 +77,17 @@ let
         ((package "acl" "2.0") // { passthru.shelllistReleaseSource = stableCode; })
       ];
   };
+  kernelConfig = {
+    environment.systemPackages = [ (package "hyprland" "0.54.0") ];
+    boot.kernelPackages.kernel = package "linux-zen" "6.18.9";
+  };
+  kernelFixture = evaluate kernelConfig;
+  disabledKernel = evaluate (
+    kernelConfig
+    // {
+      boot = kernelConfig.boot // { kernel.enable = false; };
+    }
+  );
   # Decode metadata for assertions only; the generated file retains its package
   # references so Nix still tracks the store paths in the deployed inventory.
   actual = builtins.fromJSON (
@@ -112,6 +123,27 @@ assert builtins.all (
 assert
   builtins.length sourceFixture.packages == builtins.length (builtins.attrNames expectedSources) + 2;
 assert actual.schema_version == 1;
+assert builtins.length kernelFixture.packages == 2;
+assert builtins.elem (
+  (entry "system" "linux" "6.18.9")
+  // {
+    store_path = fixturePath "linux-zen" "6.18.9";
+    release_source.provider = "kernel-stable";
+  }
+) kernelFixture.packages;
+assert builtins.any (
+  p: p.name == "hyprland" && p.release_source == github "hyprwm/Hyprland" "v"
+) kernelFixture.packages;
+assert builtins.length disabledKernel.packages == 1;
+assert builtins.any (
+  p:
+  p.name == "linux"
+  && p.version == host.boot.kernelPackages.kernel.version
+  && p.release_source.provider == "kernel-stable"
+) actual.packages;
+assert builtins.any (
+  p: p.name == "hyprland" && p.version == host.programs.hyprland.package.version
+) actual.packages;
 assert builtins.any (p: p.scope == "system") actual.packages;
 assert builtins.any (p: p.scope == "user:${machine.username}") actual.packages;
 assert builtins.length actual.packages <= 512;

@@ -185,8 +185,22 @@ let
       }
       // lib.optionalAttrs (source != null) { release_source = source; }
     ) values;
+  kernel = config.boot.kernelPackages.kernel or null;
+  # The kernel is a boot artifact, not normally an environment.systemPackages
+  # entry. Give the selected kernel a stable identity even for patched flavours.
+  kernelInventory = lib.optional (kernel != null && (config.boot.kernel.enable or true)) {
+    scope = "system";
+    name = "linux";
+    version = kernel.version or null;
+    store_path = toString kernel;
+    desktop_ids = [ ];
+    vendor_tool = null;
+    kind = "system";
+    release_source.provider = "kernel-stable";
+  };
   inventory = lib.unique (
     packages "system" config.environment.systemPackages
+    ++ kernelInventory
     ++ lib.concatLists (
       lib.mapAttrsToList (user: home: packages "user:${user}" home.home.packages) (
         config.home-manager.users or { }
