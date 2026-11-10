@@ -45,7 +45,7 @@ let
     inherit pkgs;
     worker = config.system.build.delayedNixosUpdate;
     deploymentLockHelper = deploymentLock.helper;
-    configDirectory = machine.configDirectory;
+    inherit (machine) configDirectory;
   };
 in
 {
@@ -68,26 +68,6 @@ in
     # Explicitly deploy the validated stable NM package alongside its adapter.
     inputs.nm-daemon.nixosModules.networkManager
   ];
-
-  services.update-daemon = {
-    enable = true;
-    package = config.system.build.delayedNixosUpdate;
-  };
-
-  services.build-cache-trim = {
-    enable = true;
-    user = machine.username;
-    maxGiB = 4;
-    retentionDays = 14;
-    sharedCaches = {
-      enable = true;
-      maxGiB = 1;
-    };
-    workspaceRoots = [
-      "${machine.homeDirectory}/Projects"
-      "${machine.homeDirectory}/Projects-p2"
-    ];
-  };
 
   nix = {
     settings = {
@@ -159,6 +139,26 @@ in
   console.keyMap = "us";
 
   services = {
+    update-daemon = {
+      enable = true;
+      package = config.system.build.delayedNixosUpdate;
+    };
+
+    build-cache-trim = {
+      enable = true;
+      user = machine.username;
+      maxGiB = 4;
+      retentionDays = 14;
+      sharedCaches = {
+        enable = true;
+        maxGiB = 1;
+      };
+      workspaceRoots = [
+        "${machine.homeDirectory}/Projects"
+        "${machine.homeDirectory}/Projects-p2"
+      ];
+    };
+
     automatic-timezoned.enable = false;
     location-timezone.enable = true;
     # Allow diagnostic location clients without changing timezone management.

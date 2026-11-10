@@ -206,6 +206,14 @@ lib.mapAttrs' (
         }).config.home-manager.users.${machine.username};
     in
     assert home.services.bar-daemon.enable;
+    assert host.services.update-daemon.enable;
+    assert host.systemd.user.services.update-daemon.serviceConfig.BusName == "org.laufan.UpdateDaemon";
+    assert
+      host.systemd.user.services.update-daemon.serviceConfig.ExecStart
+      == "${updateWorker}/bin/update-daemon";
+    assert
+      host.systemd.user.services.update-daemon.environment.BAR_DAEMON_UPDATE_WORKER
+      == "${updateWorker}/bin/update-worker";
     assert headless.services.bar-daemon.enable;
     assert !(headless.systemd.user.services ? shelllist);
     assert lib.all

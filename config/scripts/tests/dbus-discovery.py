@@ -34,6 +34,7 @@ for scope in ("system", "session"):
         assert "org.laufan.BarDaemon" not in names
     else:
         assert "org.laufan.BarDaemon" in names
+        assert "org.laufan.UpdateDaemon" in names
         assert "org.freedesktop.Notifications" in names
     # Run a reference bus privately: validate the entire generated configuration
     # and ListActivatableNames, without activating any service or touching live IPC.
