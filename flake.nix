@@ -26,7 +26,10 @@
       inputs.nixpkgs.follows = "shelllist/nixpkgs";
       inputs.crane.follows = "crane";
     };
-    update-daemon.url = "git+file:///home/laufan/Projects/update-daemon";
+    update-daemon = {
+      url = "git+file:///home/laufan/Projects/update-daemon";
+      inputs.daemonFramework.follows = "daemon-framework";
+    };
 
     nm-daemon = {
       url = "git+file:///home/laufan/Projects/nm-daemon";

@@ -248,8 +248,8 @@ lib.mapAttrs' (
         util-linux
       ])
       ''
-        python3 -B ${./config/scripts}/tests/rebuild-report.py
-        python3 ${./config/scripts/tests/rebuild-sources.py} ${./config/scripts} \
+        python3 -B ${inputs.update-daemon}/scripts/tests/rebuild-report.py
+        python3 ${inputs.update-daemon}/scripts/tests/rebuild-sources.py ${./config/scripts} \
           ${updateWorker.testDriver} ${updateWorker.testConfig}
       '';
   nix =

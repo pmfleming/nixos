@@ -41,26 +41,11 @@ let
     ];
   });
 
-  rebuild = mkScript {
-    name = "rebuild";
-    runtimeInputs = with pkgs; [
-      coreutils
-      findutils
-      git
-      jq
-      nix
-      nixos-rebuild
-      nix-output-monitor
-      python3
-      util-linux
-    ];
-    replacements = {
-      "@DEPLOYMENT_LOCK_HELPER@" = "${deploymentLock.helper}";
-      "@CONFIG_DIRECTORY@" = machine.configDirectory;
-      "@SOURCE_STATE_HELPER@" = "${config.system.build.delayedNixosUpdate}/bin/update-worker";
-      "@REPORT_HELPER@" = "${./config/scripts/rebuild-report.py}";
-      "@APPROVAL_HELPER@" = "${config.system.build.delayedNixosUpdate}/bin/delayed-nixos-update";
-    };
+  rebuild = inputs.update-daemon.lib.mkRebuild {
+    inherit pkgs;
+    worker = config.system.build.delayedNixosUpdate;
+    deploymentLockHelper = deploymentLock.helper;
+    configDirectory = machine.configDirectory;
   };
 in
 {

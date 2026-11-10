@@ -4,7 +4,7 @@ source_dir=${1:?source scripts directory required}
 test_dir=${2:?test scripts directory required}
 mkdir -p "$test_dir"
 : > "$test_dir/deployment.lock"
-for name in deployment-lock rebuild rollback prune-nixos-generations; do
+for name in deployment-lock rollback prune-nixos-generations; do
   sed \
     -e "s|@DEPLOYMENT_LOCK_FILE@|$test_dir/deployment.lock|g" \
     -e "s|@DEPLOYMENT_LOCK_HELPER@|$test_dir/deployment-lock.sh|g" \
