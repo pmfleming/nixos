@@ -1,0 +1,33 @@
+Host quality review, 2026-11-10; baseline 2b52a65680353d89da92ee2ca727aa99b8500374.
+Scope: checks.nix and the D-Bus discovery oracle; configuration.nix reviewed unchanged.
+Lens gap: local Rust/QML/TS lenses do not analyze Nix/Python. Cognitive/cyclomatic
+complexity, effort, leverage, locality, clone scores and coverage percentages are unknown.
+Same-tool gates: nixfmt 1.4.0, deadnix 1.3.1, statix 2026-05-14; all 17 tracked Nix
+files pass before/after. Six canonical-dbus Python tests pass before/after (Python 3.13.13).
+Physical source lines: touched files 547 -> 510 (-37); Nix 2412 -> 2377 (17 files);
+script tests 465 -> 463 (six files). Nonblank touched lines 538 -> 497. Evidence excluded.
+One worker-owned postCheck replaces three host runners and four duplicate suite invocations.
+All 61 public check names and host assertions retained; four update gate drvPaths identical.
+Baseline checks evaluated against the same captured graph confirm matching script inputs,
+configuration and test-effects executable (copied unchanged by package postInstall).
+All rebuild-report, rebuild-sources, deployment-lock and pruning suites remain in doCheck=true.
+Individual update gate names now select the full worker suite, including its Rust tests.
+D-Bus query, warning validation and process ownership shared. Cleanup now kills/reaps a
+SIGTERM-resistant child; Popen owns pipe closure. Three real-process cleanup scenarios pass.
+Identical before/after fixtures: positive reference run and nine rejection cases preserved;
+reference filename-warning rejection added. Required UpdateDaemon-name rejection retained.
+Ten repeated private broker runs pass for both scopes. Private runtime/bus fixes the old
+broker.socket startup race: launcher's manager connection also uses XDG_RUNTIME_DIR/bus.
+strace with an activatable systemd1 fixture confirms six private socket connections, no live
+user/system bus connection and no activation Exec. No service restart or deployment performed.
+Native helper capture: /tmp/host-quality/snapshot-final; full flake --no-build evaluation PASS.
+Selected native build gates PASS; updater Rust tests 173 passed/4 ignored, all four script suites PASS.
+Generated host: reference and broker PASS, 33 system and 33 session managed activations.
+Captured executable/test bytes match final host/framework/update/bar code; later differences are
+host evidence, framework/bar docs/evidence, and the disposable root lock (not executable changes).
+Reproduce selected build (Bash): nix build --no-link -L path:/tmp/host-quality/snapshot-final/root#checks.x86_64-linux.{nix,dbus-discovery,daemon-ownership,application-inventory,updater-state}
+Broker environment: source /tmp/update-env.sh; export PATH=/nix/store/i40fhzhx62i7zijnhnyzahss79pf7r9d-dbus-broker-37/bin:$PATH
+Broker command: python3 -B config/scripts/tests/dbus-discovery.py /nix/store/id3b7m95a4xippqq5d4l2phapf7rxkf7-canonical-dbus-configuration /nix/store/i2fakzpaklz8c2hlqhz4q9b0r9hwfvv1-system-path /nix/store/r2x41hbc0wpn7fr13p5qiizzvq9i4c0r-home-manager-path --broker
+Raw evidence and reproducible fault/cleanup harnesses: /tmp/host-quality/ (not committed).
+Checks SHA256 eb674d519a3577a3174de5df8c56778caa45b84f1767c12a569b9071119c9cef
+D-Bus SHA256 f510415a359bf30ccd58011222b242903aa946524aad251213d3a90bbb12e3e4

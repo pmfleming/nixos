@@ -246,22 +246,9 @@ lib.mapAttrs' (
       toString home.xdg.configFile."systemd/user/nm-daemon.service".source
       == "${inputs.nm-daemon.packages.${system}.default}/share/systemd/user/nm-daemon.service";
     pkgs.runCommand "daemon-ownership-contract" { } "touch $out";
-  rebuild-sources =
-    mkCheck "rebuild-source-identity-tests"
-      (with pkgs; [
-        bash
-        coreutils
-        findutils
-        git
-        jq
-        python3
-        util-linux
-      ])
-      ''
-        python3 -B ${inputs.update-daemon}/scripts/tests/rebuild-report.py
-        python3 ${inputs.update-daemon}/scripts/tests/rebuild-sources.py ${inputs.update-daemon}/scripts \
-          ${updateWorker.testDriver} ${updateWorker.testConfig}
-      '';
+  # The worker's postCheck owns these same scripts, configuration and test-effects
+  # fixture. Keep the public host gates without rebuilding duplicate test runners.
+  rebuild-sources = updateWorker.tests;
   nix =
     mkCheck "nix-quality-check"
       (with pkgs; [
@@ -309,18 +296,7 @@ lib.mapAttrs' (
   display-layout-compatibility = mkCheck "display-layout-compatibility" [ pkgs.bash pkgs.gnugrep ] ''
     bash ${./config/scripts/tests/display-layout-compatibility.sh} ${displaySources}
   '';
-  deployment-lock =
-    mkCheck "deployment-lock-tests"
-      (with pkgs; [
-        bash
-        coreutils
-        jq
-        util-linux
-      ])
-      ''
-        bash ${inputs.update-daemon}/scripts/tests/deployment-lock.sh \
-          ${inputs.update-daemon}/scripts ${updateWorker.testDriver} ${updateWorker.testConfig}
-      '';
+  deployment-lock = updateWorker.tests;
   updater-state = updateWorker.tests;
   build-cache-trim =
     let
@@ -354,18 +330,7 @@ lib.mapAttrs' (
   # Catch npm lock/hash drift before the system deployment build.
   ts-react-quality-lens = inputs.ts-react-quality-lens.packages.${system}.default;
   vendor-ai-tools = vendorAiTools.tests;
-  generation-retention =
-    mkCheck "generation-retention-tests"
-      (with pkgs; [
-        bash
-        coreutils
-        gawk
-        util-linux
-      ])
-      ''
-        bash ${inputs.update-daemon}/scripts/tests/prune-nixos-generations.sh \
-          ${inputs.update-daemon}/scripts/prune-nixos-generations.sh
-      '';
+  generation-retention = updateWorker.tests;
   pi-extensions =
     mkCheck "pi-extension-tests"
       (with pkgs; [
