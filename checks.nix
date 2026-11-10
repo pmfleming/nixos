@@ -206,14 +206,23 @@ lib.mapAttrs' (
     assert home.services.bar-daemon.enable;
     assert headless.services.bar-daemon.enable;
     assert !(headless.systemd.user.services ? shelllist);
-    assert
-      home.systemd.user.services.bar-daemon.Service == headless.systemd.user.services.bar-daemon.Service;
+    assert lib.all
+      (name: home.systemd.user.services.${name}.Service == headless.systemd.user.services.${name}.Service)
+      [
+        "bar-daemon"
+        "notification-daemon"
+        "power-daemon"
+        "compositor-daemon"
+        "activity-daemon"
+      ];
     assert home.systemd.user.services.hypridle.Service.Type == "notify";
     assert lib.hasPrefix "${home.services.bar-daemon.package}/bin/bar-daemon idle" (
       lib.head home.systemd.user.services.hypridle.Service.ExecStart
     );
     assert builtins.elem "BAR_DAEMON_DISPLAY_CONTROL=1"
-      home.systemd.user.services.bar-daemon.Service.Environment;
+      home.systemd.user.services.compositor-daemon.Service.Environment;
+    assert
+      !(builtins.elem "BAR_DAEMON_DISPLAY_CONTROL=1" home.systemd.user.services.bar-daemon.Service.Environment);
     assert builtins.elem "BAR_DAEMON_YOUTUBE_METADATA=1"
       home.systemd.user.services.bar-daemon.Service.Environment;
     assert host.services.bar-daemon.batteryHelper.enable;

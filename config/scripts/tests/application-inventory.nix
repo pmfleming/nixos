@@ -85,7 +85,9 @@ let
   disabledKernel = evaluate (
     kernelConfig
     // {
-      boot = kernelConfig.boot // { kernel.enable = false; };
+      boot = kernelConfig.boot // {
+        kernel.enable = false;
+      };
     }
   );
   # Decode metadata for assertions only; the generated file retains its package
