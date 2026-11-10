@@ -10,7 +10,7 @@
 
 let
   theme = import ./theme.nix;
-  deploymentLock = import ./lib/deployment-lock.nix { inherit pkgs; };
+  deploymentLock = inputs.update-daemon.lib.deploymentLock { inherit pkgs; };
   mkScript = (import ./lib/scripts.nix).mkScriptFrom pkgs ./config/scripts;
   locale = "en_IE.UTF-8";
   unfreePackageNames = [
@@ -52,10 +52,11 @@ in
   imports = [
     ./hardware-configuration.nix
     inputs.update-daemon.nixosModules.tools
-    ./modules/application-inventory.nix
+    inputs.update-daemon.nixosModules.inventory
+    inputs.update-daemon.nixosModules.session
     inputs.update-daemon.nixosModules.system
     ./modules/dbus-discovery.nix
-    ./modules/generation-retention.nix
+    inputs.update-daemon.nixosModules.generationRetention
     ./modules/printers.nix
     inputs.update-daemon.nixosModules.buildCache
     inputs.bar-daemon.nixosModules.default
@@ -67,6 +68,11 @@ in
     # Explicitly deploy the validated stable NM package alongside its adapter.
     inputs.nm-daemon.nixosModules.networkManager
   ];
+
+  services.update-daemon = {
+    enable = true;
+    package = config.system.build.delayedNixosUpdate;
+  };
 
   services.build-cache-trim = {
     enable = true;
@@ -325,7 +331,7 @@ in
     rebuild
     inputs.daemon-framework.packages.${pkgs.stdenv.hostPlatform.system}.localBuild
 
-    (mkScript {
+    (inputs.update-daemon.lib.mkScript pkgs {
       name = "rollback";
       runtimeInputs = [
         nixos-rebuild

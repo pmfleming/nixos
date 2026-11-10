@@ -143,7 +143,9 @@ lib.mapAttrs' (
     ) home.programs.yazi.settings.open.prepend_rules;
     mkCheck "file-associations-contract" [ ] "";
   application-inventory =
-    assert import ./config/scripts/tests/application-inventory.nix { inherit lib host machine; };
+    assert import "${inputs.update-daemon}/scripts/tests/application-inventory.nix" {
+      inherit lib host machine;
+    };
     mkCheck "application-inventory-contract" [ ] "";
   daemon-modules = inputs.bar-daemon.checks.${system}.modules;
   resource-module = inputs.app-daemon.checks.${system}.modules;
@@ -249,7 +251,7 @@ lib.mapAttrs' (
       ])
       ''
         python3 -B ${inputs.update-daemon}/scripts/tests/rebuild-report.py
-        python3 ${inputs.update-daemon}/scripts/tests/rebuild-sources.py ${./config/scripts} \
+        python3 ${inputs.update-daemon}/scripts/tests/rebuild-sources.py ${inputs.update-daemon}/scripts \
           ${updateWorker.testDriver} ${updateWorker.testConfig}
       '';
   nix =
@@ -308,8 +310,8 @@ lib.mapAttrs' (
         util-linux
       ])
       ''
-        bash ${./config/scripts/tests/deployment-lock.sh} \
-          ${./config/scripts} ${updateWorker.testDriver} ${updateWorker.testConfig}
+        bash ${inputs.update-daemon}/scripts/tests/deployment-lock.sh \
+          ${inputs.update-daemon}/scripts ${updateWorker.testDriver} ${updateWorker.testConfig}
       '';
   updater-state = updateWorker.tests;
   build-cache-trim =
@@ -353,8 +355,8 @@ lib.mapAttrs' (
         util-linux
       ])
       ''
-        bash ${./config/scripts/tests/prune-nixos-generations.sh} \
-          ${./config/scripts}/prune-nixos-generations.sh
+        bash ${inputs.update-daemon}/scripts/tests/prune-nixos-generations.sh \
+          ${inputs.update-daemon}/scripts/prune-nixos-generations.sh
       '';
   pi-extensions =
     mkCheck "pi-extension-tests"
