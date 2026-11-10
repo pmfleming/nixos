@@ -51,9 +51,9 @@ in
 {
   imports = [
     ./hardware-configuration.nix
-    ./modules/ai-tools-updates.nix
+    inputs.update-daemon.nixosModules.tools
     ./modules/application-inventory.nix
-    ./modules/delayed-updates.nix
+    inputs.update-daemon.nixosModules.system
     ./modules/dbus-discovery.nix
     ./modules/generation-retention.nix
     ./modules/printers.nix

@@ -3,11 +3,12 @@
   lib,
   machine,
   pkgs,
+  inputs,
   ...
 }:
 
 let
-  systemdLib = import ../lib/systemd.nix;
+  systemdLib = import "${inputs.update-daemon}/nix/systemd.nix";
   deploymentLock = import ../lib/deployment-lock.nix { inherit pkgs; };
   mkScript = (import ../lib/scripts.nix).mkScriptFrom pkgs ../config/scripts;
   pruneNixosGenerations = mkScript {
