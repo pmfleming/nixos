@@ -22,15 +22,6 @@ hl.monitor({
 require("monitors")
 require("workspaces")
 
--- UWSM owns the graphical-session targets and loads the shared session
--- environment. Long-lived session components are declarative user services;
--- only this regular app is launched from the compositor.
-hl.on("hyprland.start", function()
-    -- Start Scratchpad silently on its dedicated fifth workspace. Shelllist
-    -- supplies the workspace's Scratchpad icon.
-    hl.exec_cmd(app("@SCRATCHPAD@"))
-end)
-
 hl.config({
     -- UWSM sends stdout to the persistent journal. Runtime-directory logs alone
     -- disappear on reboot, losing the HDMI/DPMS failure we need to diagnose.

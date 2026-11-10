@@ -75,7 +75,6 @@ let
   '';
   hyprlandConfig = themeText (
     scriptWith {
-      "@SCRATCHPAD@" = "${scratchpad}/bin/scratchpad";
       "@UWSM_APP@" = uwsmApp;
     } ./config/hypr/hyprland.lua
   );

@@ -400,7 +400,6 @@ lib.mapAttrs' (
         chmod -R u+w ./hypr
         substituteInPlace ./hypr/hyprland.lua \
           --replace-fail '@UWSM_APP@' '/bin/true' \
-          --replace-fail '@SCRATCHPAD@' '/bin/true' \
           --replace-fail '@MONITOR_SCALE@' '1' \
           --replace-fail '@RADIUS_INT@' '1' \
           --replace-fail '@ACCENT_BARE@' '000000' \
