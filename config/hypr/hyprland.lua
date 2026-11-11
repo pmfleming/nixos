@@ -121,6 +121,11 @@ hl.window_rule({
     match = { class = "^(Code|code|VSCodium|codium|jetbrains-studio)$" },
     workspace = "3 silent",
 })
+-- Session-owned autostart bypasses Shelllist's launch placement.
+hl.window_rule({
+    match = { class = [=[^(com\.t3tools\.T3Code|t3code)$]=] },
+    workspace = "3 silent",
+})
 hl.window_rule({
     match = { class = "^(Spotify)$" },
     workspace = "4 silent",
