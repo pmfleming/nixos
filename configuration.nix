@@ -142,6 +142,26 @@ in
     update-daemon = {
       enable = true;
       package = config.system.build.delayedNixosUpdate;
+      extraApplications = [
+        {
+          scope = "user:${machine.username}";
+          name = "tursobench";
+          version = null;
+          desktop_ids = [ "tursobench.desktop" ];
+          kind = "local-helper";
+          update_route = "local";
+          channel = "development";
+        }
+        {
+          scope = "user:${machine.username}";
+          name = "captive-portal-browser";
+          version = null;
+          desktop_ids = [ "captive-portal-browser.desktop" ];
+          kind = "local-helper";
+          update_route = "local";
+          channel = "development";
+        }
+      ];
     };
 
     build-cache-trim = {
