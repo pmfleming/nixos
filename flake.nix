@@ -30,6 +30,11 @@
       url = "git+file:///home/laufan/Projects/update-daemon";
       inputs.daemonFramework.follows = "daemon-framework";
     };
+    storage-daemon = {
+      url = "git+file:///home/laufan/Projects/storage-daemon";
+      inputs.nixpkgs.follows = "shelllist/nixpkgs";
+      inputs.daemonFramework.follows = "daemon-framework";
+    };
 
     nm-daemon = {
       url = "git+file:///home/laufan/Projects/nm-daemon";
@@ -77,6 +82,7 @@
         bt-daemon.follows = "bt-daemon";
         clip-daemon.follows = "clip-daemon";
         app-daemon.follows = "app-daemon";
+        storage-daemon.follows = "storage-daemon";
         bar-daemon.follows = "bar-daemon";
       };
     };
@@ -199,6 +205,7 @@
                   nixpkgs.lib.concatMap (package: package.rebuildCache or [ ]) (
                     map (name: inputs.${name}.packages.${system}.default) [
                       "app-daemon"
+                      "storage-daemon"
                       "bar-daemon"
                       "bt-daemon"
                       "clip-daemon"

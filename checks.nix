@@ -298,35 +298,27 @@ lib.mapAttrs' (
   '';
   deployment-lock = updateWorker.tests;
   updater-state = updateWorker.tests;
-  build-cache-trim =
+  storage-cleanup =
     let
-      service = host.systemd.services.build-cache-trim;
+      service = host.systemd.services.storage-shutdown;
     in
     assert service.serviceConfig.User == machine.username;
     assert service.serviceConfig.RemainAfterExit;
-    assert lib.hasSuffix "/bin/true" service.serviceConfig.ExecStart;
-    assert lib.hasSuffix "/bin/build-cache-trim" service.serviceConfig.ExecStop;
+    assert lib.hasSuffix "/bin/storage-daemon shutdown" service.serviceConfig.ExecStop;
     assert service.serviceConfig.TimeoutStopSec == "60s";
-    assert service.serviceConfig.TimeoutStopFailureMode == "kill";
-    assert lib.all (path: builtins.elem path service.unitConfig.RequiresMountsFor) (
-      host.services.build-cache-trim.workspaceRoots ++ host.services.build-cache-trim.repositories
-    );
     assert builtins.elem "systemd-logind.service" service.before;
-    assert !(builtins.elem "user.slice" service.before);
-    assert host.services.build-cache-trim.sharedCaches.enable;
-    assert builtins.elem "${machine.homeDirectory}/.cache/rqlens/helpers"
-      service.unitConfig.RequiresMountsFor;
-    assert builtins.elem "${machine.homeDirectory}/.npm/_cacache" service.unitConfig.RequiresMountsFor;
-    assert
-      service.serviceConfig.ReadWritePaths == map (path: "-" + path) service.unitConfig.RequiresMountsFor;
-    assert host.services.build-cache-trim.workspaceRoots != [ ];
     assert !service.restartIfChanged && !service.stopIfChanged;
-    assert !(host.systemd.timers ? build-cache-trim);
-    assert !(home.systemd.user.timers ? build-cache-trim);
-    (inputs.update-daemon.lib.mkBuildCachePackage {
-      inherit pkgs;
-      repositories = [ ];
-    }).tests;
+    assert !(host.systemd.services.build-cache-trim.serviceConfig ? ExecStop);
+    assert host.systemd.services.build-cache-trim.wantedBy == [ ];
+    assert host.systemd.services.build-cache-trim.unitConfig.StopWhenUnneeded;
+    assert !host.systemd.services.build-cache-trim.restartIfChanged;
+    assert !host.systemd.services.build-cache-trim.stopIfChanged;
+    assert !(host.systemd.timers ? storage-shutdown);
+    assert
+      host.systemd.user.services.storage-daemon.serviceConfig.BusName == "org.laufan.StorageDaemon";
+    assert lib.hasSuffix "/bin/storage-daemon inventory"
+      host.systemd.services.storage-inventory.serviceConfig.ExecStart;
+    inputs.storage-daemon.packages.${system}.default;
   # Catch npm lock/hash drift before the system deployment build.
   ts-react-quality-lens = inputs.ts-react-quality-lens.packages.${system}.default;
   vendor-ai-tools = vendorAiTools.tests;

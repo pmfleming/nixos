@@ -58,7 +58,7 @@ in
     ./modules/dbus-discovery.nix
     inputs.update-daemon.nixosModules.generationRetention
     ./modules/printers.nix
-    inputs.update-daemon.nixosModules.buildCache
+    inputs.storage-daemon.nixosModules.default
     inputs.bar-daemon.nixosModules.default
     inputs.bar-daemon.nixosModules.location-timezone
     inputs.app-daemon.nixosModules.default
@@ -164,15 +164,10 @@ in
       ];
     };
 
-    build-cache-trim = {
+    storage-daemon = {
       enable = true;
       user = machine.username;
-      maxGiB = 4;
-      retentionDays = 14;
-      sharedCaches = {
-        enable = true;
-        maxGiB = 1;
-      };
+      package = inputs.storage-daemon.packages.${pkgs.stdenv.hostPlatform.system}.default;
       workspaceRoots = [
         "${machine.homeDirectory}/Projects"
         "${machine.homeDirectory}/Projects-p2"
