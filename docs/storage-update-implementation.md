@@ -95,3 +95,51 @@ D-Bus discovery, Nix formatting and host/module evaluation. The transient build
 log is `/tmp/storage-retirement-build.log`; Nix retains individual derivation logs.
 
 No system switch or live cleanup was performed as part of source qualification.
+
+## Review follow-up
+
+The eleven findings from the subsequent review were addressed in isolated commits:
+
+| Finding | Solution and commits |
+| --- | --- |
+| 1. Tool-name false positives | Exact executable/script/module identities and Gradle JVM arguments; Nix wrapper names supported. storage-daemon `f6dc4ca`, `d8b5f4c`. |
+| 2. Activity protection persisted into shutdown | Separate temporary activity from structural/source protection; shutdown retries native locks and activity checks. Manual cleanup still intersects the displayed selection. `f6dbe9f`. |
+| 3. Policy changes erased inventory | Retain measured identities, replan and change the preview revision; unchanged policies are no-ops. `e52ed37`. Shelllist avoids unchanged pin writes: `ce5ca0fc`. |
+| 4. Operation-lock contention | Start/read during external work, defer interrupted-run recovery, yield scheduled inventory and hold one lock across cleanup plus refresh. `bdec940`. |
+| 5. System observations masked inventory health | Separate measurement budgets (100,000 entries/five seconds per root, thirty seconds total), partial coverage and private-path counts. `f475b28`; Shelllist `5ba9b2e5`. |
+| 6. Repeated directory resolution | Reuse one measured parent descriptor per file group; bound descriptor use and retain no-follow opening and per-file identity checks. `2b5157c`. |
+| 7. Unstable fingerprints | Fixed FNV-1a/64 and explicit byte encoding, with fixed vectors. `1588e95`. |
+| 8. Read-only lock data | Preserve Cargo output lock data and known language lock manifests inside shared caches without requiring write access; retain real native locks. `565a79b`, `6583abb`. |
+| 9. Missing cache coverage | Recognize arbitrary Cargo profile names, doc/criterion outputs, registry archives/extracted crates, locked-project node_modules and versioned Playwright downloads. Native Cargo locks and explicit layouts gate deletion; dependency/browser symlinks are unlinked without traversal. `b79e966`. Quality-run evidence is measured separately and preserved: `7ff4583`. |
+| 10. Version/status/history presentation | All release states can be filtered, combined filters match the same installation, and history exposes visible skip reasons: Shelllist `217b90f9`. Numeric trailing zeros compare equally: app-daemon `f551d36`. |
+| 11. Missing regression coverage | Full temporary-directory scan/plan/delete fixtures for npm/Gradle/pip/bun and the added dependency/browser caches, controlled and real process observations, native lock contention and shutdown after tools exit. `7103f49`, plus regressions alongside the individual fixes. |
+
+Coverage is deliberately explicit: Cargo registry indexes/Git checkouts and
+Playwright's .links metadata retain their owners. Existing quality-run summaries,
+source patches and frozen review reports are evidence, not an inferred completion
+signal. Their usage is shown separately; generated Cargo profiles inside those
+trees remain eligible independently. No real project artifacts were removed.
+
+Review validation: strict Clippy and storage Rust tests passed. Strict QML lint
+passed, the UI composition review reported no new numeric overrides or wrappers,
+and the complete native QML suite passed with 765 passes, zero failures and one
+existing renderer skip. The integrated Nix follow-up build passed, including the
+packaged QML suite with the same result. After the shared-cache lock-manifest
+follow-up, final qualification also passed:
+
+```sh
+nix build path:/tmp/storage-review-final/root#rebuildChecks \
+  --no-update-lock-file --no-link --keep-going
+```
+
+Final check closure: `/nix/store/n5rq8f41fa1zkz6lj2wn5h4dq6axz6bd-rebuild-checks`.
+Storage's packaged tests passed (7 unit, 15 filesystem, 2 service and 1 private
+session-bus tests; the two helper child cases are explicitly invoked by their
+parent tests). App-daemon's package, generated protocol/frontend contracts,
+native application/CLI, module/host and D-Bus discovery checks passed too.
+Transient logs are `/tmp/storage-review-final-build.log` and
+`/tmp/storage-review-full-qml.log`; Nix retains individual derivation logs.
+
+Unrelated in-progress Scratchpad edits were left untouched. Source fixes are
+committed independently of deployment. No system switch or live cleanup was
+performed during this review follow-up.
